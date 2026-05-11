@@ -69,14 +69,17 @@ ${text.slice(0, 8000)}`, 20);
 /**
  * Extract structured data from document text
  */
-export async function geminiExtract(text: string, category?: string): Promise<Record<string, unknown>> {
-  const raw = await geminiCall(`אתה מומחה לניתוח מסמכים של עמותות וארגונים חברתיים. חלץ את כל הנתונים המובנים מהתוכן.
-החזר JSON תקין בלבד.
+export async function geminiExtract(text: string, category?: string, orgName?: string): Promise<Record<string, unknown>> {
+  const orgFilter = orgName
+    ? `\nחשוב מאוד: המסמך שייך לארגון "${orgName}". חלץ רק נתונים שמתייחסים לארגון הזה. אם המסמך מזכיר ארגונים אחרים (למשל דוח שמשווה, רשימת עמותות, דוח גיידסטאר), התעלם מנתונים שלהם וחלץ רק מה שרלוונטי ל-"${orgName}".`
+    : '';
+  const raw = await geminiCall(`אתה מומחה לניתוח מסמכים של עמותות וארגונים חברתיים. חלץ נתונים מובנים מהתוכן.
+החזר JSON תקין בלבד.${orgFilter}
 
 שדות אפשריים:
 - name: שם הארגון/חברה
 - registration_number: מספר עמותה/חברה
-- founded_year: שנת ייסוד
+- founded_year: שנת ייסוד (שנת הקמה מקורית, לא שנת חידוש אישור)
 - mission: ייעוד ומטרות (עד 3 משפטים)
 - focus_areas[]: תחומי פעילות עיקריים
 - target_populations[]: אוכלוסיות יעד
@@ -84,13 +87,13 @@ export async function geminiExtract(text: string, category?: string): Promise<Re
 - beneficiaries_count: מספר מוטבים
 - employees_count: מספר עובדים
 - volunteers_count: מספר מתנדבים
-- annual_budget: תקציב שנתי
+- annual_budget: תקציב שנתי (סה"כ מחזור, לא סעיף בודד)
 - revenue_sources[]: מקורות הכנסה
 - contact_name, contact_email, contact_phone, website
 - key_achievements[], partners[], key_people[], impact_metrics[]
 ${category ? `\nקטגוריית המסמך: ${category}` : ''}
 
-חלץ כל מה שזמין. עברית מותרת בערכים. דייק במספרים ובשמות.
+חלץ כל מה שזמין. עברית מותרת בערכים. דייק במספרים ובשמות. אם לא בטוח לגבי ערך, עדיף לא לכלול אותו.
 
 תוכן:
 ${text.slice(0, 30000)}`, 4000);

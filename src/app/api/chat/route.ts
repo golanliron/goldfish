@@ -1534,55 +1534,60 @@ async function extractAndSaveMemory(
 ): Promise<void> {
   try {
     const combined = userMessage + ' ' + assistantResponse;
-    if (combined.length < 100) return;
+    if (combined.length < 80) return;
 
-    const memoryItems: { key: string; value: string; confidence: string }[] = [];
+    // Use Claude Haiku to extract structured memory from the conversation
+    const Anthropic = (await import('@anthropic-ai/sdk')).default;
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-    // Extract fundraising strategy mentions
-    const strategyPatterns = [
-      { pattern: /אסטרטגי[הת]\s+גיוס[^.]{10,80}/g, key: 'fundraising_strategy' },
-      { pattern: /יעד\s+גיוס[^.]{5,60}/g, key: 'fundraising_target' },
-      { pattern: /תקציב\s+שנתי[^.]{5,60}/g, key: 'annual_budget' },
-    ];
+    const extractionPrompt = `אתה מחלץ עובדות חשובות משיחה עם עמותה לצורך שמירה בזיכרון ארגוני.
 
-    for (const { pattern, key } of strategyPatterns) {
-      const match = combined.match(pattern);
-      if (match) {
-        memoryItems.push({ key, value: match[0].trim(), confidence: 'medium' });
-      }
+הודעת משתמש:
+"${userMessage.slice(0, 1500)}"
+
+תשובת הסוכן:
+"${assistantResponse.slice(0, 1500)}"
+
+חלץ עד 6 עובדות חשובות. התמקד במה שיעזור לסוכן בשיחות עתידיות:
+- תוצאות הגשות (אושר/נדחה, סכום, משוב מהגוף המממן)
+- העדפות כתיבה של הארגון
+- מידע ייחודי שלא במסמכים (שותפויות, מספרים, יעדים)
+- יחסים עם גופים מממנים (חיובי/שלילי/היסטוריה)
+- לקחים מהגשות קודמות
+- דדליינים וצירי זמן חשובים
+
+החזר JSON בלבד, ללא טקסט נוסף:
+{"items":[{"key":"מזהה_קצר_באנגלית","value":"הערך בעברית","confidence":"high|medium|low"}]}
+
+אם אין עובדות חשובות לשמור, החזר: {"items":[]}`;
+
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 600,
+      messages: [{ role: 'user', content: extractionPrompt }],
+    });
+
+    const rawText = response.content[0].type === 'text' ? response.content[0].text.trim() : '';
+    if (!rawText) return;
+
+    const jsonText = rawText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+    let parsed: { items: { key: string; value: string; confidence: string }[] };
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch {
+      console.error('[memory] Failed to parse JSON:', jsonText.slice(0, 200));
+      return;
     }
 
-    // Extract explicit preferences from user messages
-    const prefPatterns = [
-      { pattern: /(?:אנחנו )?(?:לא )?(?:אוהבים?|מעדיפים?|רוצים?)[^.]{5,80}/g, key: 'writing_preference' },
-      { pattern: /(?:הקרן |קרן )[^.]{5,60}(?:אישרה?|דחתה?|אהבה?)[^.]{5,60}/g, key: 'funder_relationship' },
-    ];
-
-    for (const { pattern, key } of prefPatterns) {
-      const matches = userMessage.match(pattern);
-      if (matches) {
-        for (let i = 0; i < Math.min(matches.length, 3); i++) {
-          const suffix = matches.length > 1 ? `_${i + 1}` : '';
-          memoryItems.push({ key: `${key}${suffix}`, value: matches[i].trim(), confidence: 'high' });
-        }
-      }
-    }
-
-    // Extract mentioned contact names
-    const contactMatch = userMessage.match(/(?:איש|אשת|אנשי)\s+קשר[^.]{5,80}/);
-    if (contactMatch) {
-      memoryItems.push({ key: 'contact_info', value: contactMatch[0].trim(), confidence: 'medium' });
-    }
-
-    // Extract deadline mentions
-    const deadlineMatch = combined.match(/דדליין[^.]{5,60}/);
-    if (deadlineMatch) {
-      memoryItems.push({ key: 'upcoming_deadline', value: deadlineMatch[0].trim(), confidence: 'high' });
-    }
+    const memoryItems = (parsed.items || []).filter(
+      (item) => item.key && item.value && item.value.length > 3
+    );
 
     if (memoryItems.length === 0) return;
 
-    // Upsert memories (update if key exists, insert if not)
+    // Also detect submission outcomes and save them
+    await maybeUpdateSubmissionOutcome(supabase, orgId, userMessage);
+
     for (const item of memoryItems) {
       await supabase
         .from('org_memory')
@@ -1591,19 +1596,56 @@ async function extractAndSaveMemory(
             org_id: orgId,
             key: item.key,
             value: item.value,
-            source: 'chat',
-            confidence: item.confidence,
+            source: 'chat_ai',
+            confidence: item.confidence || 'medium',
             updated_at: new Date().toISOString(),
           },
           { onConflict: 'org_id,key' }
         );
     }
 
-    if (memoryItems.length > 0) {
-      console.log(`Saved ${memoryItems.length} memory items for org ${orgId}`);
-    }
+    console.log(`[memory] Saved ${memoryItems.length} AI-extracted items for org ${orgId}`);
   } catch (e) {
     console.error('Memory extraction error:', e);
+  }
+}
+
+// Detects submission outcomes mentioned in chat and saves to org_memory
+async function maybeUpdateSubmissionOutcome(
+  supabase: ReturnType<typeof createAdminClient>,
+  orgId: string,
+  userMessage: string
+): Promise<void> {
+  const approvedMatch = userMessage.match(
+    /(?:קרן|גוף)\s+([^,\n]{3,40})\s+(?:אישרה?|אישרו|קיבלנו|זכינו)[^.]{0,80}?(\d[\d,]+)?\s*(?:ש"ח|שקל)?/
+  );
+  if (approvedMatch) {
+    const funder = approvedMatch[1]?.trim();
+    const amount = approvedMatch[2]?.replace(/,/g, '');
+    if (funder) {
+      const key = `approved_${funder.replace(/\s+/g, '_').slice(0, 30)}`;
+      const value = amount
+        ? `אושר ${Number(amount).toLocaleString('he-IL')} ש"ח מ-${funder}`
+        : `אושר מענק מ-${funder}`;
+      await supabase.from('org_memory').upsert(
+        { org_id: orgId, key, value, source: 'chat_outcome', confidence: 'high', updated_at: new Date().toISOString() },
+        { onConflict: 'org_id,key' }
+      );
+    }
+  }
+
+  const rejectedMatch = userMessage.match(
+    /(?:קרן|גוף)\s+([^,\n]{3,40})\s+(?:דחתה?|דחו|לא אישרו?|נדחינו)[^.]{0,120}/
+  );
+  if (rejectedMatch) {
+    const funder = rejectedMatch[1]?.trim();
+    if (funder) {
+      const key = `rejected_${funder.replace(/\s+/g, '_').slice(0, 30)}`;
+      await supabase.from('org_memory').upsert(
+        { org_id: orgId, key, value: rejectedMatch[0].trim().slice(0, 200), source: 'chat_outcome', confidence: 'high', updated_at: new Date().toISOString() },
+        { onConflict: 'org_id,key' }
+      );
+    }
   }
 }
 
@@ -1798,6 +1840,41 @@ export async function POST(request: NextRequest) {
     if (userAsksForGrantWriting(message)) {
       grantWritingContext = await loadFullDocumentsForGrantWriting(supabase, org_id);
       console.log(`Grant writing mode: loaded ${grantWritingContext.length} chars of full documents`);
+
+      // Load funder-specific lessons from org_memory
+      const { data: allMemories } = await supabase
+        .from('org_memory')
+        .select('key, value, confidence')
+        .eq('org_id', org_id)
+        .in('source', ['chat_ai', 'chat_outcome'])
+        .order('updated_at', { ascending: false })
+        .limit(100);
+
+      if (allMemories && allMemories.length > 0) {
+        // Filter memories relevant to this message (funder name match or outcome-related keys)
+        const msgLower = message.toLowerCase();
+        const relevantMemories = allMemories.filter((m: { key: string; value: string; confidence: string }) => {
+          const keyLower = m.key.toLowerCase();
+          const valueLower = m.value.toLowerCase();
+          return (
+            keyLower.startsWith('approved_') ||
+            keyLower.startsWith('rejected_') ||
+            keyLower.includes('funder') ||
+            keyLower.includes('lesson') ||
+            keyLower.includes('writing_pref') ||
+            // Check if funder name from memory appears in user message
+            msgLower.includes(valueLower.slice(0, 20))
+          );
+        });
+
+        if (relevantMemories.length > 0) {
+          const memorySummary = relevantMemories
+            .map((m: { key: string; value: string; confidence: string }) => `- ${m.value}`)
+            .join('\n');
+          grantWritingContext += `\n\n--- זיכרון היסטורי רלוונטי ---\n${memorySummary}\nהתחשב בלקחים אלה בעת כתיבת ההגשה.\n`;
+          console.log(`Grant writing: added ${relevantMemories.length} historical memory items`);
+        }
+      }
     }
 
     // Submission Engine: RFP parsing + readiness check + org blocks

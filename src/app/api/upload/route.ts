@@ -96,8 +96,8 @@ async function classifyDocument(text: string): Promise<string> {
   return geminiClassify(text);
 }
 
-async function extractStructuredData(text: string, category: string): Promise<Record<string, unknown>> {
-  return geminiExtract(text, category);
+async function extractStructuredData(text: string, category: string, orgName?: string): Promise<Record<string, unknown>> {
+  return geminiExtract(text, category, orgName);
 }
 
 async function summarizeDocument(text: string): Promise<string> {
@@ -143,10 +143,14 @@ export async function POST(request: NextRequest) {
       const supabase = createAdminClient();
       const cat = category || 'identity';
 
+      // Get org name for context-aware extraction
+      const { data: orgData } = await supabase.from('organizations').select('name').eq('id', org_id).single();
+      const orgName = orgData?.name || undefined;
+
       // Classify + extract + summarize
       const [aiCategory, metadata, summary] = await Promise.all([
         cat === 'identity' ? Promise.resolve('identity') : classifyDocument(text),
-        extractStructuredData(text, cat),
+        extractStructuredData(text, cat, orgName),
         summarizeDocument(text),
       ]);
 
@@ -196,6 +200,10 @@ export async function POST(request: NextRequest) {
 
     const supabase = createAdminClient();
 
+    // Get org name for context-aware extraction
+    const { data: orgData } = await supabase.from('organizations').select('name').eq('id', orgId).single();
+    const orgName = orgData?.name || undefined;
+
     // Check for duplicate file
     const { data: existingDoc } = await supabase
       .from('documents')
@@ -225,14 +233,14 @@ export async function POST(request: NextRequest) {
     // 2. Classify + Extract + Summarize in parallel
     const [category, metadata, summary] = await Promise.all([
       classifyDocument(parsedText),
-      extractStructuredData(parsedText, 'identity'),
+      extractStructuredData(parsedText, 'identity', orgName),
       summarizeDocument(parsedText),
     ]);
 
     // Re-extract with correct category if not identity
     let finalMetadata = metadata;
     if (category !== 'identity') {
-      finalMetadata = await extractStructuredData(parsedText, category);
+      finalMetadata = await extractStructuredData(parsedText, category, orgName);
     }
 
     // 3. Upload to storage (non-blocking)
