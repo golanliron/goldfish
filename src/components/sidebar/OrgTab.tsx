@@ -106,6 +106,7 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
   const [uploadCategory, setUploadCategory] = useState<string | null>(null);
   const [freeText, setFreeText] = useState('');
   const [savingText, setSavingText] = useState(false);
+  const [expandedMission, setExpandedMission] = useState(false);
   const [driveUrl, setDriveUrl] = useState('');
   const [connectingDrive, setConnectingDrive] = useState(false);
   const [driveStatus, setDriveStatus] = useState<string | null>(null);
@@ -453,7 +454,14 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
                 <p className="text-xs text-muted">ע.ר. {profile.registration_number}</p>
               )}
               {profile.mission && (
-                <p className="text-xs text-text2 mt-2 leading-relaxed">{profile.mission}</p>
+                <div className="mt-2">
+                  <p className={`text-xs text-text2 leading-relaxed ${expandedMission ? '' : 'line-clamp-4'}`}>{profile.mission}</p>
+                  {profile.mission.length > 200 && (
+                    <button onClick={() => setExpandedMission(v => !v)} className="text-[10px] text-accent hover:underline mt-0.5">
+                      {expandedMission ? 'הצג פחות' : 'הצג עוד...'}
+                    </button>
+                  )}
+                </div>
               )}
 
               {/* Contact info */}
