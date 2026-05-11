@@ -41,11 +41,8 @@ export async function updateSession(request: NextRequest) {
   if (user && isAuthRoute) {
     // Check if user actually has a record in the users table
     // If not (deleted account), sign them out instead of redirecting
-    const { data: userRecord } = await supabase
-      .from('users')
-      .select('id')
-      .eq('id', user.id)
-      .single();
+    const { data: rpcResult } = await supabase.rpc('get_user_by_id', { user_id: user.id });
+    const userRecord = rpcResult?.[0] || null;
 
     if (userRecord) {
       const url = request.nextUrl.clone();

@@ -37,13 +37,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${origin}/login?error=auth_failed`);
   }
 
-  // Check if user already has an org setup
+  // Check if user already has an org setup (using RPC to bypass RLS)
   const admin = createAdminClient();
-  const { data: existingUser } = await admin
-    .from('users')
-    .select('org_id')
-    .eq('id', user.id)
-    .single();
+  const { data: rpcResult } = await admin.rpc('get_user_by_id', { user_id: user.id });
+  const existingUser = rpcResult?.[0] || null;
 
   let redirectTo = '/onboarding';
 
