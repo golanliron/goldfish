@@ -442,7 +442,32 @@ export const FISHGOLD_GRANT_EXPERTISE = `
 - כן: מספרים, ROI, leverage, before/after, ציטוט מבחוץ
 
 ### מגמות 2026 להגשות:
-Data-driven, Theory of Change, Sustainability, AI & Tech, SDGs, SROI, Collaboration, Equity, Digital-first`;
+Data-driven, Theory of Change, Sustainability, AI & Tech, SDGs, SROI, Collaboration, Equity, Digital-first
+
+### כלל ברזל — שימוש מלא בנתוני הארגון:
+כשכותב הגשה, **חובה לשלוף נתונים מכל מסמך שיש לך:**
+- מספרי מוטבים → מהדוח הכספי, המצגת, או דוח האימפקט
+- הישגים → כל הגשה חייבת 3-5 הישגים ספציפיים עם מספרים
+- תקציב → אם יש דוח כספי — שלוף סעיפים ספציפיים. אל תמציא מספרים
+- מדדי אימפקט → שלוף כל מדד שנמצא במסמכים. before/after, אחוזי שיפור
+- ציטוטים → אם יש ציטוט של מוטב, שותף, או מומחה — תשלב אותו
+- מחקר → אם העלו מחקר מלווה או הערכה — ציין ממצאים ספציפיים
+- הגשות קודמות → אם יש הגשה קודמת, למד ממנה: מה עבד, מה השתנה
+
+### כלל ברזל — הגשה מותאמת לקרן:
+**כל הגשה חייבת להרגיש כאילו נכתבה רק בשביל הקרן הזו.**
+1. פתיחה: ציין את שם הקרן/הגוף ואת הערכים/המטרות שלהם
+2. שפה: התאם את המילים לסגנון הקרן (ממשלתי=פורמלי, משפחתית=חם, בינלאומית=Theory of Change)
+3. דגשים: הדגש את מה שהקרן מחפשת. אם אוהבים חדשנות — מדוע הגישה שלנו חדשנית. אם אוהבים מדידה — הצג 5 מדדים כמותיים
+4. סיפור: תמיד שלב סיפור אנושי אחד (לא בדוי!) מהנתונים שיש לך
+5. חסמים: ציין מה הבעיה שהארגון פותר — עם נתון ארצי, לא עם הצהרה
+
+### כלל ברזל — סדר עדיפות למידע:
+1. נתונים מהמסמכים שהועלו (האמינים ביותר)
+2. נתונים מכרטיס הארגון (פרופיל)
+3. מידע מהשיחה עם המשתמש
+4. ידע כללי (רק כשחסר הכל — וציין שזה הערכה)
+**לעולם לא להמציא מספרים. מותר לכתוב [להשלים] — אסור להמציא.**`;
 
 // ===== Sector Knowledge =====
 export const FISHGOLD_SECTOR_KNOWLEDGE = `
@@ -629,8 +654,20 @@ export function buildOrgContext(profile: Record<string, unknown> | null, orgName
   if (profile.annual_budget) parts.push(`מחזור שנתי: ${Number(profile.annual_budget).toLocaleString('he-IL')} ש"ח`);
   if (profile.employees_count) parts.push(`עובדים: ${profile.employees_count}`);
   if (profile.beneficiaries_count) parts.push(`מוטבים: ${Number(profile.beneficiaries_count).toLocaleString('he-IL')}`);
+  if (profile.volunteers_count) parts.push(`מתנדבים: ${Number(profile.volunteers_count).toLocaleString('he-IL')}`);
   if (Array.isArray(profile.focus_areas)) parts.push(`תחומי פעילות: ${(profile.focus_areas as string[]).join(', ')}`);
+  if (Array.isArray(profile.target_populations) && (profile.target_populations as string[]).length > 0) parts.push(`אוכלוסיות יעד: ${(profile.target_populations as string[]).join(', ')}`);
   if (Array.isArray(profile.regions)) parts.push(`אזורים: ${(profile.regions as string[]).join(', ')}`);
+  if (Array.isArray(profile.revenue_sources) && (profile.revenue_sources as string[]).length > 0) parts.push(`מקורות הכנסה: ${(profile.revenue_sources as string[]).join(', ')}`);
+  if (Array.isArray(profile.partners) && (profile.partners as string[]).length > 0) parts.push(`שותפויות: ${(profile.partners as string[]).join(', ')}`);
+
+  // Impact metrics — critical for grant writing
+  if (Array.isArray(profile.impact_metrics) && (profile.impact_metrics as { metric: string; value: string; year?: string }[]).length > 0) {
+    parts.push('\nמדדי אימפקט:');
+    for (const m of profile.impact_metrics as { metric: string; value: string; year?: string }[]) {
+      parts.push(`- ${m.metric}: ${m.value}${m.year ? ` (${m.year})` : ''}`);
+    }
+  }
 
   // Contact info — critical for grant submissions
   // Try top-level fields first, then dig into nested active_projects
@@ -683,6 +720,12 @@ export function buildOrgContext(profile: Record<string, unknown> | null, orgName
 
   // Summary
   if (profile.summary) parts.push(`\nסיכום: ${profile.summary}`);
+
+  // AI insights from deep analysis — critical for grant writing
+  if (profile.ai_insights) parts.push(`\nתובנות לגיוס משאבים: ${profile.ai_insights}`);
+  if (Array.isArray(profile.missing_info) && (profile.missing_info as string[]).length > 0) {
+    parts.push(`\nמידע חסר להשלמה: ${(profile.missing_info as string[]).join(' | ')}`);
+  }
 
   return parts.join('\n');
 }

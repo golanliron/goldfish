@@ -443,7 +443,13 @@ async function loadAllChunks(
     if (allDocs?.length) {
       // Build a rich summary of ALL documents Goldfish has access to
       const docLines = allDocs.map(d => {
-        const preview = d.parsed_text ? d.parsed_text.slice(0, 500) : '';
+        const meta = (d.metadata || {}) as Record<string, unknown>;
+        const summary = (meta.summary as string) || '';
+        const insights = (meta.insights as string) || '';
+        const missingInfo = Array.isArray(meta.missing_info) ? (meta.missing_info as string[]).join(', ') : '';
+        // Use AI summary + insights first (more valuable than raw text), then raw preview
+        const aiContext = [summary, insights, missingInfo ? `חסר: ${missingInfo}` : ''].filter(Boolean).join('\n');
+        const preview = aiContext || (d.parsed_text ? d.parsed_text.slice(0, 2000) : '');
         return `[${d.category || 'other'}] ${d.filename} (id: ${d.id})${preview ? `:\n${preview}` : ''}`;
       });
       docSummary = `\n\n===== כל המסמכים שקראת (${allDocs.length} מסמכים) =====
@@ -452,8 +458,8 @@ async function loadAllChunks(
 \n${docLines.join('\n\n')}`;
 
       // Truncate if too long, but keep as much as possible
-      if (docSummary.length > 20000) {
-        docSummary = docSummary.slice(0, 20000) + '\n[... עוד מסמכים]';
+      if (docSummary.length > 40000) {
+        docSummary = docSummary.slice(0, 40000) + '\n[... עוד מסמכים]';
       }
 
       // ===== Document Alerts: expired, expiring, missing =====
@@ -528,10 +534,12 @@ ${alertLines.join('\n')}
 
     // RAG: search relevant non-knowledge chunks
     let rag = '';
+    // Filter out common Hebrew stop words for better search
+    const STOP_WORDS = new Set(['של', 'את', 'על', 'עם', 'אני', 'הוא', 'היא', 'זה', 'מה', 'איך', 'אם', 'כי', 'לא', 'כן', 'גם', 'אבל', 'או', 'יש', 'אין', 'רוצה', 'צריך', 'יכול', 'בבקשה', 'תודה', 'שלום']);
     const keywords = message
       .split(/\s+/)
-      .filter((w) => w.length > 2)
-      .slice(0, 5)
+      .filter((w) => w.length > 2 && !STOP_WORDS.has(w))
+      .slice(0, 8)
       .join(' & ');
 
     if (keywords) {
@@ -541,7 +549,7 @@ ${alertLines.join('\n')}
         .eq('org_id', orgId)
         .neq('metadata->>source', 'knowledge_base')
         .textSearch('content', keywords, { type: 'plain' })
-        .limit(8);
+        .limit(12);
 
       if (chunks?.length) {
         rag = buildContext(chunks);
@@ -556,7 +564,7 @@ ${alertLines.join('\n')}
         .eq('org_id', orgId)
         .neq('metadata->>source', 'knowledge_base')
         .order('created_at', { ascending: false })
-        .limit(8);
+        .limit(15);
 
       if (recent?.length) {
         rag = buildContext(recent);
@@ -566,6 +574,50 @@ ${alertLines.join('\n')}
     return { knowledge, rag, docSummary };
   } catch {
     return { knowledge: '', rag: '', docSummary: '' };
+  }
+}
+
+// ===== Grant Writing Detection & Full Document Loading =====
+
+const GRANT_WRITING_KEYWORDS = ['תכתוב הגשה', 'כתוב הגשה', 'טיוטת הגשה', 'תכין הצעה', 'כתוב הצעה', 'תכתוב הצעה', 'תתחיל לכתוב', 'כן תכתוב', 'כתוב טיוטה', 'תכין טיוטה', 'כתוב proposal', 'write proposal', 'write grant', 'כתוב LOI', 'תכתוב LOI', 'מכתב פנייה', 'letter of inquiry'];
+
+function userAsksForGrantWriting(message: string): boolean {
+  return GRANT_WRITING_KEYWORDS.some((kw) => message.toLowerCase().includes(kw.toLowerCase()));
+}
+
+async function loadFullDocumentsForGrantWriting(
+  supabase: ReturnType<typeof createAdminClient>,
+  orgId: string
+): Promise<string> {
+  try {
+    // Load ALL document full texts — grant writing needs complete data
+    const { data: docs } = await supabase
+      .from('documents')
+      .select('filename, category, parsed_text, metadata')
+      .eq('org_id', orgId)
+      .in('category', ['identity', 'budget', 'project', 'impact', 'submission'])
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    if (!docs?.length) return '';
+
+    const parts = docs.map(d => {
+      const meta = (d.metadata || {}) as Record<string, unknown>;
+      const text = d.parsed_text || '';
+      const insights = (meta.insights as string) || '';
+      return `\n--- ${d.filename} [${d.category}] ---\n${text.slice(0, 15000)}${insights ? `\n\nתובנות AI: ${insights}` : ''}`;
+    });
+
+    let fullContext = `\n\n===== מסמכים מלאים לכתיבת הגשה =====\nלהלן כל המסמכים הרלוונטיים של הארגון בשלמותם. השתמש בכל הנתונים, המספרים, והפרטים מהמסמכים האלה כשאתה כותב את ההגשה:\n${parts.join('\n')}`;
+
+    // Cap at 80K chars — leave room for other context
+    if (fullContext.length > 80000) {
+      fullContext = fullContext.slice(0, 80000) + '\n[... חלק מהמסמכים נחתכו]';
+    }
+
+    return fullContext;
+  } catch {
+    return '';
   }
 }
 
@@ -1436,7 +1488,14 @@ export async function POST(request: NextRequest) {
     };
     const tabFocus = (active_tab && TAB_FOCUS[active_tab]) || '';
 
-    let systemPrompt = FISHGOLD_SYSTEM_PROMPT + FISHGOLD_GRANT_EXPERTISE + FISHGOLD_SECTOR_KNOWLEDGE + FEDERATION_INTELLIGENCE + tabFocus + orgContext + docSummary + knowledge + rag + opportunityContext + companyContext + companiesIndex + grantsIndex + fundersIndex + sectorContext;
+    // Grant writing mode: load full documents when user asks to write a grant
+    let grantWritingContext = '';
+    if (userAsksForGrantWriting(message)) {
+      grantWritingContext = await loadFullDocumentsForGrantWriting(supabase, org_id);
+      console.log(`Grant writing mode: loaded ${grantWritingContext.length} chars of full documents`);
+    }
+
+    let systemPrompt = FISHGOLD_SYSTEM_PROMPT + FISHGOLD_GRANT_EXPERTISE + FISHGOLD_SECTOR_KNOWLEDGE + FEDERATION_INTELLIGENCE + tabFocus + orgContext + docSummary + knowledge + rag + grantWritingContext + opportunityContext + companyContext + companiesIndex + grantsIndex + fundersIndex + sectorContext;
 
     // Safety: truncate system prompt if too large (Claude Sonnet context = 200K tokens ~ 600K chars)
     // Leave room for conversation history + response

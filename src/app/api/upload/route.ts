@@ -287,12 +287,23 @@ async function updateOrgProfile(
   const current = (existing?.data as Record<string, unknown>) || {};
   const merged = { ...current };
 
+  // Always merge core identity fields regardless of category
+  for (const key of ['name', 'registration_number', 'founded_year', 'mission', 'focus_areas', 'target_populations', 'regions', 'beneficiaries_count', 'employees_count', 'volunteers_count', 'annual_budget', 'revenue_sources', 'partners', 'impact_metrics', 'key_achievements', 'key_people', 'contact_name', 'contact_email', 'contact_phone', 'website']) {
+    if (newData[key] && !merged[key]) merged[key] = newData[key];
+  }
+
+  // Category-specific overrides (these always update, not just fill gaps)
   if (category === 'identity') {
-    for (const key of ['name', 'registration_number', 'founded_year', 'mission', 'focus_areas', 'regions', 'beneficiaries_count', 'employees_count']) {
+    for (const key of ['name', 'registration_number', 'founded_year', 'mission', 'focus_areas', 'target_populations', 'regions', 'beneficiaries_count', 'employees_count', 'volunteers_count']) {
       if (newData[key]) merged[key] = newData[key];
     }
   } else if (category === 'budget') {
     if (newData.annual_budget) merged.annual_budget = newData.annual_budget;
+    if (newData.revenue_sources) merged.revenue_sources = newData.revenue_sources;
+  } else if (category === 'impact') {
+    if (newData.impact_metrics) merged.impact_metrics = newData.impact_metrics;
+    if (newData.key_achievements) merged.key_achievements = newData.key_achievements;
+    if (newData.beneficiaries_count) merged.beneficiaries_count = newData.beneficiaries_count;
   } else if (category === 'project') {
     const projects = (merged.active_projects as unknown[]) || [];
     projects.push(newData);

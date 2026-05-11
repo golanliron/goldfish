@@ -284,7 +284,9 @@ async function saveToRag(
   category: string,
   metadata: Record<string, unknown>,
   summary: string,
-  source: string
+  source: string,
+  insights?: string,
+  missingInfo?: string[]
 ): Promise<string | null> {
   const { data: doc } = await supabase
     .from('documents')
@@ -295,7 +297,7 @@ async function saveToRag(
       storage_path: storagePath,
       category: category === 'linkedin' ? 'other' : category,
       parsed_text: text.slice(0, 50000),
-      metadata: { ...metadata, summary, smart_reader_source: source },
+      metadata: { ...metadata, summary, smart_reader_source: source, ...(insights ? { insights } : {}), ...(missingInfo?.length ? { missing_info: missingInfo } : {}) },
       status: 'ready',
     })
     .select('id')
@@ -468,8 +470,40 @@ export async function POST(request: NextRequest) {
 
     const docId = await saveToRag(
       supabase, orgId, file.name, fileType, storagePath,
-      parsedText, analysis.category, analysis.metadata, analysis.summary, `file_upload_${ext}`
+      parsedText, analysis.category, analysis.metadata, analysis.summary, `file_upload_${ext}`,
+      analysis.insights, analysis.missing_info
     );
+
+    // Update org profile with extracted data + AI insights
+    if (Object.keys(analysis.metadata).length > 0 || analysis.insights) {
+      const { data: existing } = await supabase
+        .from('org_profiles')
+        .select('data')
+        .eq('org_id', orgId)
+        .single();
+
+      const current = (existing?.data as Record<string, unknown>) || {};
+      const merged = { ...current };
+
+      // Merge structured fields from extraction
+      for (const key of ['name', 'registration_number', 'founded_year', 'mission', 'focus_areas', 'target_populations', 'regions', 'beneficiaries_count', 'employees_count', 'volunteers_count', 'annual_budget', 'revenue_sources', 'partners', 'impact_metrics', 'key_achievements', 'key_people', 'contact_name', 'contact_email', 'contact_phone', 'website']) {
+        if (analysis.metadata[key]) merged[key] = analysis.metadata[key];
+      }
+
+      // Save AI insights for grant writing context
+      if (analysis.insights) merged.ai_insights = analysis.insights;
+      if (analysis.missing_info?.length) {
+        const existingMissing = (merged.missing_info as string[]) || [];
+        const newMissing = analysis.missing_info.filter((m: string) => !existingMissing.includes(m));
+        merged.missing_info = [...existingMissing, ...newMissing];
+      }
+
+      await supabase.from('org_profiles').upsert({
+        org_id: orgId,
+        data: merged,
+        last_updated: new Date().toISOString(),
+      }, { onConflict: 'org_id' });
+    }
 
     return NextResponse.json({
       document_id: docId,
