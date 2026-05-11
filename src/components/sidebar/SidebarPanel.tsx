@@ -22,7 +22,7 @@ const tabs: { id: SidebarTab; label: string; icon: string }[] = [
 ];
 
 export default function SidebarPanel({ stage, orgId, initialTab }: SidebarPanelProps) {
-  const [activeTab, setActiveTab] = useState<SidebarTab>(initialTab || 'opportunities');
+  const [activeTab, setActiveTab] = useState<SidebarTab>(initialTab || 'org');
 
   // Sync with parent initialTab changes (mobile tab switching)
   useEffect(() => {
