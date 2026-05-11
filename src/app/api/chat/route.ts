@@ -596,19 +596,20 @@ ${alertLines.join('\n')}
       }
     }
 
-    // For org tab: load ALL document chunks so Goldfish knows everything
-    if (isOrgTab) {
-      const { data: allChunks } = await supabase
-        .from('document_chunks')
-        .select('content, metadata')
-        .eq('org_id', orgId)
-        .neq('metadata->>source', 'knowledge_base')
-        .order('created_at', { ascending: false })
-        .limit(80);
-      if (allChunks?.length) {
-        const allContext = buildContext(allChunks);
-        rag = '\n\n===== כל המסמכים של הארגון =====\n' + allContext;
-      }
+    // Always load ALL document chunks so Goldfish knows the org in every tab
+    const chunkLimit = isOrgTab ? 80 : 50;
+    const { data: allChunks } = await supabase
+      .from('document_chunks')
+      .select('content, metadata')
+      .eq('org_id', orgId)
+      .neq('metadata->>source', 'knowledge_base')
+      .order('created_at', { ascending: false })
+      .limit(chunkLimit);
+    if (allChunks?.length) {
+      const allContext = buildContext(allChunks);
+      rag = rag
+        ? rag + '\n\n===== כל המסמכים של הארגון =====\n' + allContext
+        : '\n\n===== כל המסמכים של הארגון =====\n' + allContext;
     }
 
     return { knowledge, rag, docSummary };
@@ -1732,21 +1733,19 @@ export async function POST(request: NextRequest) {
     // Tab-specific focus instructions
     const TAB_FOCUS: Record<string, string> = {
       opportunities: `\n\n===== הקשר נוכחי: קולות קוראים =====
-המשתמש נמצא בלשונית "קולות קוראים". התמקד בנושאים הבאים:
-- ניתוח והתאמת קולות קוראים לארגון
-- כתיבת טיוטות הגשה
-- דדליינים ולוחות זמנים
-- ניתוח דרישות של קול קורא ספציפי
-- טיפים לשיפור סיכויי קבלה
-אם המשתמש שואל שאלה כללית, ענה רגיל. אבל אם ההודעה לא ברורה, הנח שהיא קשורה לקולות קוראים.`,
+המשתמש בלשונית קולות קוראים. יש לך את כל המסמכים של הארגון. השתמש בהם.
+
+כלל סגנון: תכתוב כמו בן אדם. בלי כוכביות, בלי מקפים, בלי כותרות, בלי רשימות. פסקאות חופשיות.
+
+אתה מכיר את הארגון לעומק מכל המסמכים שקראת. כשמישהו שואל על קול קורא, תנתח אותו ביחס לארגון הספציפי הזה. אם קול קורא לא מתאים, תגיד בפירוש למה ותציע חלופות.
+כשכותב הגשה, תשלוף נתונים אמיתיים מהמסמכים: מספרי מוטבים, אחוזים מהמחקר, סכומי תקציב, שמות פרויקטים.
+אל תמציא קולות קוראים שלא קיימים. אם לא מצאת התאמה טובה, אמור את זה.`,
       business: `\n\n===== הקשר נוכחי: חברות וקרנות =====
-המשתמש נמצא בלשונית "חברות וקרנות". התמקד בנושאים הבאים:
-- ניתוח חברות וקרנות מתאימות
-- ניסוח מיילים ופניות לתורמים פוטנציאליים
-- מידע על CSR ותרומות של חברות
-- אסטרטגיות פנייה ושותפויות
-- חיבור בין תחומי הארגון לתחומי העניין של החברה
-אם המשתמש שואל שאלה כללית, ענה רגיל. אבל אם ההודעה לא ברורה, הנח שהיא קשורה לחברות וגיוס מעסקים.`,
+המשתמש בלשונית חברות וקרנות. יש לך את כל המסמכים של הארגון. השתמש בהם.
+
+כלל סגנון: תכתוב כמו בן אדם. בלי כוכביות, בלי מקפים, בלי כותרות, בלי רשימות. פסקאות חופשיות.
+
+כשמציע חברות או כותב מיילי פנייה, השתמש בנתונים אמיתיים מהמסמכים. לא סיסמאות גנריות אלא מספרים, שמות פרויקטים, תוצאות.`,
       org: `\n\n===== הקשר נוכחי: פרופיל הארגון =====
 המשתמש בלשונית פרופיל הארגון. אתה סוכן גיוס משאבים חכם שמכיר את הארגון לעומק.
 
