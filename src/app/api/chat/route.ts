@@ -536,9 +536,29 @@ ${alertLines.join('\n')}
 
     // RAG: search relevant non-knowledge chunks
     let rag = '';
-    // Filter out common Hebrew stop words for better search
+
+    // If message references specific document_ids (from file upload), load those chunks first
+    const docIdMatch = message.match(/\[document_ids:\s*([^\]]+)\]/);
+    if (docIdMatch) {
+      const docIds = docIdMatch[1].split(',').map(id => id.trim()).filter(Boolean);
+      if (docIds.length > 0) {
+        const { data: docChunks } = await supabase
+          .from('document_chunks')
+          .select('content, metadata')
+          .eq('org_id', orgId)
+          .in('document_id', docIds)
+          .limit(30);
+
+        if (docChunks?.length) {
+          rag = buildContext(docChunks);
+        }
+      }
+    }
+
+    // Also search by keywords
     const STOP_WORDS = new Set(['של', 'את', 'על', 'עם', 'אני', 'הוא', 'היא', 'זה', 'מה', 'איך', 'אם', 'כי', 'לא', 'כן', 'גם', 'אבל', 'או', 'יש', 'אין', 'רוצה', 'צריך', 'יכול', 'בבקשה', 'תודה', 'שלום']);
-    const keywords = message
+    const cleanMessage = message.replace(/\[document_ids:[^\]]+\]/g, '');
+    const keywords = cleanMessage
       .split(/\s+/)
       .filter((w) => w.length > 2 && !STOP_WORDS.has(w))
       .slice(0, 8)
@@ -554,7 +574,7 @@ ${alertLines.join('\n')}
         .limit(12);
 
       if (chunks?.length) {
-        rag = buildContext(chunks);
+        rag = rag ? rag + '\n\n' + buildContext(chunks) : buildContext(chunks);
       }
     }
 

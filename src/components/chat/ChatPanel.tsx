@@ -354,9 +354,10 @@ export default function ChatPanel({ orgId, userId, onStageChange }: ChatPanelPro
         ? `\n\nקבצים שנכשלו: ${failed.map((_, i) => fileArr[results.indexOf(_)]?.name).join(', ')}`
         : '';
 
+      const docIds = succeeded.map(s => s.document_id).filter(Boolean);
       const chatPrompt = `[נקראו ${succeeded.length} קבצים בהצלחה]
 ${summaryLines}${failedLines}
-
+${docIds.length > 0 ? `\n[document_ids: ${docIds.join(',')}]` : ''}
 תגיב בקצרה: מה למדת מהקבצים האלה? ציין 2-3 נתונים חדשים שנכנסו, מה עדיין חסר, והצע פעולה אחת.`;
 
       const fishgoldMsg: ChatMessage = {
