@@ -132,7 +132,11 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
   // Upload handler with category
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (!files?.length || !orgId) return;
+    if (!files?.length) return;
+    if (!orgId) {
+      alert('טוען נתוני ארגון... נסו שוב בעוד שנייה');
+      return;
+    }
     setUploading(true);
 
     for (const file of Array.from(files)) {
@@ -142,9 +146,10 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
       if (uploadCategory) formData.append('category', uploadCategory);
 
       try {
-        await fetch('/api/upload', { method: 'POST', body: formData });
-      } catch {
-        // ignore upload errors here
+        const res = await fetch('/api/upload', { method: 'POST', body: formData });
+        if (!res.ok) console.error('Upload failed:', await res.text());
+      } catch (err) {
+        console.error('Upload error:', err);
       }
     }
 

@@ -27,25 +27,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const supabase = createClient();
+    let cancelled = false;
 
     // Safety timeout — never stay loading forever
     const safetyTimeout = setTimeout(() => setLoading(false), 5000);
 
-    // Get initial session
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user);
-      if (user) {
-        // Fetch org_id from users table
-        supabase
-          .from('users')
-          .select('org_id')
-          .eq('id', user.id)
-          .single()
-          .then(({ data }) => {
+    // Fetch orgId with retry
+    const fetchOrgId = (userId: string, attempt: number) => {
+      supabase
+        .from('users')
+        .select('org_id')
+        .eq('id', userId)
+        .single()
+        .then(({ data }) => {
+          if (cancelled) return;
+          if (data?.org_id) {
             clearTimeout(safetyTimeout);
-            setOrgId(data?.org_id ?? null);
+            setOrgId(data.org_id);
             setLoading(false);
-          }, () => { clearTimeout(safetyTimeout); setLoading(false); });
+          } else if (attempt < 4) {
+            // Retry — RLS may not be ready yet
+            setTimeout(() => fetchOrgId(userId, attempt + 1), 1000);
+          } else {
+            clearTimeout(safetyTimeout);
+            setLoading(false);
+          }
+        }, () => {
+          if (!cancelled && attempt < 4) {
+            setTimeout(() => fetchOrgId(userId, attempt + 1), 1000);
+          } else {
+            clearTimeout(safetyTimeout);
+            setLoading(false);
+          }
+        });
+    };
+
+    // Get initial session
+    supabase.auth.getUser().then(({ data: { user: u } }) => {
+      if (cancelled) return;
+      setUser(u);
+      if (u) {
+        fetchOrgId(u.id, 0);
       } else {
         clearTimeout(safetyTimeout);
         setLoading(false);
@@ -59,19 +81,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(newUser);
 
         if (newUser) {
-          const { data } = await supabase
-            .from('users')
-            .select('org_id')
-            .eq('id', newUser.id)
-            .single();
-          setOrgId(data?.org_id ?? null);
+          fetchOrgId(newUser.id, 0);
         } else {
           setOrgId(null);
         }
       }
     );
 
-    return () => subscription.unsubscribe();
+    return () => { cancelled = true; subscription.unsubscribe(); };
   }, []);
 
   const signOut = async () => {
