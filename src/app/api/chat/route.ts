@@ -1692,6 +1692,7 @@ export async function POST(request: NextRequest) {
     // Load knowledge layers — only what's needed for this tab
     const isCompanyTab = active_tab === 'business' || active_tab === 'foundations';
     const isOpportunityTab = active_tab === 'opportunities';
+    const isOrgTab = active_tab === 'org';
 
     const [opportunityContext, companyContext, sectorContext, companiesIndex, grantsIndex, fundersIndex, orgMemory, submissionHistory] = await Promise.all([
       isOpportunityTab
@@ -1700,12 +1701,12 @@ export async function POST(request: NextRequest) {
       isCompanyTab
         ? scanCompanies(supabase, profile?.data as Record<string, unknown> | null, org?.name ?? null, message)
         : Promise.resolve(''),
-      loadSectorIntelligence(supabase, message),
+      isOrgTab ? Promise.resolve('') : loadSectorIntelligence(supabase, message),
       isCompanyTab ? loadCompaniesIndex(supabase) : Promise.resolve(''),
       isOpportunityTab || active_tab === 'chat' ? loadGrantsIndex() : Promise.resolve(''),
       isCompanyTab ? loadFundersIndex(supabase) : Promise.resolve(''),
       loadOrgMemory(supabase, org_id),
-      loadSubmissionHistory(supabase, org_id),
+      isOrgTab ? Promise.resolve('') : loadSubmissionHistory(supabase, org_id),
     ]);
 
     // Tab-specific focus instructions
