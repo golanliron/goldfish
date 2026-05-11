@@ -13,6 +13,7 @@
     "@google/generative-ai": "^0.24.1",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.105.1",
+    "@tavily/core": "^0.7.3",
     "mammoth": "^1.12.0",
     "next": "16.2.4",
     "pdf-parse": "^1.1.1",

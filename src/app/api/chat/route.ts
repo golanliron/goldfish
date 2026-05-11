@@ -6,6 +6,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { createGrantsClient } from '@/lib/supabase/grants-db';
 import { FISHGOLD_SYSTEM_PROMPT, FISHGOLD_GRANT_EXPERTISE, FISHGOLD_FUNDER_WRITING_DNA, FISHGOLD_SECTOR_KNOWLEDGE, buildContext, buildOrgContext } from '@/lib/ai/fishgold';
 import { FEDERATION_INTELLIGENCE } from '@/lib/ai/federation-intelligence';
+import { detectSearchIntent, webSearch, searchCompany, searchGrants, formatSearchResults } from '@/lib/ai/web-search';
 import { parseRfp, checkReadiness, assembleSubmission, generateOrgBlocks, formatReadinessReport } from '@/lib/ai/submission-engine';
 import type { OrgBlock, OrgBlockType, RfpStructure } from '@/types';
 // pdf-parse imported dynamically where needed to avoid serverless init failures
@@ -1969,7 +1970,30 @@ ${blockSummary}
       // Non-fatal — continue without engine context
     }
 
-    let systemPrompt = FISHGOLD_SYSTEM_PROMPT + FISHGOLD_GRANT_EXPERTISE + FISHGOLD_FUNDER_WRITING_DNA + FISHGOLD_SECTOR_KNOWLEDGE + FEDERATION_INTELLIGENCE + tabFocus + orgContext + orgMemory + submissionHistory + docSummary + knowledge + rag + grantWritingContext + submissionEngineContext + opportunityContext + companyContext + companiesIndex + grantsIndex + fundersIndex + sectorContext;
+    // Web Search: search the internet when user asks for current info
+    let webSearchContext = '';
+    const searchQuery = detectSearchIntent(message);
+    if (searchQuery && process.env.TAVILY_API_KEY) {
+      try {
+        // Determine search type based on tab and query
+        let results;
+        if (active_tab === 'opportunities' || /קול קורא|מענק|grant/i.test(searchQuery)) {
+          results = await searchGrants(searchQuery);
+        } else if (active_tab === 'business' || /חברה|קרן|תורם/i.test(searchQuery)) {
+          results = await searchCompany(searchQuery);
+        } else {
+          results = await webSearch(searchQuery, { maxResults: 5 });
+        }
+        if (results.length > 0) {
+          webSearchContext = formatSearchResults(results);
+          console.log(`Web search: "${searchQuery}" → ${results.length} results`);
+        }
+      } catch (e) {
+        console.error('Web search error:', e);
+      }
+    }
+
+    let systemPrompt = FISHGOLD_SYSTEM_PROMPT + FISHGOLD_GRANT_EXPERTISE + FISHGOLD_FUNDER_WRITING_DNA + FISHGOLD_SECTOR_KNOWLEDGE + FEDERATION_INTELLIGENCE + tabFocus + orgContext + orgMemory + submissionHistory + docSummary + knowledge + rag + grantWritingContext + submissionEngineContext + opportunityContext + companyContext + companiesIndex + grantsIndex + fundersIndex + sectorContext + webSearchContext;
 
     // Safety: truncate system prompt if too large (Claude Sonnet context = 200K tokens ~ 600K chars)
     // Leave room for conversation history + response
