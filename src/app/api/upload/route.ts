@@ -1,43 +1,24 @@
 import { NextRequest } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
 import { createAdminClient } from '@/lib/supabase/admin';
 import pdfParse from 'pdf-parse';
+import { geminiClassify, geminiExtract, geminiSummarize, geminiOcrPdf } from '@/lib/ai/gemini';
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-// PDF: use pdf-parse v1, fallback to Claude vision
+// PDF: use pdf-parse v1, fallback to Gemini OCR
 async function parsePDF(buffer: Buffer): Promise<string> {
-  // Try pdf-parse first
   try {
     const result = await pdfParse(buffer);
     if (result.text && result.text.trim().length > 20) {
       return result.text;
     }
   } catch (e) {
-    console.error('PDF parse error, trying Claude fallback:', e);
+    console.error('PDF parse error, trying Gemini fallback:', e);
   }
 
-  // Fallback: send PDF as base64 to Claude for OCR
   try {
-    const base64 = buffer.toString('base64');
-    const res = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      messages: [{
-        role: 'user',
-        content: [
-          {
-            type: 'document',
-            source: { type: 'base64', media_type: 'application/pdf', data: base64 },
-          },
-          { type: 'text', text: 'חלץ את כל הטקסט מהמסמך הזה בעברית. החזר רק את הטקסט, בלי הסברים.' },
-        ],
-      }],
-      max_tokens: 8000,
-    });
-    const text = res.content[0].type === 'text' ? res.content[0].text : '';
+    const text = await geminiOcrPdf(buffer);
     if (text.length > 20) return text;
   } catch (e) {
-    console.error('Claude PDF fallback error:', e);
+    console.error('Gemini PDF fallback error:', e);
   }
 
   return '';
@@ -109,63 +90,18 @@ function stripHtml(html: string): string {
     .trim();
 }
 
-// ===== AI Classification & Extraction =====
+// ===== AI Classification & Extraction (Gemini) =====
 
 async function classifyDocument(text: string): Promise<string> {
-  const res = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    system: `סווג את המסמך הזה לקטגוריה אחת בלבד:
-- identity: תקנון, תיאור ארגוני, דף אודות, חזון ומטרות
-- budget: דוחות כספיים, מאזנים, תקציבים
-- project: תיאורי פרויקטים, תוכניות עבודה, דוחות פעילות
-- grant: הסכמי מענק, מכתבי מימון
-- submission: הגשות קודמות לקרנות
-- other: כל דבר אחר
-
-ענה רק עם שם הקטגוריה באנגלית, בלי שום דבר אחר.`,
-    messages: [{ role: 'user', content: text.slice(0, 4000) }],
-    max_tokens: 20,
-  });
-
-  const category = (res.content[0].type === 'text' ? res.content[0].text : '')
-    .trim().toLowerCase();
-  const valid = ['identity', 'budget', 'project', 'grant', 'submission', 'other'];
-  return valid.includes(category) ? category : 'other';
+  return geminiClassify(text);
 }
 
 async function extractStructuredData(text: string, category: string): Promise<Record<string, unknown>> {
-  const res = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    system: `חלץ נתונים מובנים מהמסמך. החזר JSON תקין בלבד.
-לפי הקטגוריה ${category}:
-- identity: name, registration_number, founded_year, mission, focus_areas (מערך), regions (מערך), beneficiaries_count, employees_count
-- budget: annual_budget (מספר), revenue_sources, expenses_breakdown
-- project: project_name, description, budget, beneficiaries, region
-- grant: source, amount, period, conditions
-- submission: target_fund, amount_requested, project_name
-
-חלץ מה שזמין. עברית מותרת בערכים. החזר רק JSON תקין.`,
-    messages: [{ role: 'user', content: text.slice(0, 5000) }],
-    max_tokens: 1000,
-  });
-
-  try {
-    const raw = res.content[0].type === 'text' ? res.content[0].text : '{}';
-    const jsonMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, raw];
-    return JSON.parse(jsonMatch[1]!.trim());
-  } catch {
-    return {};
-  }
+  return geminiExtract(text, category);
 }
 
 async function summarizeDocument(text: string): Promise<string> {
-  const res = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    system: `סכם את המסמך ב-2-3 משפטים בעברית. ציין: שם הארגון, תחום פעילות, נקודות מפתח.`,
-    messages: [{ role: 'user', content: text.slice(0, 5000) }],
-    max_tokens: 200,
-  });
-  return res.content[0].type === 'text' ? res.content[0].text : '';
+  return geminiSummarize(text);
 }
 
 // ===== Chunking =====

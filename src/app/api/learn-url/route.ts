@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import Anthropic from '@anthropic-ai/sdk';
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+import { geminiClassify, geminiExtract, geminiSummarize } from '@/lib/ai/gemini';
 
 function stripHtml(html: string): string {
   return html
@@ -81,42 +79,12 @@ export async function POST(request: NextRequest) {
 
     const supabase = createAdminClient();
 
-    // Classify and extract in parallel
-    const [classRes, extractRes, summaryRes] = await Promise.all([
-      anthropic.messages.create({
-        model: 'claude-haiku-4-5-20251001',
-        system: `Classify this content into one category: identity, budget, project, grant, submission, other. Answer with just the category name.`,
-        messages: [{ role: 'user', content: text.slice(0, 4000) }],
-        max_tokens: 20,
-      }),
-      anthropic.messages.create({
-        model: 'claude-haiku-4-5-20251001',
-        system: `Extract structured data from this org content. Return valid JSON only. Fields: name, mission, focus_areas (array), regions (array), beneficiaries_count, employees_count, annual_budget, founded_year, registration_number. Extract what's available. Hebrew values OK.`,
-        messages: [{ role: 'user', content: text.slice(0, 5000) }],
-        max_tokens: 1000,
-      }),
-      anthropic.messages.create({
-        model: 'claude-haiku-4-5-20251001',
-        system: `Summarize this content in 2-3 Hebrew sentences. Mention: org name, activity area, key points.`,
-        messages: [{ role: 'user', content: text.slice(0, 5000) }],
-        max_tokens: 200,
-      }),
+    // Classify, extract, and summarize in parallel using Gemini
+    const [finalCategory, metadata, summary] = await Promise.all([
+      geminiClassify(text),
+      geminiExtract(text),
+      geminiSummarize(text),
     ]);
-
-    const category = (classRes.content[0].type === 'text' ? classRes.content[0].text : 'other').trim().toLowerCase();
-    const validCats = ['identity', 'budget', 'project', 'grant', 'submission', 'other'];
-    const finalCategory = validCats.includes(category) ? category : 'other';
-
-    let metadata: Record<string, unknown> = {};
-    try {
-      const raw = extractRes.content[0].type === 'text' ? extractRes.content[0].text : '{}';
-      const jsonMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, raw];
-      metadata = JSON.parse(jsonMatch[1]!.trim());
-    } catch {
-      metadata = {};
-    }
-
-    const summary = summaryRes.content[0].type === 'text' ? summaryRes.content[0].text : '';
 
     // Save as document
     const { data: doc } = await supabase

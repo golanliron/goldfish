@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
 import { createAdminClient } from '@/lib/supabase/admin';
 import pdfParse from 'pdf-parse';
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+import { geminiAnalyzeDocument, geminiOcrPdf, geminiParseXlsx } from '@/lib/ai/gemini';
 
 // ===== PDF Parsing =====
 
@@ -14,30 +12,15 @@ async function parsePDF(buffer: Buffer): Promise<string> {
       return result.text;
     }
   } catch (e) {
-    console.error('PDF parse error, trying Claude fallback:', e);
+    console.error('PDF parse error, trying Gemini fallback:', e);
   }
 
-  // Fallback: Claude vision OCR
+  // Fallback: Gemini OCR
   try {
-    const base64 = buffer.toString('base64');
-    const res = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      messages: [{
-        role: 'user',
-        content: [
-          {
-            type: 'document',
-            source: { type: 'base64', media_type: 'application/pdf', data: base64 },
-          },
-          { type: 'text', text: 'חלץ את כל הטקסט מהמסמך הזה. עברית ואנגלית. החזר רק את הטקסט, בלי הסברים.' },
-        ],
-      }],
-      max_tokens: 8000,
-    });
-    const text = res.content[0].type === 'text' ? res.content[0].text : '';
+    const text = await geminiOcrPdf(buffer);
     if (text.length > 20) return text;
   } catch (e) {
-    console.error('Claude PDF fallback error:', e);
+    console.error('Gemini PDF fallback error:', e);
   }
 
   return '';
@@ -55,24 +38,8 @@ async function parseDocx(buffer: Buffer): Promise<string> {
 // ===== XLSX Parsing =====
 
 async function parseXlsx(buffer: Buffer): Promise<string> {
-  // Use pdf-parse style: convert to base64 and send as PDF (Claude can handle xlsx as pdf type)
   try {
-    const base64 = buffer.toString('base64');
-    const res = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      messages: [{
-        role: 'user',
-        content: [
-          {
-            type: 'document',
-            source: { type: 'base64', media_type: 'application/pdf' as const, data: base64 },
-          },
-          { type: 'text', text: 'חלץ את כל הנתונים מהקובץ הזה. הצג כטבלה טקסטואלית. עברית ואנגלית.' },
-        ],
-      }],
-      max_tokens: 8000,
-    });
-    const text = res.content[0].type === 'text' ? res.content[0].text : '';
+    const text = await geminiParseXlsx(buffer);
     if (text.length > 20) return text;
   } catch (e) {
     console.error('XLSX parse error:', e);
@@ -283,58 +250,7 @@ async function classifyAndExtract(text: string): Promise<{
   metadata: Record<string, unknown>;
   summary: string;
 }> {
-  const [classRes, extractRes, summaryRes] = await Promise.all([
-    anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      system: `סווג את המסמך לקטגוריה אחת:
-- identity: תקנון, תיאור ארגוני, אודות, חזון ומטרות
-- budget: דוחות כספיים, מאזנים, תקציבים
-- project: תיאורי פרויקטים, תוכניות עבודה
-- grant: קולות קוראים, הסכמי מענק
-- submission: הגשות לקרנות
-- impact: דוחות אימפקט, מדידה, הערכה
-- linkedin: פרופיל לינקדאין, חברה, קשרים עסקיים
-- other: כל דבר אחר
-ענה רק עם שם הקטגוריה.`,
-      messages: [{ role: 'user', content: text.slice(0, 4000) }],
-      max_tokens: 20,
-    }),
-    anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      system: `חלץ נתונים מובנים מהתוכן. החזר JSON תקין בלבד.
-שדות אפשריים: name, registration_number, founded_year, mission, focus_areas[], regions[],
-beneficiaries_count, employees_count, annual_budget, contact_name, contact_email, contact_phone,
-website, key_achievements[], active_projects[{name,description}],
-company_name, company_type, industry, linkedin_url, key_people[{name,role}].
-חלץ מה שזמין. עברית מותרת.`,
-      messages: [{ role: 'user', content: text.slice(0, 6000) }],
-      max_tokens: 1500,
-    }),
-    anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      system: `סכם את התוכן ב-3-4 משפטים בעברית. ציין: שם (ארגון/חברה/אדם), תחום, נקודות מפתח, מידע רלוונטי לגיוס משאבים.`,
-      messages: [{ role: 'user', content: text.slice(0, 6000) }],
-      max_tokens: 300,
-    }),
-  ]);
-
-  const category = (classRes.content[0].type === 'text' ? classRes.content[0].text : 'other')
-    .trim().toLowerCase();
-  const valid = ['identity', 'budget', 'project', 'grant', 'submission', 'impact', 'linkedin', 'other'];
-  const finalCategory = valid.includes(category) ? category : 'other';
-
-  let metadata: Record<string, unknown> = {};
-  try {
-    const raw = extractRes.content[0].type === 'text' ? extractRes.content[0].text : '{}';
-    const jsonMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, raw];
-    metadata = JSON.parse(jsonMatch[1]!.trim());
-  } catch {
-    metadata = {};
-  }
-
-  const summary = summaryRes.content[0].type === 'text' ? summaryRes.content[0].text : '';
-
-  return { category: finalCategory, metadata, summary };
+  return geminiAnalyzeDocument(text);
 }
 
 // ===== Chunking =====
