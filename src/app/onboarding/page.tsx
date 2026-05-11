@@ -130,6 +130,13 @@ export default function OnboardingPage() {
     other: 'מסמך',
   };
 
+  const brandHeader = (
+    <div className="flex items-center justify-center gap-2 mb-6">
+      <FishLogo size={32} className="swim" />
+      <span className="font-semibold text-lg">Goldfish</span>
+    </div>
+  );
+
   if (step === 'loading') {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-bg gap-3">
@@ -143,6 +150,7 @@ export default function OnboardingPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-bg p-4">
         <div className="w-full max-w-lg text-center">
+          {brandHeader}
           <FishLogo size={80} className="mx-auto swim mb-4" />
           <h1 className="text-2xl font-bold mb-2">רגע, לפני שמתחילים לשחות במים העמוקים...</h1>
           <div className="bg-bg2 rounded-2xl border border-border p-6 mt-6 text-right space-y-4">
@@ -175,6 +183,7 @@ export default function OnboardingPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-bg p-4">
         <div className="w-full max-w-lg">
+          {brandHeader}
           <div className="text-center mb-6">
             <FishLogo size={48} className="mx-auto swim mb-2" />
             <h2 className="text-xl font-bold">שלב 1: מסמכים על הארגון</h2>
@@ -261,6 +270,7 @@ export default function OnboardingPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-bg p-4">
         <div className="w-full max-w-lg">
+          {brandHeader}
           <div className="text-center mb-6">
             <FishLogo size={48} className="mx-auto swim mb-2" />
             <h2 className="text-xl font-bold">שלב 2: קישורים</h2>
@@ -361,6 +371,7 @@ export default function OnboardingPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-bg p-4">
       <div className="w-full max-w-lg text-center">
+        {brandHeader}
         <FishLogo size={80} className="mx-auto swim mb-4" />
         <h1 className="text-2xl font-bold mb-2">מעולה! אני מוכן לשחות</h1>
         <div className="bg-bg2 rounded-2xl border border-border p-6 mt-4 text-right space-y-3">
