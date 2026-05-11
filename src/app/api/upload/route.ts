@@ -269,8 +269,9 @@ export async function POST(request: NextRequest) {
       extracted_fields: finalMetadata,
     });
   } catch (error) {
-    console.error('Upload error:', error);
-    return Response.json({ error: 'Internal server error' }, { status: 500 });
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('Upload error:', msg, error);
+    return Response.json({ error: `שגיאה בעיבוד: ${msg.slice(0, 200)}` }, { status: 500 });
   }
 }
 

@@ -3,10 +3,10 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
 // Gemini 2.5 Pro — best quality for understanding, classification, extraction
-const pro = genAI.getGenerativeModel({ model: 'gemini-2.5-pro-preview-06-05' });
+const pro = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
-// Gemini 2.5 Flash — fast + excellent for file parsing, OCR, multimodal
-const flash = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-preview-05-20' });
+// Gemini Flash — fast for file parsing, OCR, multimodal
+const flash = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
 /**
  * Classify a document into a category — uses Pro for accuracy
