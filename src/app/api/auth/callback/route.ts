@@ -46,54 +46,65 @@ export async function GET(request: NextRequest) {
     .eq('id', user.id)
     .single();
 
-  if (!existingUser) {
-    // First-time user — check for invite code
-    let orgId: string | null = null;
-    let role = 'admin';
+  if (existingUser) {
+    // Existing user — go straight to dashboard, carry auth cookies
+    const dashResponse = NextResponse.redirect(`${origin}/dashboard`);
+    response.cookies.getAll().forEach(cookie => {
+      dashResponse.cookies.set(cookie.name, cookie.value);
+    });
+    return dashResponse;
+  }
 
-    if (invite) {
-      const { data: invitedOrg } = await admin
-        .from('organizations')
-        .select('id')
-        .eq('invite_code', invite)
-        .single();
+  // First-time user — create org + user, then go to onboarding
+  let orgId: string | null = null;
+  let role = 'admin';
 
-      if (invitedOrg) {
-        orgId = invitedOrg.id;
-        role = 'member';
-      }
+  if (invite) {
+    const { data: invitedOrg } = await admin
+      .from('organizations')
+      .select('id')
+      .eq('invite_code', invite)
+      .single();
+
+    if (invitedOrg) {
+      orgId = invitedOrg.id;
+      role = 'member';
     }
+  }
 
-    if (!orgId) {
-      // No invite or invalid code — create new org
-      const displayName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'הארגון שלי';
+  if (!orgId) {
+    const displayName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'הארגון שלי';
 
-      const { data: newOrg } = await admin
-        .from('organizations')
-        .insert({ name: displayName })
-        .select('id')
-        .single();
+    const { data: newOrg } = await admin
+      .from('organizations')
+      .insert({ name: displayName })
+      .select('id')
+      .single();
 
-      if (newOrg) {
-        orgId = newOrg.id;
+    if (newOrg) {
+      orgId = newOrg.id;
 
-        await admin.from('org_profiles').insert({
-          org_id: newOrg.id,
-          data: { name: displayName },
-        });
-      }
-    }
-
-    if (orgId) {
-      await admin.from('users').insert({
-        id: user.id,
-        org_id: orgId,
-        email: user.email,
-        full_name: user.user_metadata?.full_name || null,
-        role,
+      await admin.from('org_profiles').insert({
+        org_id: newOrg.id,
+        data: { name: displayName },
       });
     }
   }
 
-  return response;
+  if (orgId) {
+    await admin.from('users').insert({
+      id: user.id,
+      org_id: orgId,
+      email: user.email,
+      full_name: user.user_metadata?.full_name || null,
+      role,
+    });
+  }
+
+  // New user goes to onboarding
+  const onboardingResponse = NextResponse.redirect(`${origin}/onboarding`);
+  response.cookies.getAll().forEach(cookie => {
+    onboardingResponse.cookies.set(cookie.name, cookie.value);
+  });
+  return onboardingResponse;
 }
