@@ -33,19 +33,25 @@ export default function OnboardingPage() {
     if (!orgId) { setReady(true); return; }
 
     const supabase = createClient();
+    // Safety timeout — never stay stuck more than 4 seconds
+    const timeout = setTimeout(() => setReady(true), 4000);
+
     supabase
       .from('org_profiles')
       .select('data')
       .eq('org_id', orgId)
       .single()
       .then(({ data: profile }) => {
+        clearTimeout(timeout);
         const d = profile?.data as Record<string, unknown> | null;
         if (d?.onboarding_complete) {
           router.replace('/dashboard');
         } else {
           setReady(true);
         }
-      });
+      }, () => { clearTimeout(timeout); setReady(true); });
+
+    return () => clearTimeout(timeout);
   }, [orgId, authLoading, router]);
 
   const uploadFile = async (file: File, index: number) => {

@@ -41,11 +41,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .then(({ data }) => {
             setOrgId(data?.org_id ?? null);
             setLoading(false);
-          });
+          }, () => setLoading(false));
       } else {
         setLoading(false);
       }
-    });
+    }, () => setLoading(false));
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
