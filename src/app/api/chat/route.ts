@@ -453,8 +453,8 @@ async function loadAllChunks(
         const missingInfo = Array.isArray(meta.missing_info) ? (meta.missing_info as string[]).join(', ') : '';
         // Use AI summary + insights first (more valuable than raw text), then raw preview
         const aiContext = [summary, insights, missingInfo ? `חסר: ${missingInfo}` : ''].filter(Boolean).join('\n');
-        const previewLen = isOrgTab ? 500 : 2000;
-        const preview = aiContext || (d.parsed_text ? d.parsed_text.slice(0, previewLen) : '');
+        // For org tab: short preview. For other tabs: use AI summary only (saves space for all docs to fit)
+        const preview = aiContext || (d.parsed_text ? d.parsed_text.slice(0, 400) : '');
         return `[${d.category || 'other'}] ${d.filename} (id: ${d.id})${preview ? `:\n${preview}` : ''}`;
       });
       docSummary = `\n\n===== כל המסמכים שקראת (${allDocs.length} מסמכים) =====
@@ -463,8 +463,8 @@ async function loadAllChunks(
 \n${docLines.join('\n\n')}`;
 
       // Truncate if too long, but keep as much as possible
-      if (docSummary.length > 40000) {
-        docSummary = docSummary.slice(0, 40000) + '\n[... עוד מסמכים]';
+      if (docSummary.length > 60000) {
+        docSummary = docSummary.slice(0, 60000) + '\n[... עוד מסמכים]';
       }
 
       // ===== Document Alerts: expired, expiring, missing =====
