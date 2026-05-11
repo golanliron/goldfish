@@ -28,6 +28,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const supabase = createClient();
 
+    // Safety timeout — never stay loading forever
+    const safetyTimeout = setTimeout(() => setLoading(false), 5000);
+
     // Get initial session
     supabase.auth.getUser().then(({ data: { user } }) => {
       setUser(user);
@@ -39,13 +42,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .eq('id', user.id)
           .single()
           .then(({ data }) => {
+            clearTimeout(safetyTimeout);
             setOrgId(data?.org_id ?? null);
             setLoading(false);
-          }, () => setLoading(false));
+          }, () => { clearTimeout(safetyTimeout); setLoading(false); });
       } else {
+        clearTimeout(safetyTimeout);
         setLoading(false);
       }
-    }, () => setLoading(false));
+    }, () => { clearTimeout(safetyTimeout); setLoading(false); });
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(

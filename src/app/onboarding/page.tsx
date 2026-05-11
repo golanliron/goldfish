@@ -28,31 +28,33 @@ export default function OnboardingPage() {
   const { orgId, loading: authLoading } = useAuth();
   const router = useRouter();
 
+  // Global safety timeout — never stay stuck, even if auth hangs
+  useEffect(() => {
+    const globalTimeout = setTimeout(() => {
+      if (!ready) setReady(true);
+    }, 5000);
+    return () => clearTimeout(globalTimeout);
+  }, []);
+
   useEffect(() => {
     if (authLoading) return;
     if (!orgId) { setReady(true); return; }
 
     const supabase = createClient();
-    // Safety timeout — never stay stuck more than 4 seconds
-    const timeout = setTimeout(() => setReady(true), 4000);
-
     supabase
       .from('org_profiles')
       .select('data')
       .eq('org_id', orgId)
       .single()
       .then(({ data: profile }) => {
-        clearTimeout(timeout);
         const d = profile?.data as Record<string, unknown> | null;
         if (d?.onboarding_complete) {
-          router.replace('/dashboard');
+          window.location.href = '/dashboard';
         } else {
           setReady(true);
         }
-      }, () => { clearTimeout(timeout); setReady(true); });
-
-    return () => clearTimeout(timeout);
-  }, [orgId, authLoading, router]);
+      }, () => setReady(true));
+  }, [orgId, authLoading]);
 
   const uploadFile = async (file: File, index: number) => {
     if (!orgId) return;
