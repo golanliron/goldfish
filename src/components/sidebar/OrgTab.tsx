@@ -141,27 +141,25 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
     }
     setUploading(true);
 
-    let successCount = 0;
-    let lastError = '';
-    for (const file of Array.from(files)) {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('org_id', orgId);
-      if (uploadCategory) formData.append('category', uploadCategory);
-
-      try {
+    const fileArr = Array.from(files);
+    const results = await Promise.allSettled(
+      fileArr.map(async (file) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('org_id', orgId);
+        if (uploadCategory) formData.append('category', uploadCategory);
         const res = await fetch('/api/upload', { method: 'POST', body: formData });
-        if (res.ok) {
-          successCount++;
-        } else {
+        if (!res.ok) {
           const data = await res.json().catch(() => ({ error: 'שגיאה' }));
-          lastError = data.error || 'שגיאה בהעלאה';
+          throw new Error(data.error || 'שגיאה בהעלאה');
         }
-      } catch (err) {
-        lastError = 'שגיאת רשת';
-        console.error('Upload error:', err);
-      }
-    }
+        return res.json();
+      })
+    );
+    const successCount = results.filter(r => r.status === 'fulfilled').length;
+    const lastError = results.find(r => r.status === 'rejected')
+      ? (results.find(r => r.status === 'rejected') as PromiseRejectedResult).reason?.message || 'שגיאה'
+      : '';
 
     e.target.value = '';
     setUploading(false);

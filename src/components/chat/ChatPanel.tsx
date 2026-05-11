@@ -305,131 +305,137 @@ export default function ChatPanel({ orgId, userId, onStageChange }: ChatPanelPro
     }
   };
 
-  // File upload handler
+  // File upload handler — uploads all files in parallel
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files?.length || !orgId) return;
 
-    for (const file of Array.from(files)) {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('org_id', orgId);
+    const fileArr = Array.from(files);
+    const fileNames = fileArr.map(f => f.name).join(', ');
 
-      const uploadMsg: ChatMessage = {
+    // Show a single "uploading" message for all files
+    const uploadMsg: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content: fileArr.length === 1
+        ? `[מעלה קובץ: ${fileArr[0].name}]`
+        : `[מעלה ${fileArr.length} קבצים: ${fileNames}]`,
+      timestamp: new Date().toISOString(),
+    };
+    setMessages(prev => [...prev, uploadMsg]);
+
+    // Upload all files in parallel
+    const results = await Promise.allSettled(
+      fileArr.map(async (file) => {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('org_id', orgId);
+        const res = await fetch('/api/upload', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || 'שגיאה');
+        return { name: file.name, ...data };
+      })
+    );
+
+    const succeeded = results
+      .filter((r): r is PromiseFulfilledResult<{ name: string; category: string; summary: string; extracted_fields: Record<string, unknown> }> => r.status === 'fulfilled')
+      .map(r => r.value);
+    const failed = results
+      .filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+
+    if (succeeded.length > 0) onStageChange?.(1);
+
+    // Build a combined summary and ask Goldfish to respond once
+    if (succeeded.length > 0) {
+      const summaryLines = succeeded.map(s =>
+        `- "${s.name}" (${s.category}): ${s.summary || 'נקרא בהצלחה'}`
+      ).join('\n');
+      const failedLines = failed.length > 0
+        ? `\n\nקבצים שנכשלו: ${failed.map((_, i) => fileArr[results.indexOf(_)]?.name).join(', ')}`
+        : '';
+
+      const chatPrompt = `[נקראו ${succeeded.length} קבצים בהצלחה]
+${summaryLines}${failedLines}
+
+תגיב בקצרה: מה למדת מהקבצים האלה? ציין 2-3 נתונים חדשים שנכנסו, מה עדיין חסר, והצע פעולה אחת.`;
+
+      const fishgoldMsg: ChatMessage = {
         id: crypto.randomUUID(),
-        role: 'user',
-        content: `[מעלה קובץ: ${file.name}]`,
+        role: 'assistant',
+        content: '',
         timestamp: new Date().toISOString(),
       };
-      setMessages(prev => [...prev, uploadMsg]);
+      setMessages(prev => [...prev, fishgoldMsg]);
+      setIsStreaming(true);
 
       try {
-        const res = await fetch('/api/upload', {
+        const chatRes = await fetch('/api/chat', {
           method: 'POST',
-          body: formData,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: chatPrompt,
+            conversation_id: conversationId,
+            org_id: orgId,
+            user_id: userId,
+            active_tab: activeTab,
+          }),
         });
 
-        const data = await res.json();
+        const reader = chatRes.body?.getReader();
+        const decoder = new TextDecoder();
 
-        if (!res.ok || data.error) {
-          const errorMsg: ChatMessage = {
-            id: crypto.randomUUID(),
-            role: 'assistant',
-            content: data.error || `לא הצלחתי לקרוא את "${file.name}". נסו פורמט אחר.`,
-            timestamp: new Date().toISOString(),
-          };
-          setMessages(prev => [...prev, errorMsg]);
-          continue;
-        }
-
-        onStageChange?.(1);
-
-        // Now ask Goldfish to respond intelligently about what he learned
-        const fishgoldMsg: ChatMessage = {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: '',
-          timestamp: new Date().toISOString(),
-        };
-        setMessages(prev => [...prev, fishgoldMsg]);
-        setIsStreaming(true);
-
-        // Send the upload summary to Goldfish so he can analyze it
-        const fields = data.extracted_fields ? JSON.stringify(data.extracted_fields, null, 2) : '';
-        const chatPrompt = `[קובץ: "${file.name}" | קטגוריה: ${data.category || '?'}]
-סיכום: ${data.summary || 'לא זמין'}
-נתונים: ${fields || 'אין'}
-
-תגיב ב-5 שורות מקסימום. שורה 1: מה זה. שורות 2-3: נתונים חדשים שנכנסו (מספרים בלבד). שורה 4: מה חסר. שורה 5: הצעה אחת לפעולה.`;
-
-        try {
-          const chatRes = await fetch('/api/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              message: chatPrompt,
-              conversation_id: conversationId,
-              org_id: orgId,
-              user_id: userId,
-              active_tab: activeTab,
-            }),
-          });
-
-          const reader = chatRes.body?.getReader();
-          const decoder = new TextDecoder();
-
-          if (reader) {
-            let buffer = '';
-            let accumulated = '';
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              buffer += decoder.decode(value, { stream: true });
-              const lines = buffer.split('\n');
-              buffer = lines.pop() || '';
-              for (const line of lines) {
-                if (!line.startsWith('data: ')) continue;
-                try {
-                  const d = JSON.parse(line.slice(6));
-                  if (d.text) {
-                    accumulated += d.text;
-                    const snapshot = accumulated;
-                    setMessages(prev =>
-                      prev.map((msg, i) =>
-                        i === prev.length - 1 && msg.role === 'assistant'
-                          ? { ...msg, content: snapshot }
-                          : msg
-                      )
-                    );
-                  }
-                  if (d.done && d.conversation_id) {
-                    setConversationId(d.conversation_id);
-                  }
-                } catch { /* skip */ }
-              }
+        if (reader) {
+          let buffer = '';
+          let accumulated = '';
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+            for (const line of lines) {
+              if (!line.startsWith('data: ')) continue;
+              try {
+                const d = JSON.parse(line.slice(6));
+                if (d.text) {
+                  accumulated += d.text;
+                  const snapshot = accumulated;
+                  setMessages(prev =>
+                    prev.map((msg, i) =>
+                      i === prev.length - 1 && msg.role === 'assistant'
+                        ? { ...msg, content: snapshot }
+                        : msg
+                    )
+                  );
+                }
+                if (d.done && d.conversation_id) {
+                  setConversationId(d.conversation_id);
+                }
+              } catch { /* skip */ }
             }
           }
-        } catch {
-          setMessages(prev => {
-            const updated = [...prev];
-            const last = updated[updated.length - 1];
-            if (last.role === 'assistant' && !last.content) {
-              last.content = `קראתי את "${file.name}". המידע נכנס לזיכרון.`;
-            }
-            return updated;
-          });
-        } finally {
-          setIsStreaming(false);
         }
       } catch {
-        const errorMsg: ChatMessage = {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: `לא הצלחתי לקרוא את "${file.name}". נסו שוב או העלו בפורמט אחר.`,
-          timestamp: new Date().toISOString(),
-        };
-        setMessages(prev => [...prev, errorMsg]);
+        setMessages(prev => {
+          const updated = [...prev];
+          const last = updated[updated.length - 1];
+          if (last.role === 'assistant' && !last.content) {
+            last.content = `קראתי ${succeeded.length} קבצים. המידע נכנס לזיכרון.`;
+          }
+          return updated;
+        });
+      } finally {
+        setIsStreaming(false);
       }
+    } else {
+      // All failed
+      const errorMsg: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: `לא הצלחתי לקרוא את הקבצים. נסו פורמט אחר (PDF, DOCX, TXT).`,
+        timestamp: new Date().toISOString(),
+      };
+      setMessages(prev => [...prev, errorMsg]);
     }
 
     e.target.value = '';
