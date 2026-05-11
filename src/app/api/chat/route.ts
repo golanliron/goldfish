@@ -431,8 +431,10 @@ function chunkText(text: string, maxChars: number = 2000): string[] {
 async function loadAllChunks(
   supabase: ReturnType<typeof createAdminClient>,
   orgId: string,
-  message: string
+  message: string,
+  activeTab?: string
 ): Promise<{ knowledge: string; rag: string; docSummary: string }> {
+  const isOrgTab = activeTab === 'org';
   try {
     // Load ALL documents list (for completeness awareness)
     const { data: allDocs } = await supabase
@@ -591,6 +593,25 @@ ${alertLines.join('\n')}
 
       if (recent?.length) {
         rag = buildContext(recent);
+      }
+    }
+
+    // For org tab: always load key documents (research, budget, narrative, reports)
+    if (isOrgTab && allDocs?.length) {
+      const keyCategories = ['impact', 'budget', 'identity'];
+      const keyDocs = allDocs.filter(d => keyCategories.includes(d.category || '') && (d.parsed_text?.length || 0) > 1000);
+      if (keyDocs.length > 0) {
+        const keyDocIds = keyDocs.map(d => d.id).slice(0, 5);
+        const { data: keyChunks } = await supabase
+          .from('document_chunks')
+          .select('content, metadata')
+          .eq('org_id', orgId)
+          .in('document_id', keyDocIds)
+          .limit(40);
+        if (keyChunks?.length) {
+          const keyContext = buildContext(keyChunks);
+          rag = rag ? rag + '\n\n===== מסמכי ליבה של הארגון =====\n' + keyContext : keyContext;
+        }
       }
     }
 
@@ -1684,7 +1705,7 @@ export async function POST(request: NextRequest) {
       fetchedUrls.length > 0
         ? supabase.from('org_profiles').select('data').eq('org_id', org_id).single()
         : Promise.resolve({ data: profileBefore }),
-      loadAllChunks(supabase, org_id, message),
+      loadAllChunks(supabase, org_id, message, active_tab),
     ]);
 
     const urlContent = formatUrlsForMessage(fetchedUrls);
