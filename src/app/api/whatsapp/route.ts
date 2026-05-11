@@ -247,7 +247,7 @@ export async function POST(request: NextRequest) {
         const grantsDb = createGrantsClient();
         const { data: opps } = await grantsDb
           .from('grants')
-          .select('id, title, funder, deadline, amount_max')
+          .select('id, title, funder, deadline, amount_max, url')
           .in('id', oppIds)
           .eq('active', true);
 
