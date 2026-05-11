@@ -213,8 +213,9 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
     window.open(`/api/documents/${doc.id}`, '_blank');
   };
 
-  const handleDelete = async (docId: string) => {
+  const handleDelete = async (docId: string, filename?: string) => {
     if (!orgId) return;
+    if (!confirm(`למחוק את "${filename || 'מסמך'}"?`)) return;
     try {
       await fetch(`/api/documents/${docId}`, {
         method: 'DELETE',
@@ -607,13 +608,13 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
                 <div key={doc.id} className="flex items-center gap-1.5 py-1.5 px-2 rounded-lg hover:bg-surf2 transition-colors text-xs group relative">
                   {/* Delete */}
                   <button
-                    onClick={() => handleDelete(doc.id)}
-                    title="הסרה"
-                    className="p-0.5 text-muted2 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0"
+                    onClick={() => handleDelete(doc.id, doc.filename)}
+                    title="מחיקה"
+                    className="p-1 text-muted2 hover:text-red-500 hover:bg-red-50 rounded transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0"
                   >
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <line x1="18" y1="6" x2="6" y2="18" />
-                      <line x1="6" y1="6" x2="18" y2="18" />
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polyline points="3 6 5 6 21 6" />
+                      <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
                     </svg>
                   </button>
                   {/* Open */}
