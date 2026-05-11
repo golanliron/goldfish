@@ -164,4 +164,34 @@ Broward ↔ חדרה-עירון
 3. קרנות נשים: Philly, Atlanta, Portland — נפרד מהמסלול הרגיל
 4. Rebuild Israel: כל הפדרציות עוברות מחירום לשיקום — חלון הזדמנות לארגוני חינוך
 5. Foundation: CJP Ally Challenge, JUF Breakthrough Fund — תחרותי, $75K+
+
+== DNA MATCHING — זוויות יצירתיות לפי פדרציה ==
+כלל ברזל: אף פעם לא פוסל התאמה לפני שמחפש זווית יצירתית. כל ארגון יכול למצוא חיבור אם מסתכלים על הפנים המוסתרות שלו.
+
+UJA-NY: זוויות — youth_at_risk, mental_health (post-Oct 7 trauma), housing, refugees (Ukraine), employment, women, coexistence, technology. כל ארגון ישראלי גדול עם track record.
+Bay Area: זוויות — lgbtq (Jewish Pride Fund), diversity/equity (Tzedek Fund), technology (Silicon Valley DNA), environment, mental_health, women. אוהבים חדשנות חברתית.
+CJP Boston: זוויות — coexistence (Ally Challenge $1.7M, antisemitism projects), culture (arts + fellowships $75K), youth_at_risk, mental_health (Miriam Fund לנשים/נערות), science (MIT/Harvard). 963 ארגונים ממומנים!
+JUF Chicago: זוויות — refugees (Illinois Refugee Social Services), disabilities (Capacity Building grants), mental_health (Dedicated MH Grant), dropout_prevention, youth_at_risk, women (Jewish Women's Foundation — LOI מאי, proposals אוגוסט), young_adults, employment. 80+ פרויקטי ישראל.
+Philadelphia: זוויות — women (Women of Vision — מתחלף ישראל/מקומי!), mental_health, youth_at_risk, employment. כל שנה זוגית = Israel year!
+Toronto: זוויות — immigrants (Canada DNA), disabilities, mental_health, youth_at_risk. כל CRA charity זכאי, ללא מינימום, ללא תדירות — הנגיש ביותר!
+Miami: זוויות — women (Women's Amutot Initiative — ממנות ישירות עמותות ישראליות!), disabilities ($10K-$20K), youth_at_risk, technology (JIG incubator), immigrants (לטינים). WAI = מסלול ישיר לעמותות ישראליות!
+Atlanta: זוויות — disabilities (JAccess $10K-$20K), young_adults (Gather Grants $1.2M, 18-30), youth_at_risk (JTeen $25K), technology (JumpSpark pilot grants $5K-$10K), coexistence, women (JWFA).
+South Palm Beach: זוויות — women (JWF $175K/שנה, $1.95M מצטבר), elderly, youth_at_risk.
+Sarasota-Manatee: זוויות — elderly (Holocaust survivors), mental_health (Jewish Healing Program), youth_at_risk (STEP teens, BMYA). הנגיש ביותר מבחינת overseas grants.
+LA: זוויות — refugees (emergency relief), culture (entertainment/arts), technology, women. JCFLA $1.46B נכסים — Next Stage Grants $150K-$300K לבניית קיבולת!
+Cleveland: זוויות — youth_at_risk (Saltzman Youth Panel $45K/שנה), mental_health (community resilience), coexistence (85% Jewish + 15% general).
+Baltimore: זוויות — education (JEEP projects), youth_at_risk, elderly. לא מקבל הצעות לא מוזמנות — חייב קשר קודם.
+Broward: זוויות — youth_at_risk (ילדים בסיכון, explicit priority), disabilities, women (domestic abuse), housing, addiction. הזמנה בלבד.
+Phoenix: זוויות — immigrants (Ethiopian National Project!), youth_at_risk (Orr Shalom), disabilities (SHEKEL + Shalva), employment (itworks), refugees. ממנה ישירות ארגונים ישראליים $3K-$10K!
+
+== דוגמאות התאמה לסוגי ארגונים ==
+ארגון נוער בסיכון (14-26): Phoenix ($85) "ממנה Orr Shalom — נערות בסיכון", Chicago ($80) "Poverty & Financial Vulnerability", Miami ($75) "JIG + יזמות נוער", Pittsburgh ($70) "teen mental health priority + Karmiel".
+ארגון אתיופים: Phoenix ($95) "ממנה ENP ישירות!", Miami ($90) "Tech-Career + חוות רימון", Atlanta ($85) "La'Ofek + Academies of Innovation, 84% בגרות", Chicago ($80) "refugee services + employment".
+ארגון נשים: Miami ($95) "Women's Amutot Initiative — ישירות לעמותות ישראליות!", Philadelphia ($90) "Women of Vision — Israel year!", South Palm Beach ($85) "$175K/שנה", CJP ($80) "Miriam Fund", Atlanta ($75) "JWFA".
+ארגון מוגבלויות: Phoenix ($95) "SHEKEL + Shalva ישירות!", Atlanta ($90) "JAccess $10K-$20K", Miami ($85) "Abilities Alliance", Chicago ($80) "Capacity Building grants".
+ארגון דו-קיום: Sarasota ($90) "Hand in Hand $28K", Baltimore ($85) "Jewish-Arab Education Center", Bay Area ($80) "Tzedek Fund".
+ארגון טכנולוגיה/חדשנות: Chicago ($90) "StartUpistim", Cleveland ($85) "STEM Israel", LA ($80) "Unistream $200K", Atlanta ($75) "JumpSpark pilot".
+
+== מה הופך Goldfish לייחודי ==
+כל עמותה יכולה לגגל "Jewish federation grants". רק Goldfish אומר: "Phoenix CJP ממנה Ethiopian National Project. הארגון שלכם עובד עם נוער עולים בבאר שבע. יש חיבור — הם מאמינים בשילוב דרך חינוך. קשר: info@phoenixcjp.org. רוצה שאכתוב את הפיץ'?" זה ההבדל בין מסד נתונים לסוכן חכם.
 `;
