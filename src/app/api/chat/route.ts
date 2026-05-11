@@ -596,22 +596,18 @@ ${alertLines.join('\n')}
       }
     }
 
-    // For org tab: always load key documents (research, budget, narrative, reports)
-    if (isOrgTab && allDocs?.length) {
-      const keyCategories = ['impact', 'budget', 'identity'];
-      const keyDocs = allDocs.filter(d => keyCategories.includes(d.category || '') && (d.parsed_text?.length || 0) > 1000);
-      if (keyDocs.length > 0) {
-        const keyDocIds = keyDocs.map(d => d.id).slice(0, 5);
-        const { data: keyChunks } = await supabase
-          .from('document_chunks')
-          .select('content, metadata')
-          .eq('org_id', orgId)
-          .in('document_id', keyDocIds)
-          .limit(40);
-        if (keyChunks?.length) {
-          const keyContext = buildContext(keyChunks);
-          rag = rag ? rag + '\n\n===== מסמכי ליבה של הארגון =====\n' + keyContext : keyContext;
-        }
+    // For org tab: load ALL document chunks so Goldfish knows everything
+    if (isOrgTab) {
+      const { data: allChunks } = await supabase
+        .from('document_chunks')
+        .select('content, metadata')
+        .eq('org_id', orgId)
+        .neq('metadata->>source', 'knowledge_base')
+        .order('created_at', { ascending: false })
+        .limit(80);
+      if (allChunks?.length) {
+        const allContext = buildContext(allChunks);
+        rag = '\n\n===== כל המסמכים של הארגון =====\n' + allContext;
       }
     }
 
