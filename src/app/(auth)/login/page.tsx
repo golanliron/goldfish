@@ -35,7 +35,8 @@ function LoginInner() {
       setError('מייל או סיסמה שגויים');
       setLoading(false);
     } else {
-      window.location.href = '/onboarding';
+      // Admin goes straight to dashboard, others to onboarding
+      window.location.href = email === 'golanliron1@gmail.com' ? '/dashboard' : '/onboarding';
     }
   };
 
