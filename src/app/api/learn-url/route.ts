@@ -314,47 +314,19 @@ export async function POST(request: NextRequest) {
 
     // ===== Route by URL type =====
     if (urlType === 'drive_folder' || urlType === 'drive_file') {
-      const result = await handleDriveFolder(url, org_id, supabase);
-      text = result.text;
-      title = result.title;
-      driveFilesFound = result.filesFound;
-
-      // For Drive, we already saved docs above — just save the main reference
-      if (driveFilesFound > 0) {
-        await supabase.from('documents').insert({
-          org_id,
-          filename: title,
-          file_type: 'link',
-          storage_path: url,
-          category: 'other',
-          parsed_text: text.slice(0, 50000),
-          metadata: { source_url: url, type: 'drive_folder', files_found: driveFilesFound },
-          status: 'ready',
-        });
-
-        return NextResponse.json({
-          title,
-          category: 'other',
-          summary: `תיקיית Drive מחוברת. ${driveFilesFound} קבצים נמצאו ונקראו.`,
-          files_found: driveFilesFound,
-        });
-      }
-      // If no files found via API, save the reference without classifying the Drive HTML page
-      await supabase.from('documents').insert({
-        org_id,
-        filename: title || 'Google Drive',
-        file_type: 'link',
-        storage_path: url,
-        category: 'other',
-        parsed_text: text.slice(0, 50000),
-        metadata: { source_url: url, type: urlType, note: 'Drive folder saved, files not accessible' },
-        status: 'ready',
+      // Delegate to the dedicated Drive connect API which downloads and parses each file
+      const origin = request.nextUrl.origin;
+      const driveRes = await fetch(`${origin}/api/drive/connect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ org_id, drive_url: url }),
       });
-
+      const driveData = await driveRes.json();
       return NextResponse.json({
-        title: title || 'Google Drive',
+        title: `Google Drive (${driveData.files_found || 0} קבצים)`,
         category: 'other',
-        summary: 'קישור Drive נשמר. ודאו שהתיקייה משותפת (Anyone with the link) כדי ש-Goldfish יוכל לקרוא את הקבצים.',
+        summary: driveData.message || 'Drive חובר',
+        ...driveData,
       });
     } else if (urlType === 'facebook' || urlType === 'instagram' || urlType === 'linkedin') {
       const result = await handleSocialPage(url, urlType);
