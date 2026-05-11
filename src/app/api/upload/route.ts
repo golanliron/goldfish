@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import pdfParse from 'pdf-parse';
-import { geminiClassify, geminiExtract, geminiSummarize, geminiOcrPdf } from '@/lib/ai/gemini';
+import { geminiClassify, geminiExtract, geminiSummarize, geminiOcrPdf, geminiParseXlsx } from '@/lib/ai/gemini';
 
 // PDF: use pdf-parse v1, fallback to Gemini OCR
 async function parsePDF(buffer: Buffer): Promise<string> {
@@ -50,8 +50,8 @@ async function extractTextFromFile(file: File): Promise<{ text: string; fileType
     }
     case 'xlsx':
     case 'xls': {
-      // Basic: read as text, won't work well but better than nothing
-      return { text: `[קובץ אקסל: ${file.name}]`, fileType: 'xlsx' };
+      const text = await geminiParseXlsx(buffer);
+      return { text: text || `[קובץ אקסל: ${file.name}]`, fileType: 'xlsx' };
     }
     case 'html':
     case 'htm': {
