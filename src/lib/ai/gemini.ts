@@ -23,7 +23,7 @@ async function geminiCall(prompt: string, maxTokens: number = 500, temp: number 
   return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 }
 
-async function geminiCallMultimodal(parts: Array<{ text: string } | { inline_data: { mime_type: string; data: string } }>, maxTokens: number = 16000): Promise<string> {
+async function geminiCallMultimodal(parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }>, maxTokens: number = 16000): Promise<string> {
   const res = await fetch(`${BASE}:generateContent?key=${GEMINI_KEY}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -126,7 +126,7 @@ ${text.slice(0, 30000)}`, 500, 0.2);
  */
 export async function geminiOcrPdf(buffer: Buffer): Promise<string> {
   return geminiCallMultimodal([
-    { inline_data: { mime_type: 'application/pdf', data: buffer.toString('base64') } },
+    { inlineData: { mimeType: 'application/pdf', data: buffer.toString('base64') } },
     { text: 'חלץ את כל הטקסט מהמסמך הזה. עברית ואנגלית. שמור על מבנה הפסקאות. החזר רק את הטקסט, בלי הסברים.' },
   ]);
 }
@@ -136,7 +136,7 @@ export async function geminiOcrPdf(buffer: Buffer): Promise<string> {
  */
 export async function geminiParseXlsx(buffer: Buffer): Promise<string> {
   return geminiCallMultimodal([
-    { inline_data: { mime_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', data: buffer.toString('base64') } },
+    { inlineData: { mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', data: buffer.toString('base64') } },
     { text: 'חלץ את כל הנתונים מהקובץ הזה. הצג כטבלה טקסטואלית מסודרת. שמור על שמות עמודות. עברית ואנגלית.' },
   ]);
 }
