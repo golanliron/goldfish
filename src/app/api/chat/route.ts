@@ -4,7 +4,7 @@ import Anthropic from '@anthropic-ai/sdk';
 export const maxDuration = 120;
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createGrantsClient } from '@/lib/supabase/grants-db';
-import { FISHGOLD_SYSTEM_PROMPT, FISHGOLD_GRANT_EXPERTISE, FISHGOLD_FUNDER_WRITING_DNA, FISHGOLD_FUNDER_QUESTIONS, FISHGOLD_NONPROFITS_REFERENCE, FISHGOLD_NONPROFITS_PART2, FISHGOLD_GRANTS_INTELLIGENCE, FISHGOLD_ENGLISH_GRANTS, FISHGOLD_GRANT_MASTERY, FISHGOLD_BUDGET_INTELLIGENCE, FISHGOLD_SECTOR_KNOWLEDGE, buildContext, buildOrgContext } from '@/lib/ai/fishgold';
+import { FISHGOLD_SYSTEM_PROMPT, FISHGOLD_GRANT_EXPERTISE, FISHGOLD_FUNDER_WRITING_DNA, FISHGOLD_FUNDER_QUESTIONS, FISHGOLD_NONPROFITS_REFERENCE, FISHGOLD_NONPROFITS_PART2, FISHGOLD_GRANTS_INTELLIGENCE, FISHGOLD_ENGLISH_GRANTS, FISHGOLD_GRANT_MASTERY, FISHGOLD_BUDGET_INTELLIGENCE, FISHGOLD_SECTOR_KNOWLEDGE, FISHGOLD_BEHAVIOR_RULES, FISHGOLD_FUNDER_INTEL, FISHGOLD_PROPOSAL_GUIDE, buildContext, buildOrgContext } from '@/lib/ai/fishgold';
 import { FEDERATION_INTELLIGENCE } from '@/lib/ai/federation-intelligence';
 import { detectSearchIntent, detectFunderQuery, webSearch, searchCompany, searchGrants, formatSearchResults } from '@/lib/ai/web-search';
 import { parseRfp, checkReadiness, assembleSubmission, generateOrgBlocks, formatReadinessReport } from '@/lib/ai/submission-engine';
@@ -2039,7 +2039,7 @@ ${blockSummary}
       }
     }
 
-    let systemPrompt = FISHGOLD_SYSTEM_PROMPT + FISHGOLD_GRANT_EXPERTISE + FISHGOLD_GRANT_MASTERY + FISHGOLD_BUDGET_INTELLIGENCE + FISHGOLD_FUNDER_WRITING_DNA + FISHGOLD_FUNDER_QUESTIONS + FISHGOLD_NONPROFITS_REFERENCE + FISHGOLD_NONPROFITS_PART2 + FISHGOLD_GRANTS_INTELLIGENCE + FISHGOLD_ENGLISH_GRANTS + FISHGOLD_SECTOR_KNOWLEDGE + FEDERATION_INTELLIGENCE + tabFocus + orgContext + orgMemory + submissionHistory + docSummary + knowledge + rag + grantWritingContext + submissionEngineContext + opportunityContext + companyContext + companiesIndex + grantsIndex + fundersIndex + sectorContext + webSearchContext + guidestarContext;
+    let systemPrompt = FISHGOLD_SYSTEM_PROMPT + FISHGOLD_BEHAVIOR_RULES + FISHGOLD_GRANT_EXPERTISE + FISHGOLD_GRANT_MASTERY + FISHGOLD_BUDGET_INTELLIGENCE + FISHGOLD_FUNDER_WRITING_DNA + FISHGOLD_FUNDER_QUESTIONS + FISHGOLD_FUNDER_INTEL + FISHGOLD_PROPOSAL_GUIDE + FISHGOLD_NONPROFITS_REFERENCE + FISHGOLD_NONPROFITS_PART2 + FISHGOLD_GRANTS_INTELLIGENCE + FISHGOLD_ENGLISH_GRANTS + FISHGOLD_SECTOR_KNOWLEDGE + FEDERATION_INTELLIGENCE + tabFocus + orgContext + orgMemory + submissionHistory + docSummary + knowledge + rag + grantWritingContext + submissionEngineContext + opportunityContext + companyContext + companiesIndex + grantsIndex + fundersIndex + sectorContext + webSearchContext + guidestarContext;
 
     // Safety: truncate system prompt if too large (Claude Sonnet context = 200K tokens ~ 600K chars)
     // Leave room for conversation history + response
