@@ -96,23 +96,28 @@ export default function OnboardingPage() {
   };
 
   const finish = async () => {
-    if (!orgId) { router.push('/dashboard?tab=org'); return; }
     setFinishing(true);
-    const supabase = createClient();
-    const { data: profile } = await supabase
-      .from('org_profiles')
-      .select('data')
-      .eq('org_id', orgId)
-      .single();
+    try {
+      if (orgId) {
+        const supabase = createClient();
+        const { data: profile } = await supabase
+          .from('org_profiles')
+          .select('data')
+          .eq('org_id', orgId)
+          .single();
 
-    const currentData = (profile?.data as Record<string, unknown>) || {};
-    await supabase.from('org_profiles').upsert({
-      org_id: orgId,
-      data: { ...currentData, onboarding_complete: true },
-      last_updated: new Date().toISOString(),
-    }, { onConflict: 'org_id' });
-
-    router.push('/dashboard?tab=org');
+        const currentData = (profile?.data as Record<string, unknown>) || {};
+        await supabase.from('org_profiles').upsert({
+          org_id: orgId,
+          data: { ...currentData, onboarding_complete: true },
+          last_updated: new Date().toISOString(),
+        }, { onConflict: 'org_id' });
+      }
+    } catch (e) {
+      console.error('Onboarding finish error:', e);
+    }
+    // Always navigate, even if DB update failed
+    window.location.href = '/dashboard?tab=org';
   };
 
   const categoryLabels: Record<string, string> = {

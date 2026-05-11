@@ -93,7 +93,15 @@ function FeedbackModal({ onClose, orgId }: { onClose: () => void; orgId: string 
 }
 
 function DashboardInner({ children }: { children: React.ReactNode }) {
-  const [showSplash, setShowSplash] = useState(true);
+  const [showSplash, setShowSplash] = useState(() => {
+    if (typeof window !== 'undefined') {
+      // Skip splash if already seen this session or coming from onboarding
+      if (sessionStorage.getItem('goldfish_splash_done') || window.location.search.includes('tab=')) {
+        return false;
+      }
+    }
+    return true;
+  });
   const [stage, setStage] = useState<AppStage>(0);
   const [mobileTab, setMobileTab] = useState<'chat' | SidebarTab>('chat');
   const [showFeedback, setShowFeedback] = useState(false);
@@ -130,7 +138,7 @@ function DashboardInner({ children }: { children: React.ReactNode }) {
   }
 
   if (showSplash) {
-    return <SplashScreen onComplete={() => setShowSplash(false)} />;
+    return <SplashScreen onComplete={() => { sessionStorage.setItem('goldfish_splash_done', '1'); setShowSplash(false); }} />;
   }
 
   const userInitial = user?.user_metadata?.full_name?.[0] || user?.email?.[0]?.toUpperCase() || '?';
