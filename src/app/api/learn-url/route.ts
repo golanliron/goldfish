@@ -331,7 +331,23 @@ export async function POST(request: NextRequest) {
           files_found: driveFilesFound,
         });
       }
-      // If no files found via API, fall through to save what we have
+      // If no files found via API, save the reference without classifying the Drive HTML page
+      await supabase.from('documents').insert({
+        org_id,
+        filename: title || 'Google Drive',
+        file_type: 'link',
+        storage_path: url,
+        category: 'other',
+        parsed_text: text.slice(0, 50000),
+        metadata: { source_url: url, type: urlType, note: 'Drive folder saved, files not accessible' },
+        status: 'ready',
+      });
+
+      return NextResponse.json({
+        title: title || 'Google Drive',
+        category: 'other',
+        summary: 'קישור Drive נשמר. ודאו שהתיקייה משותפת (Anyone with the link) כדי ש-Goldfish יוכל לקרוא את הקבצים.',
+      });
     } else if (urlType === 'facebook' || urlType === 'instagram' || urlType === 'linkedin') {
       const result = await handleSocialPage(url, urlType);
       text = result.text;

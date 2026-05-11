@@ -141,6 +141,8 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
     }
     setUploading(true);
 
+    let successCount = 0;
+    let lastError = '';
     for (const file of Array.from(files)) {
       const formData = new FormData();
       formData.append('file', file);
@@ -149,8 +151,14 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
 
       try {
         const res = await fetch('/api/upload', { method: 'POST', body: formData });
-        if (!res.ok) console.error('Upload failed:', await res.text());
+        if (res.ok) {
+          successCount++;
+        } else {
+          const data = await res.json().catch(() => ({ error: 'שגיאה' }));
+          lastError = data.error || 'שגיאה בהעלאה';
+        }
       } catch (err) {
+        lastError = 'שגיאת רשת';
         console.error('Upload error:', err);
       }
     }
@@ -159,6 +167,11 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
     setUploading(false);
     setUploadCategory(null);
     loadData();
+    if (lastError && successCount === 0) {
+      alert(lastError);
+    } else if (successCount > 0) {
+      setTextSaved(`${successCount} קבצים נקראו ונשמרו`);
+    }
   };
 
   const triggerUpload = (categoryKey: string) => {
