@@ -551,6 +551,162 @@ UJA-Federation / Jewish Federations (אנגלית):
 
 `;
 
+// ===== Funder Meeting Questions — שאלות שקרנות שואלות =====
+export const FISHGOLD_FUNDER_QUESTIONS = `
+
+שאלות שגופים מממנים שואלים — הכן ארגונים מראש
+
+כשארגון מתכונן לפגישה עם גוף מממן, הכן אותו לשאלות הבאות:
+
+קרן עזריאלי:
+"מה ציון ההצלחה שלכם ב-3 שנים האחרונות?" | "איך תמדדו הצלחה — מה המדד הכמותי?" | "מה הפוטנציאל לסקלביליות?" | "מי עוד מממן אתכם?" | "מה יקרה אחרי שהמענק נגמר?"
+
+ג'וינט / JDC:
+"מה חדשני בגישה שלכם?" | "עם מי אתם שותפים?" | "איך תתעדו את הלמידה?" | "מה תעשו אחרי?" | "האם יש ארגון אחר שכבר עושה את זה?"
+
+משרד החינוך:
+"האם עומדים בכל תבחיני התמיכה?" | "מי מייצג את הרשות המקומית?" | "מה מספר המשתתפים המדויק?" | "מה ניכוי המס במקור שלכם?" | "מי מורשי החתימה?"
+
+מפעל הפיס:
+"היכן פועלים גיאוגרפית?" | "כמה תושבים נהנים ישירות?" | "האם יש שיתוף ציבור?" | "מה הקשר לפריפריה?"
+
+קרן רשי:
+"מה המינוף הממשלתי?" | "מי השותף הממסדי?" | "מה ההשפעה הספציפית על הפריפריה?"
+
+יד הנדיב / רוטשילד:
+"מה השינוי המערכתי שתיצרו — לא רק ברמת הפרט?" | "האם תשפיעו על מדיניות?" | "מה ניסיון הצוות הבכיר?"
+
+שוסטרמן (באנגלית):
+"What is the Jewish and Zionist impact?" | "How does this connect Israel and Diaspora?" | "What is the measurable ROI?" | "Who are your young leaders (20-35)?"
+
+UJA-Federation (באנגלית):
+"Who is your US fiscal sponsor / 501(c)(3) conduit?" | "Show us your Logic Model." | "What is the Jewish community impact?" | "Do you have audited financials?"
+
+ג'וינט (אנגלית):
+"What is your Theory of Change?" | "How do you measure and document learning?" | "What partnerships exist?" | "What is the replication potential?"
+
+כלל ברזל — הכנה לפגישה:
+כשמשתמש אומר "יש לי פגישה עם קרן X" → תן מיד:
+1. 5 שאלות שהם צפויים לשאול
+2. 3 נתונים שכדאי להכין מראש
+3. טיפ אחד על מה שהם אוהבים לשמוע
+
+`;
+
+// ===== Israel Nonprofit Reference Database =====
+export const FISHGOLD_NONPROFITS_REFERENCE = `
+
+מאגר עמותות ישראליות — reference לגולדפיש
+
+השתמש במאגר זה כדי:
+- להבין מי השחקנים בכל תחום
+- לזהות שותפים פוטנציאליים לארגון המשתמש
+- להשוות היקפים ("ארגון בגודל דומה לעלם עם 57M תקציב")
+- להמליץ על שיתופי פעולה אפשריים
+
+חינוך ונוער — מרכזיים:
+עלם (ELEM) — נוער במצוקה, 80 פרויקטים, 42 ערים, 57M ש"ח | elem.org.il | 03-7655800
+פרח (PERACH) — חונכות סטודנטים-ילדים, 12,000+ חונכים | perach.org.il
+יד ביד — חינוך דו-לשוני ערבי-יהודי, 6 בתי ספר, 1,800+ תלמידים | hih.org.il
+אורט ישראל — רשת 263 מוסדות, 100K תלמידים | ort.org.il
+אשלים (ג'וינט) — חדשנות חברתית לילדים ונוער | thejoint.org.il
+אחרי! — מכינות קדם-צבאיות, 5 אקדמיות | aharai.org.il
+עתידים (Atidim) — מלגות והכשרה לפריפריה, 22 שנים | atidim.org
+יוניסטרים — יזמות לנוער בפריפריה, 21 מרכזים | unistream.org.il
+נבט — תזונה ושוויון, 17K ילדים, 380 בתי ספר | nevet.org.il
+
+רווחה ועוני:
+לתת — בנק מזון, 30K מתנדבים, 210 שותפים | latet.org.il | 03-9229377
+לקט ישראל — הצלת מזון, 31K טון, 2M ארוחות/שנה | leket.org | 09-7441757
+פתחון לב — שבירת מעגל עוני | pitchonlev.org.il | 03-5020725
+מאיר פנים — 14 מסעדות חברתיות | meir-panim.org.il
+
+בריאות:
+יד שרה — השאלת ציוד, 7K מתנדבים, 127 סניפים, 1.3M מוטבים | yad-sarah.net | 02-6444444
+עזר מציון — מרשם מוח עצם, הכנסות 598M ש"ח | ami.org.il | 03-6144444
+ענ"ב — ער"ן, קו חם, 300K+ שיחות/שנה | eran.org.il | 1201
+
+מוגבלויות:
+אקי"ם — מוגבלות שכלית, 35K מוטבים, 65 סניפים | akim.org.il | 03-5765333
+שלוה — שיקום, 2K מוטבים, מרכז לאומי | shalva.org.il | 02-6512000
+כנפיים של קרמבו — 86 סניפים, 7-9K משתתפים | krembo.org.il
+אנוש — בריאות הנפש, 15.7K מוטבים, 75 מרכזים | enosh.org.il | 03-6272926
+אלו"ט — אוטיזם | alut.org.il | 03-6703077
+
+נשים:
+ויצ"ו (WIZO) — גנים, מקלטים, נוער | wizo.org.il | 03-6923811
+נעמ"ת — 572M הכנסות, 1,000+ מתקנים | naamat.org.il | 03-6921591
+
+קשישים:
+אשל (ג'וינט) — פיתוח שירותי הזדקנות | thejoint.org.il
+מלב"ב — דמנציה, מרכזי יום | melabev.org.il | 02-6537591
+
+`;
+
+// ===== English Grant Writing — International Foundations =====
+export const FISHGOLD_ENGLISH_GRANTS = `
+
+כתיבת הגשות באנגלית — לפדרציות ותורמים בינלאומיים
+
+מתי לכתוב באנגלית:
+כל פנייה לפדרציה יהודית בצפון אמריקה, קרן אמריקאית, Schusterman, Jim Joseph, AVI CHAI, UJA, Jewish Federations — חייב להיות באנגלית. לא לכתוב עברית לגופים אלה.
+
+מבנה LOI (Letter of Inquiry) באנגלית — עמוד אחד:
+Paragraph 1: Who we are + the problem (2-3 sentences, start with a statistic)
+Paragraph 2: Our solution + Theory of Change (2-3 sentences)
+Paragraph 3: Track record + key numbers (2-3 sentences)
+Paragraph 4: The ask — amount, purpose, timeline (1-2 sentences)
+Closing: Why this funder specifically (1 sentence)
+
+מבנה One-Pager באנגלית:
+Header: Organization name | Founded | Budget | Beneficiaries
+The Problem: 1 paragraph, opens with national statistic
+Our Solution: 1 paragraph, what we do + how it's different
+Results: 3-5 bullet points with numbers (% improvement, # served)
+Theory of Change: One sentence connecting inputs → outcomes
+The Ask: Dollar amount + specific use
+Contact: Name, email, phone, website
+
+מבנה Full Proposal באנגלית — סדר הסעיפים:
+1. Executive Summary (half page)
+2. Organization Background (half page)
+3. Need Statement — opens with data, not "we believe"
+4. Project Description — WHAT, HOW, WHO, WHERE, WHEN
+5. Goals & SMART Objectives — minimum 3 measurable outcomes
+6. Evaluation Plan — who measures, what tools, when reported
+7. Sustainability Plan — funding after grant ends
+8. Budget — detailed line items with narrative
+9. Attachments: 990, audited financials, board list, letters of support
+
+שפה אנגלית נכונה לפילנתרופיה יהודית:
+כן: "strengthen Jewish identity", "Israel-Diaspora connection", "next generation of leaders", "evidence-based intervention", "measurable impact", "leverage", "scalable model"
+לא: "revolutionary", "game-changing", "holistic approach", "we are proud to", "kindly request"
+
+SDG Alignment — לציין תמיד:
+SDG 4 (Quality Education), SDG 10 (Reduced Inequalities), SDG 1 (No Poverty), SDG 3 (Good Health), SDG 16 (Peace & Justice)
+
+Trust-Based Philanthropy — לפדרציות מסוימות:
+כמה פדרציות (ב-2026) עוברות ל-trust-based: פחות reporting, יחסים ארוכי-טווח, גמישות בשימוש בכסף. זהה אם הפדרציה trust-based ואז הדגש: transparency, relationship, learning.
+
+SROI (Social Return on Investment):
+חשב ROI חברתי: "Every $1 invested returns $4.20 in social value"
+שיטה: (Social Value Created) / (Investment) × 100
+דוגמה: "Preventing one dropout saves society $300K in lifetime costs. We reach 400 youth at $800 each = $320K invested → $120M social value"
+
+Jewish Philanthropy — מה הם מחפשים:
+1. Jewish peoplehood — connection to Jewish community and Israel
+2. Next generation — engaging young Jews (18-35)
+3. Innovation — new models, not just continuation of services
+4. Israel-Diaspora — programs that bridge both communities
+5. Measurable outcomes — they want numbers, not stories alone
+6. Organizational capacity — strong leadership, clean financials
+7. Leverage — their grant catalyzes other funding
+
+כלל ברזל — הגשה באנגלית:
+כשמשתמש מבקש הגשה לגוף אמריקאי/בינלאומי → כתוב באנגלית מקצועית בלבד. לא לתרגם עברית. לכתוב ישר באנגלית כמו grant writer אמריקאי מנוסה.
+
+`;
+
 // ===== Sector Knowledge =====
 export const FISHGOLD_SECTOR_KNOWLEDGE = `
 
