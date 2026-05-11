@@ -196,6 +196,23 @@ export async function POST(request: NextRequest) {
 
     const supabase = createAdminClient();
 
+    // Check for duplicate file
+    const { data: existingDoc } = await supabase
+      .from('documents')
+      .select('id')
+      .eq('org_id', orgId)
+      .eq('filename', file.name)
+      .limit(1);
+
+    if (existingDoc && existingDoc.length > 0) {
+      return Response.json({
+        document_id: existingDoc[0].id,
+        category: 'existing',
+        summary: `"${file.name}" כבר קיים במערכת`,
+        already_exists: true,
+      });
+    }
+
     // 1. Extract text from file
     const { text: parsedText, fileType } = await extractTextFromFile(file);
 
