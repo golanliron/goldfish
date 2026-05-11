@@ -6,8 +6,6 @@ import FishLogo from '@/components/chat/FishLogo';
 import { useAuth } from '@/lib/auth-context';
 import { createClient } from '@/lib/supabase/client';
 
-type Step = 'loading' | 'welcome' | 'documents' | 'links' | 'done';
-
 interface UploadedFile {
   name: string;
   category: string;
@@ -16,27 +14,23 @@ interface UploadedFile {
 }
 
 export default function OnboardingPage() {
-  const [step, setStep] = useState<Step>('loading');
+  const [ready, setReady] = useState(false);
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [websiteUrl, setWebsiteUrl] = useState('');
   const [socialUrl, setSocialUrl] = useState('');
   const [driveUrl, setDriveUrl] = useState('');
   const [urlLoading, setUrlLoading] = useState<string | null>(null);
   const [urlDone, setUrlDone] = useState<string[]>([]);
+  const [finishing, setFinishing] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const grantInputRef = useRef<HTMLInputElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
   const { orgId, loading: authLoading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    // Still loading auth
     if (authLoading) return;
-
-    // Auth done but no orgId — shouldn't happen (middleware redirects), but handle gracefully
-    if (!orgId) {
-      setStep('welcome');
-      return;
-    }
+    if (!orgId) { setReady(true); return; }
 
     const supabase = createClient();
     supabase
@@ -49,7 +43,7 @@ export default function OnboardingPage() {
         if (d?.onboarding_complete) {
           router.replace('/dashboard');
         } else {
-          setStep('welcome');
+          setReady(true);
         }
       });
   }, [orgId, authLoading, router]);
@@ -102,9 +96,9 @@ export default function OnboardingPage() {
   };
 
   const finish = async () => {
-    if (!orgId) return;
-    // Mark onboarding complete
-    const supabase = (await import('@/lib/supabase/client')).createClient();
+    if (!orgId) { router.push('/dashboard'); return; }
+    setFinishing(true);
+    const supabase = createClient();
     const { data: profile } = await supabase
       .from('org_profiles')
       .select('data')
@@ -122,22 +116,15 @@ export default function OnboardingPage() {
   };
 
   const categoryLabels: Record<string, string> = {
-    identity: 'מסמך זהות ארגוני',
+    identity: 'זהות ארגוני',
     budget: 'דוח כספי',
-    project: 'תיאור פרויקט',
-    grant: 'הסכם מענק',
-    submission: 'הגשה קודמת',
+    project: 'פרויקט',
+    grant: 'מענק',
+    submission: 'הגשה',
     other: 'מסמך',
   };
 
-  const brandHeader = (
-    <div className="flex items-center justify-center gap-2 mb-6">
-      <FishLogo size={32} className="swim" />
-      <span className="font-semibold text-lg">Goldfish</span>
-    </div>
-  );
-
-  if (step === 'loading') {
+  if (!ready) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-bg gap-3">
         <FishLogo size={48} className="swim" />
@@ -146,259 +133,157 @@ export default function OnboardingPage() {
     );
   }
 
-  if (step === 'welcome') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-bg p-4">
-        <div className="w-full max-w-lg text-center">
-          {brandHeader}
-          <FishLogo size={80} className="mx-auto swim mb-4" />
-          <h1 className="text-2xl font-bold mb-2">רגע, לפני שמתחילים לשחות במים העמוקים...</h1>
-          <div className="bg-bg2 rounded-2xl border border-border p-6 mt-6 text-right space-y-4">
-            <p className="text-sm leading-relaxed text-text2">
-              שלום! אני <strong>Goldfish</strong>. אדוג לך קולות קוראים, אכתוב טיוטות הגשה, ואשחה
-              בשבילך בין מאות מקורות מימון.
-            </p>
-            <p className="text-sm leading-relaxed text-text2">
-              אבל בשביל שהזהב שאדוג יהיה באמת רלוונטי — <strong>אני צריך להכיר אותך לעומק.</strong>
-            </p>
-            <p className="text-sm leading-relaxed text-text2">
-              ככל שתשלחו לי יותר חומרים, אדע לדייק יותר — גם בהתאמת קולות קוראים וגם בכתיבת הגשות.
-            </p>
-            <p className="text-sm leading-relaxed text-muted">
-              זה ייקח דקה-שתיים. מוכנים?
-            </p>
+  return (
+    <div className="min-h-screen bg-bg">
+      <div className="max-w-lg mx-auto px-4 py-8">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center gap-2 mb-4">
+            <FishLogo size={32} className="swim" />
+            <span className="font-semibold text-lg">Goldfish</span>
           </div>
-          <button
-            onClick={() => setStep('documents')}
-            className="mt-6 px-8 py-3 bg-accent text-white font-medium rounded-xl hover:bg-accent-hover transition-all hover:scale-105 active:scale-95"
+          <h1 className="text-2xl font-bold mb-2">ספרו לי על הארגון</h1>
+          <p className="text-sm text-muted">
+            ככל שאכיר יותר, אדייק יותר בהתאמת קולות קוראים ובכתיבת הגשות.
+          </p>
+        </div>
+
+        {/* Section 1: Documents */}
+        <div className="bg-bg2 rounded-2xl border border-border p-5 mb-4">
+          <h3 className="font-medium mb-1">מסמכים</h3>
+          <p className="text-xs text-muted mb-3">
+            אודות הארגון, מודל פעולה, מצגות, דוחות כספיים, הגשות קודמות — הכל.
+          </p>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept=".pdf,.doc,.docx,.txt,.csv,.xlsx,.xls,.html,.pptx,.ppt"
+            onChange={e => handleFiles(e.target.files)}
+            className="hidden"
+          />
+          <div
+            ref={dropRef}
+            onClick={() => fileInputRef.current?.click()}
+            onDragOver={e => { e.preventDefault(); setDragging(true); }}
+            onDragEnter={e => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={e => { e.preventDefault(); if (dropRef.current && !dropRef.current.contains(e.relatedTarget as Node)) setDragging(false); }}
+            onDrop={e => { e.preventDefault(); setDragging(false); handleFiles(e.dataTransfer.files); }}
+            className={`w-full py-6 border-2 border-dashed rounded-xl text-sm cursor-pointer transition-all text-center ${
+              dragging
+                ? 'border-accent bg-accent/5 text-accent scale-[1.02]'
+                : 'border-border text-muted hover:border-accent hover:text-accent'
+            }`}
           >
-            יאללה, בואו נתחיל
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (step === 'documents') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-bg p-4">
-        <div className="w-full max-w-lg">
-          {brandHeader}
-          <div className="text-center mb-6">
-            <FishLogo size={48} className="mx-auto swim mb-2" />
-            <h2 className="text-xl font-bold">שלב 1: מסמכים על הארגון</h2>
-            <p className="text-sm text-muted mt-1">שלחו לי כל מסמך שיעזור לי להכיר את הארגון</p>
+            {dragging ? 'שחררו כאן' : 'גררו קבצים לכאן או לחצו לבחירה'}
+            <span className="block text-[10px] mt-1 opacity-60">PDF, Word, Excel, PPT</span>
           </div>
 
-          <div className="bg-bg2 rounded-2xl border border-border p-6 space-y-5">
-            {/* Org documents */}
-            <div>
-              <label className="block text-sm font-medium mb-2">מסמכי הארגון</label>
-              <p className="text-xs text-muted mb-3">תקנון, דוחות כספיים, מצגות, תוכניות עבודה — כל מה שיש</p>
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                accept=".pdf,.doc,.docx,.txt,.csv,.xlsx,.xls,.html"
-                onChange={e => handleFiles(e.target.files)}
-                className="hidden"
-              />
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="w-full py-3 border-2 border-dashed border-border rounded-xl text-sm text-muted hover:border-accent hover:text-accent transition-colors"
-              >
-                📄 בחרו קבצים (PDF, Word, Excel, TXT)
-              </button>
+          {files.length > 0 && (
+            <div className="space-y-1.5 mt-3">
+              {files.map((f, i) => (
+                <div key={i} className="flex items-center gap-2 py-1.5 px-3 bg-surf rounded-lg text-sm">
+                  {f.status === 'uploading' && (
+                    <div className="w-3.5 h-3.5 border-2 border-accent border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                  )}
+                  {f.status === 'done' && <span className="text-green-500 flex-shrink-0 text-xs">✓</span>}
+                  {f.status === 'error' && <span className="text-red flex-shrink-0 text-xs">✗</span>}
+                  <span className="flex-1 truncate text-xs">{f.name}</span>
+                  {f.status === 'done' && f.category && (
+                    <span className="text-[10px] text-muted bg-bg px-1.5 py-0.5 rounded-full">
+                      {categoryLabels[f.category] || f.category}
+                    </span>
+                  )}
+                </div>
+              ))}
             </div>
-
-            {/* Previous submissions */}
-            <div>
-              <label className="block text-sm font-medium mb-2">הגשות קודמות לקרנות</label>
-              <p className="text-xs text-muted mb-3">כל בקשה שכבר שלחתם — אדע ללמוד מהסגנון שלכם</p>
-              <input
-                ref={grantInputRef}
-                type="file"
-                multiple
-                accept=".pdf,.doc,.docx,.txt"
-                onChange={e => handleFiles(e.target.files)}
-                className="hidden"
-              />
-              <button
-                onClick={() => grantInputRef.current?.click()}
-                className="w-full py-3 border-2 border-dashed border-border rounded-xl text-sm text-muted hover:border-accent hover:text-accent transition-colors"
-              >
-                📋 העלו הגשות קודמות
-              </button>
-            </div>
-
-            {/* Uploaded files list */}
-            {files.length > 0 && (
-              <div className="space-y-2">
-                {files.map((f, i) => (
-                  <div key={i} className="flex items-center gap-2 py-2 px-3 bg-surf rounded-xl text-sm">
-                    {f.status === 'uploading' && (
-                      <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin flex-shrink-0" />
-                    )}
-                    {f.status === 'done' && <span className="text-green-500 flex-shrink-0">✓</span>}
-                    {f.status === 'error' && <span className="text-red flex-shrink-0">✗</span>}
-                    <span className="flex-1 truncate">{f.name}</span>
-                    {f.status === 'done' && f.category && (
-                      <span className="text-xs text-muted bg-bg px-2 py-0.5 rounded-full">
-                        {categoryLabels[f.category] || f.category}
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="flex gap-3 mt-6">
-            <button
-              onClick={() => setStep('links')}
-              className="flex-1 py-3 bg-accent text-white font-medium rounded-xl hover:bg-accent-hover transition-all"
-            >
-              {files.length > 0 ? 'המשך לשלב הבא' : 'דלג, אעלה אחר כך'}
-            </button>
-          </div>
+          )}
         </div>
-      </div>
-    );
-  }
 
-  if (step === 'links') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-bg p-4">
-        <div className="w-full max-w-lg">
-          {brandHeader}
-          <div className="text-center mb-6">
-            <FishLogo size={48} className="mx-auto swim mb-2" />
-            <h2 className="text-xl font-bold">שלב 2: קישורים</h2>
-            <p className="text-sm text-muted mt-1">אקרא את האתר והרשתות שלכם כדי להכיר טוב יותר</p>
-          </div>
+        {/* Section 2: Links */}
+        <div className="bg-bg2 rounded-2xl border border-border p-5 mb-4">
+          <h3 className="font-medium mb-3">קישורים</h3>
 
-          <div className="bg-bg2 rounded-2xl border border-border p-6 space-y-5">
+          <div className="space-y-3">
             {/* Website */}
-            <div>
-              <label className="block text-sm font-medium mb-1">אתר הארגון</label>
-              <div className="flex gap-2">
-                <input
-                  type="url"
-                  value={websiteUrl}
-                  onChange={e => setWebsiteUrl(e.target.value)}
-                  className="flex-1 px-3 py-2.5 rounded-xl border border-border bg-surf text-sm focus:outline-none focus:border-accent"
-                  placeholder="https://example.org.il"
-                  dir="ltr"
-                />
-                <button
-                  onClick={() => learnUrl(websiteUrl, 'website')}
-                  disabled={!websiteUrl.trim() || urlLoading === 'website' || urlDone.includes('website')}
-                  className="px-4 py-2.5 bg-accent text-white text-sm rounded-xl hover:bg-accent-hover disabled:opacity-50 transition-all flex-shrink-0"
-                >
-                  {urlLoading === 'website' ? '🐟 קורא...' : urlDone.includes('website') ? '✓ נקרא' : 'שלח'}
-                </button>
-              </div>
+            <div className="flex gap-2">
+              <input
+                type="url"
+                value={websiteUrl}
+                onChange={e => setWebsiteUrl(e.target.value)}
+                className="flex-1 px-3 py-2 rounded-xl border border-border bg-surf text-sm focus:outline-none focus:border-accent"
+                placeholder="אתר הארגון"
+                dir="ltr"
+              />
+              <button
+                onClick={() => learnUrl(websiteUrl, 'website')}
+                disabled={!websiteUrl.trim() || urlLoading === 'website' || urlDone.includes('website')}
+                className="px-3 py-2 bg-accent text-white text-sm rounded-xl hover:bg-accent-hover disabled:opacity-50 transition-all flex-shrink-0"
+              >
+                {urlLoading === 'website' ? '...' : urlDone.includes('website') ? '✓' : 'שלח'}
+              </button>
             </div>
 
             {/* Social */}
-            <div>
-              <label className="block text-sm font-medium mb-1">דף פייסבוק / אינסטגרם / לינקדאין</label>
-              <div className="flex gap-2">
-                <input
-                  type="url"
-                  value={socialUrl}
-                  onChange={e => setSocialUrl(e.target.value)}
-                  className="flex-1 px-3 py-2.5 rounded-xl border border-border bg-surf text-sm focus:outline-none focus:border-accent"
-                  placeholder="https://facebook.com/your-org"
-                  dir="ltr"
-                />
-                <button
-                  onClick={() => learnUrl(socialUrl, 'social')}
-                  disabled={!socialUrl.trim() || urlLoading === 'social' || urlDone.includes('social')}
-                  className="px-4 py-2.5 bg-accent text-white text-sm rounded-xl hover:bg-accent-hover disabled:opacity-50 transition-all flex-shrink-0"
-                >
-                  {urlLoading === 'social' ? '🐟 קורא...' : urlDone.includes('social') ? '✓ נקרא' : 'שלח'}
-                </button>
-              </div>
+            <div className="flex gap-2">
+              <input
+                type="url"
+                value={socialUrl}
+                onChange={e => setSocialUrl(e.target.value)}
+                className="flex-1 px-3 py-2 rounded-xl border border-border bg-surf text-sm focus:outline-none focus:border-accent"
+                placeholder="פייסבוק / אינסטגרם / לינקדאין"
+                dir="ltr"
+              />
+              <button
+                onClick={() => learnUrl(socialUrl, 'social')}
+                disabled={!socialUrl.trim() || urlLoading === 'social' || urlDone.includes('social')}
+                className="px-3 py-2 bg-accent text-white text-sm rounded-xl hover:bg-accent-hover disabled:opacity-50 transition-all flex-shrink-0"
+              >
+                {urlLoading === 'social' ? '...' : urlDone.includes('social') ? '✓' : 'שלח'}
+              </button>
             </div>
 
-            {/* Google Drive */}
+            {/* Drive */}
             <div>
-              <label className="block text-sm font-medium mb-1">תיקיית Google Drive</label>
-              <p className="text-xs text-muted mb-2">שתפו תיקייה עם מסמכי הארגון — אקרא הכל בבת אחת</p>
               <div className="flex gap-2">
                 <input
                   type="url"
                   value={driveUrl}
                   onChange={e => setDriveUrl(e.target.value)}
-                  className="flex-1 px-3 py-2.5 rounded-xl border border-border bg-surf text-sm focus:outline-none focus:border-accent"
-                  placeholder="https://drive.google.com/drive/folders/..."
+                  className="flex-1 px-3 py-2 rounded-xl border border-border bg-surf text-sm focus:outline-none focus:border-accent"
+                  placeholder="תיקיית Google Drive"
                   dir="ltr"
                 />
                 <button
                   onClick={() => learnUrl(driveUrl, 'drive')}
                   disabled={!driveUrl.trim() || urlLoading === 'drive' || urlDone.includes('drive')}
-                  className="px-4 py-2.5 bg-accent text-white text-sm rounded-xl hover:bg-accent-hover disabled:opacity-50 transition-all flex-shrink-0"
+                  className="px-3 py-2 bg-accent text-white text-sm rounded-xl hover:bg-accent-hover disabled:opacity-50 transition-all flex-shrink-0"
                 >
-                  {urlLoading === 'drive' ? '🐟 קורא...' : urlDone.includes('drive') ? '✓ נשמר' : 'שלח'}
+                  {urlLoading === 'drive' ? '...' : urlDone.includes('drive') ? '✓' : 'שלח'}
                 </button>
               </div>
-              <p className="text-[10px] text-muted mt-1">ודאו שהתיקייה משותפת (Share → Anyone with the link)</p>
+              <p className="text-[10px] text-muted mt-1">Share → Anyone with the link</p>
             </div>
           </div>
-
-          <div className="flex gap-3 mt-6">
-            <button
-              onClick={() => setStep('done')}
-              className="flex-1 py-3 bg-accent text-white font-medium rounded-xl hover:bg-accent-hover transition-all"
-            >
-              {urlDone.length > 0 || files.length > 0 ? 'סיימתי, בואו נתחיל!' : 'דלג, אוסיף אחר כך'}
-            </button>
-          </div>
-
-          <button
-            onClick={() => setStep('documents')}
-            className="w-full mt-2 py-2 text-sm text-muted hover:text-accent transition-colors"
-          >
-            ← חזרה למסמכים
-          </button>
         </div>
-      </div>
-    );
-  }
 
-  // Done step
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-bg p-4">
-      <div className="w-full max-w-lg text-center">
-        {brandHeader}
-        <FishLogo size={80} className="mx-auto swim mb-4" />
-        <h1 className="text-2xl font-bold mb-2">מעולה! אני מוכן לשחות</h1>
-        <div className="bg-bg2 rounded-2xl border border-border p-6 mt-4 text-right space-y-3">
-          {files.filter(f => f.status === 'done').length > 0 && (
-            <p className="text-sm text-text2">
-              📄 קראתי {files.filter(f => f.status === 'done').length} מסמכים
-            </p>
-          )}
-          {urlDone.length > 0 && (
-            <p className="text-sm text-text2">
-              🌐 למדתי {urlDone.length} קישורים
-            </p>
-          )}
-          <p className="text-sm text-text2">
-            עכשיו אני מכיר את הארגון שלכם הרבה יותר טוב. אתחיל לחפש קולות קוראים רלוונטיים
-            ואהיה מוכן לכתוב טיוטות הגשה.
-          </p>
-          <p className="text-xs text-muted">
-            תמיד אפשר להעלות עוד מסמכים דרך הצ'אט או לשונית "העמותה".
-          </p>
-        </div>
+        {/* CTA */}
         <button
           onClick={finish}
-          className="mt-6 px-8 py-3 bg-accent text-white font-medium rounded-xl hover:bg-accent-hover transition-all hover:scale-105 active:scale-95"
+          disabled={finishing}
+          className="w-full py-3 bg-accent text-white font-medium rounded-xl hover:bg-accent-hover disabled:opacity-50 transition-all hover:scale-[1.02] active:scale-[0.98]"
         >
-          קחו אותי לדשבורד 🐟
+          {finishing ? 'שוחה לדשבורד...' : files.length > 0 || urlDone.length > 0 ? 'סיימתי, קחו אותי לדשבורד' : 'דלגו אחר כך'}
         </button>
+        {files.length === 0 && urlDone.length === 0 && (
+          <p className="text-center text-[11px] text-muted mt-3 leading-relaxed">
+            בלי מסמכים Goldfish לא יכול לסמן לך קולות קוראים או לדוג דברים בשבילך.<br />
+            אני מבין שרוצים ישר ולעניין — אבל עוד רגע וזה ישתלם.
+          </p>
+        )}
+        <p className="text-center text-[10px] text-muted mt-2">
+          תמיד אפשר להעלות עוד מסמכים דרך הצ׳אט.
+        </p>
       </div>
     </div>
   );
