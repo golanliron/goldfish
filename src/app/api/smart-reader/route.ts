@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import pdfParse from 'pdf-parse';
-import { geminiAnalyzeDocument, geminiOcrPdf, geminiParseXlsx } from '@/lib/ai/gemini';
+import { geminiAnalyzeDocument, geminiDeepAnalysis, geminiOcrPdf, geminiParseXlsx } from '@/lib/ai/gemini';
 
 // ===== PDF Parsing =====
 
@@ -454,7 +454,8 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    const { category, metadata, summary } = await classifyAndExtract(parsedText);
+    // Use deep analysis for file uploads — leverage Pro's full context window
+    const analysis = await geminiDeepAnalysis(parsedText);
 
     // Upload to storage
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -467,15 +468,17 @@ export async function POST(request: NextRequest) {
 
     const docId = await saveToRag(
       supabase, orgId, file.name, fileType, storagePath,
-      parsedText, category, metadata, summary, `file_upload_${ext}`
+      parsedText, analysis.category, analysis.metadata, analysis.summary, `file_upload_${ext}`
     );
 
     return NextResponse.json({
       document_id: docId,
-      category,
-      summary,
+      category: analysis.category,
+      summary: analysis.summary,
+      insights: analysis.insights,
+      missing_info: analysis.missing_info,
       source: `file_${ext}`,
-      extracted_fields: metadata,
+      extracted_fields: analysis.metadata,
     });
   } catch (error) {
     console.error('Smart reader error:', error);
