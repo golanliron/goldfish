@@ -451,7 +451,8 @@ async function loadAllChunks(
         const missingInfo = Array.isArray(meta.missing_info) ? (meta.missing_info as string[]).join(', ') : '';
         // Use AI summary + insights first (more valuable than raw text), then raw preview
         const aiContext = [summary, insights, missingInfo ? `חסר: ${missingInfo}` : ''].filter(Boolean).join('\n');
-        const preview = aiContext || (d.parsed_text ? d.parsed_text.slice(0, 2000) : '');
+        const previewLen = isOrgTab ? 500 : 2000;
+        const preview = aiContext || (d.parsed_text ? d.parsed_text.slice(0, previewLen) : '');
         return `[${d.category || 'other'}] ${d.filename} (id: ${d.id})${preview ? `:\n${preview}` : ''}`;
       });
       docSummary = `\n\n===== כל המסמכים שקראת (${allDocs.length} מסמכים) =====
@@ -1897,12 +1898,15 @@ ${blockSummary}
     const enrichedMessage = urlContent ? message + urlContent : message;
     chatMessages.push({ role: 'user', content: enrichedMessage });
 
-    // Stream response with Claude
+    // Stream response with Claude — org tab uses Haiku for speed
+    const chatModel = active_tab === 'org'
+      ? 'claude-haiku-4-5-20251001'
+      : 'claude-sonnet-4-20250514';
     const stream = anthropic.messages.stream({
-      model: 'claude-sonnet-4-20250514',
+      model: chatModel,
       system: systemPrompt,
       messages: chatMessages,
-      max_tokens: 8192,
+      max_tokens: active_tab === 'org' ? 4096 : 8192,
     });
 
     const encoder = new TextEncoder();
