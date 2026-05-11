@@ -49,7 +49,7 @@ export async function updateSession(request: NextRequest) {
 
     if (userRecord) {
       const url = request.nextUrl.clone();
-      url.pathname = '/dashboard';
+      url.pathname = '/onboarding';
       return NextResponse.redirect(url);
     }
 

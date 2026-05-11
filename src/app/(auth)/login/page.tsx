@@ -35,7 +35,7 @@ function LoginInner() {
       setError('מייל או סיסמה שגויים');
       setLoading(false);
     } else {
-      router.push('/dashboard');
+      router.push('/onboarding');
     }
   };
 

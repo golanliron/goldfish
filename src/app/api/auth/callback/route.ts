@@ -45,7 +45,21 @@ export async function GET(request: NextRequest) {
     .eq('id', user.id)
     .single();
 
-  let redirectTo = '/dashboard';
+  let redirectTo = '/onboarding';
+
+  if (existingUser) {
+    // Check if onboarding was already completed
+    const { data: profile } = await admin
+      .from('org_profiles')
+      .select('data')
+      .eq('org_id', existingUser.org_id)
+      .single();
+
+    const profileData = profile?.data as Record<string, unknown> | null;
+    if (profileData?.onboarding_complete) {
+      redirectTo = '/dashboard';
+    }
+  }
 
   if (!existingUser) {
     // First-time user — create org + user, then go to onboarding
