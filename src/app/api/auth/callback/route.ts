@@ -6,14 +6,15 @@ export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl;
   const code = searchParams.get('code');
   const invite = searchParams.get('invite');
-  const next = searchParams.get('next') ?? '/onboarding';
 
   if (!code) {
     return NextResponse.redirect(`${origin}/login?error=missing_code`);
   }
 
   const cookieStore = request.cookies;
-  const response = NextResponse.redirect(`${origin}${next}`);
+
+  // Collect cookies that Supabase sets during exchangeCodeForSession
+  const pendingCookies: { name: string; value: string; options: Record<string, unknown> }[] = [];
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -24,9 +25,7 @@ export async function GET(request: NextRequest) {
           return cookieStore.getAll();
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            response.cookies.set(name, value, options);
-          });
+          pendingCookies.push(...cookiesToSet);
         },
       },
     }
@@ -46,65 +45,62 @@ export async function GET(request: NextRequest) {
     .eq('id', user.id)
     .single();
 
-  if (existingUser) {
-    // Existing user — go straight to dashboard, carry auth cookies
-    const dashResponse = NextResponse.redirect(`${origin}/dashboard`);
-    response.cookies.getAll().forEach(cookie => {
-      dashResponse.cookies.set(cookie.name, cookie.value);
-    });
-    return dashResponse;
-  }
+  let redirectTo = '/dashboard';
 
-  // First-time user — create org + user, then go to onboarding
-  let orgId: string | null = null;
-  let role = 'admin';
+  if (!existingUser) {
+    // First-time user — create org + user, then go to onboarding
+    let orgId: string | null = null;
+    let role = 'admin';
 
-  if (invite) {
-    const { data: invitedOrg } = await admin
-      .from('organizations')
-      .select('id')
-      .eq('invite_code', invite)
-      .single();
+    if (invite) {
+      const { data: invitedOrg } = await admin
+        .from('organizations')
+        .select('id')
+        .eq('invite_code', invite)
+        .single();
 
-    if (invitedOrg) {
-      orgId = invitedOrg.id;
-      role = 'member';
+      if (invitedOrg) {
+        orgId = invitedOrg.id;
+        role = 'member';
+      }
     }
-  }
 
-  if (!orgId) {
-    const displayName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'הארגון שלי';
+    if (!orgId) {
+      const displayName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'הארגון שלי';
 
-    const { data: newOrg } = await admin
-      .from('organizations')
-      .insert({ name: displayName })
-      .select('id')
-      .single();
+      const { data: newOrg } = await admin
+        .from('organizations')
+        .insert({ name: displayName })
+        .select('id')
+        .single();
 
-    if (newOrg) {
-      orgId = newOrg.id;
+      if (newOrg) {
+        orgId = newOrg.id;
 
-      await admin.from('org_profiles').insert({
-        org_id: newOrg.id,
-        data: { name: displayName },
+        await admin.from('org_profiles').insert({
+          org_id: newOrg.id,
+          data: { name: displayName },
+        });
+      }
+    }
+
+    if (orgId) {
+      await admin.from('users').insert({
+        id: user.id,
+        org_id: orgId,
+        email: user.email,
+        full_name: user.user_metadata?.full_name || null,
+        role,
       });
     }
+
+    redirectTo = '/onboarding';
   }
 
-  if (orgId) {
-    await admin.from('users').insert({
-      id: user.id,
-      org_id: orgId,
-      email: user.email,
-      full_name: user.user_metadata?.full_name || null,
-      role,
-    });
+  // Create redirect response and apply all auth cookies with full options
+  const response = NextResponse.redirect(`${origin}${redirectTo}`);
+  for (const { name, value, options } of pendingCookies) {
+    response.cookies.set(name, value, options);
   }
-
-  // New user goes to onboarding
-  const onboardingResponse = NextResponse.redirect(`${origin}/onboarding`);
-  response.cookies.getAll().forEach(cookie => {
-    onboardingResponse.cookies.set(cookie.name, cookie.value);
-  });
-  return onboardingResponse;
+  return response;
 }
