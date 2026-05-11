@@ -68,6 +68,7 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
   const [loadingLink, setLoadingLink] = useState(false);
   const [docFilter, setDocFilter] = useState('all');
   const [dragging, setDragging] = useState(false);
+  const [editingDocId, setEditingDocId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
 
@@ -223,6 +224,21 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
       loadData();
     } catch {
       console.error('Delete failed');
+    }
+  };
+
+  const handleCategoryChange = async (docId: string, newCategory: string) => {
+    if (!orgId) return;
+    try {
+      await fetch(`/api/documents/${docId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ org_id: orgId, category: newCategory }),
+      });
+      setEditingDocId(null);
+      loadData();
+    } catch {
+      console.error('Category change failed');
     }
   };
 
@@ -584,9 +600,11 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
           {/* Document list */}
           <div className="space-y-0.5 max-h-[300px] overflow-y-auto">
             {filteredDocs.map(doc => {
-              const badge = CATEGORY_BADGES[getDocBadgeKey(doc)] || CATEGORY_BADGES.other;
+              const badgeKey = getDocBadgeKey(doc);
+              const badge = CATEGORY_BADGES[badgeKey] || CATEGORY_BADGES.other;
+              const isEditing = editingDocId === doc.id;
               return (
-                <div key={doc.id} className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-surf2 transition-colors text-xs group">
+                <div key={doc.id} className="flex items-center gap-1.5 py-1.5 px-2 rounded-lg hover:bg-surf2 transition-colors text-xs group relative">
                   {/* Delete */}
                   <button
                     onClick={() => handleDelete(doc.id)}
@@ -611,10 +629,30 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
                   </button>
                   {/* Name */}
                   <span className="truncate text-[11px] flex-1 min-w-0">{doc.filename}</span>
-                  {/* Category badge */}
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 ${badge.color}`}>
+                  {/* Category badge — click to change */}
+                  <button
+                    onClick={() => setEditingDocId(isEditing ? null : doc.id)}
+                    className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 cursor-pointer hover:ring-1 hover:ring-accent/30 ${badge.color}`}
+                    title="שנה קטגוריה"
+                  >
                     {badge.label}
-                  </span>
+                  </button>
+                  {/* Category dropdown */}
+                  {isEditing && (
+                    <div className="absolute left-0 top-full mt-0.5 z-20 bg-surf border border-border rounded-lg shadow-lg p-1 min-w-[100px]">
+                      {Object.entries(CATEGORY_BADGES)
+                        .filter(([k]) => k !== 'official' && k !== badgeKey && k !== (doc.category || 'other'))
+                        .map(([key, val]) => (
+                          <button
+                            key={key}
+                            onClick={() => handleCategoryChange(doc.id, key === 'official' ? 'identity' : key)}
+                            className="w-full text-right px-2 py-1 text-[10px] rounded hover:bg-surf2 transition-colors"
+                          >
+                            <span className={`inline-block px-1.5 py-0.5 rounded-full ${val.color}`}>{val.label}</span>
+                          </button>
+                        ))}
+                    </div>
+                  )}
                 </div>
               );
             })}

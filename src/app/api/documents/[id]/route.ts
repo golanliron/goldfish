@@ -57,6 +57,35 @@ export async function DELETE(
   }
 }
 
+// PATCH /api/documents/[id] — update category
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const { org_id, category } = await request.json();
+    if (!org_id || !id || !category) {
+      return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
+    }
+
+    const supabase = createAdminClient();
+    const { error } = await supabase
+      .from('documents')
+      .update({ category })
+      .eq('id', id)
+      .eq('org_id', org_id);
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Update document error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
 // GET /api/documents/[id]/download — download document content
 export async function GET(
   request: NextRequest,
