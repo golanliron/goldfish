@@ -27,6 +27,13 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
+const TAB_WELCOME: Record<string, string> = {
+  org: 'אוקיי, בואו נדבר על הארגון שלכם. אני מכיר את הפרופיל, יודע אילו מסמכים יש ומה חסר. שאלו אותי כל שאלה — שיפור תיאור, נקודות חוזק, או מה צריך להשלים כדי להגיש בקשות.',
+  opportunities: 'אוקיי, הנה הקולות הקוראים וההגשות הפתוחות שמתאימים לפרופיל שלכם. שאלו אותי על קול קורא ספציפי, בקשו טיוטת הגשה, או תבדקו דדליינים קרובים.',
+  business: 'בואו נמצא חברות שמתאימות לארגון שלכם. אני יכול לנתח חברות, לנסח מיילי פנייה, ולהציע אסטרטגיות שיתוף פעולה.',
+  foundations: 'בואו נמצא קרנות ופדרציות שמתאימות לארגון. אני מכיר מאות קרנות ויודע מה כל אחת מחפשת — שאלו אותי.',
+};
+
 const TAB_QUICK_ACTIONS: Record<string, { label: string; prompt: string }[]> = {
   opportunities: [
     { label: '🔍 סרוק קולות קוראים', prompt: 'סרוק בשבילי קולות קוראים פתוחים שמתאימים לארגון' },
@@ -63,6 +70,7 @@ export default function ChatPanel({ orgId, userId, onStageChange }: ChatPanelPro
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<string>('chat');
   const [loaded, setLoaded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -217,13 +225,11 @@ export default function ChatPanel({ orgId, userId, onStageChange }: ChatPanelPro
     } finally {
       setIsStreaming(false);
     }
-  }, [input, isStreaming, conversationId, orgId, userId]);
+  }, [input, isStreaming, conversationId, orgId, userId, activeTab]);
 
   // Expose sendMessage to sidebar via window for cross-component communication
   const sendMessageRef = useRef(sendMessage);
   sendMessageRef.current = sendMessage;
-
-  const [activeTab, setActiveTab] = useState<string>('chat');
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -233,6 +239,17 @@ export default function ChatPanel({ orgId, userId, onStageChange }: ChatPanelPro
     const tabHandler = (e: Event) => {
       const tab = (e as CustomEvent).detail || 'chat';
       setActiveTab(tab);
+      // Show tab-specific welcome message
+      const welcome = TAB_WELCOME[tab];
+      if (welcome) {
+        const tabMsg: ChatMessage = {
+          id: `tab-welcome-${tab}-${Date.now()}`,
+          role: 'assistant',
+          content: welcome,
+          timestamp: new Date().toISOString(),
+        };
+        setMessages(prev => [...prev, tabMsg]);
+      }
     };
     const loadConvHandler = async (e: Event) => {
       const { conversationId: convId } = (e as CustomEvent).detail || {};
