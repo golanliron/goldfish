@@ -116,8 +116,8 @@ function DashboardInner({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="h-dvh flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+      <div className="h-dvh flex items-center justify-center bg-bg">
+        <FishLogo size={48} className="swim" />
       </div>
     );
   }
