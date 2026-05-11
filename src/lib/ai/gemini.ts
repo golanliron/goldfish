@@ -16,14 +16,15 @@ export async function geminiClassify(text: string): Promise<string> {
     contents: [{
       role: 'user',
       parts: [{ text: `סווג את המסמך לקטגוריה אחת:
-- identity: תקנון, תיאור ארגוני, אודות, חזון ומטרות
-- budget: דוחות כספיים, מאזנים, תקציבים
-- project: תיאורי פרויקטים, תוכניות עבודה
-- grant: קולות קוראים, הסכמי מענק
-- submission: הגשות לקרנות
-- impact: דוחות אימפקט, מדידה, הערכה
+- identity: תקנון, תיאור ארגוני, אודות, חזון ומטרות, מצגת היכרות
+- programs: תיאורי תוכניות, מודל הפעלה, שירותים, פעילויות הארגון
+- budget: דוחות כספיים שנתיים, מאזנים, תקציב מאושר של הארגון כולו
+- project_budget: תקציב פרויקט ספציפי, הצעת מחיר, עלויות תוכנית
+- grant: קולות קוראים, הסכמי מענק, תנאי סף
+- submission: הגשות לקרנות, בקשות מענק, מכתבי בקשה
+- impact: דוחות אימפקט, מדידה, הערכה, סקרים, מדדי הצלחה
 - linkedin: פרופיל לינקדאין, חברה, קשרים עסקיים
-- other: כל דבר אחר
+- other: כל דבר שלא מתאים לקטגוריות למעלה (כולל גיוס משאבים כללי, אסטרטגיה)
 
 ענה רק עם שם הקטגוריה.
 
@@ -34,7 +35,7 @@ ${text.slice(0, 8000)}` }],
   });
 
   const category = result.response.text().trim().toLowerCase();
-  const valid = ['identity', 'budget', 'project', 'grant', 'submission', 'impact', 'linkedin', 'other'];
+  const valid = ['identity', 'programs', 'budget', 'project_budget', 'project', 'grant', 'submission', 'impact', 'linkedin', 'other'];
   return valid.includes(category) ? category : 'other';
 }
 

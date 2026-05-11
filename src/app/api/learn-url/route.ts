@@ -458,7 +458,8 @@ export async function POST(request: NextRequest) {
       extracted_fields: metadata,
     });
   } catch (error) {
-    console.error('Learn URL error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('Learn URL error:', msg, error);
+    return NextResponse.json({ error: `שגיאה בקריאת הקישור: ${msg.slice(0, 200)}` }, { status: 500 });
   }
 }
