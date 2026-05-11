@@ -1787,6 +1787,33 @@ export async function POST(request: NextRequest) {
       supabase.from('org_memory').select('key, value').eq('org_id', org_id).limit(50).then(r => r.data as { key: string; value: string }[] || []),
     ]);
 
+    // GuideStar auto-enrichment: if org has registration number, fetch public data
+    let guidestarContext = '';
+    const profileData = (profile?.data ?? null) as Record<string, unknown> | null;
+    const regNum = profileData?.registration_number as string | undefined;
+    if (regNum && !profileData?._guidestar_fetched) {
+      try {
+        const gsOrg = await fetchByRegistrationNumber(regNum);
+        if (gsOrg) {
+          guidestarContext = formatForContext(gsOrg);
+          const gsProfile = formatForProfile(gsOrg);
+          const merged = { ...profileData };
+          for (const [k, v] of Object.entries(gsProfile)) {
+            if (!merged[k] && v) merged[k] = v;
+          }
+          merged._guidestar_fetched = true;
+          supabase.from('org_profiles').upsert({
+            org_id,
+            data: merged,
+            last_updated: new Date().toISOString(),
+          }, { onConflict: 'org_id' });
+          console.log('[guidestar] Profile enriched for org', org_id);
+        }
+      } catch (e) {
+        console.error('[guidestar] Error:', e);
+      }
+    }
+
     // Build org context with memory overrides (memory has verified data that's more accurate than profile)
     const orgContext = buildOrgContext(profile?.data ?? null, org?.name ?? null, rawMemories);
 
@@ -2012,7 +2039,7 @@ ${blockSummary}
       }
     }
 
-    let systemPrompt = FISHGOLD_SYSTEM_PROMPT + FISHGOLD_GRANT_EXPERTISE + FISHGOLD_GRANT_MASTERY + FISHGOLD_BUDGET_INTELLIGENCE + FISHGOLD_FUNDER_WRITING_DNA + FISHGOLD_FUNDER_QUESTIONS + FISHGOLD_NONPROFITS_REFERENCE + FISHGOLD_NONPROFITS_PART2 + FISHGOLD_GRANTS_INTELLIGENCE + FISHGOLD_ENGLISH_GRANTS + FISHGOLD_SECTOR_KNOWLEDGE + FEDERATION_INTELLIGENCE + tabFocus + orgContext + orgMemory + submissionHistory + docSummary + knowledge + rag + grantWritingContext + submissionEngineContext + opportunityContext + companyContext + companiesIndex + grantsIndex + fundersIndex + sectorContext + webSearchContext;
+    let systemPrompt = FISHGOLD_SYSTEM_PROMPT + FISHGOLD_GRANT_EXPERTISE + FISHGOLD_GRANT_MASTERY + FISHGOLD_BUDGET_INTELLIGENCE + FISHGOLD_FUNDER_WRITING_DNA + FISHGOLD_FUNDER_QUESTIONS + FISHGOLD_NONPROFITS_REFERENCE + FISHGOLD_NONPROFITS_PART2 + FISHGOLD_GRANTS_INTELLIGENCE + FISHGOLD_ENGLISH_GRANTS + FISHGOLD_SECTOR_KNOWLEDGE + FEDERATION_INTELLIGENCE + tabFocus + orgContext + orgMemory + submissionHistory + docSummary + knowledge + rag + grantWritingContext + submissionEngineContext + opportunityContext + companyContext + companiesIndex + grantsIndex + fundersIndex + sectorContext + webSearchContext + guidestarContext;
 
     // Safety: truncate system prompt if too large (Claude Sonnet context = 200K tokens ~ 600K chars)
     // Leave room for conversation history + response
