@@ -89,17 +89,28 @@ export default function OnboardingPage() {
     newFiles.forEach((f, i) => uploadFile(f, startIndex + i));
   };
 
+  const [urlResults, setUrlResults] = useState<Record<string, string>>({});
+
   const learnUrl = async (url: string, label: string) => {
     if (!orgId || !url.trim()) return;
     setUrlLoading(label);
     try {
-      await fetch('/api/learn-url', {
+      const res = await fetch('/api/learn-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ org_id: orgId, url: url.trim() }),
       });
-      setUrlDone(prev => [...prev, label]);
-    } catch { /* ignore */ }
+      const data = await res.json();
+      if (res.ok) {
+        setUrlDone(prev => [...prev, label]);
+        const msg = data.summary || data.title || 'נקרא בהצלחה';
+        setUrlResults(prev => ({ ...prev, [label]: msg }));
+      } else {
+        setUrlResults(prev => ({ ...prev, [label]: data.error || 'לא הצלחתי לקרוא' }));
+      }
+    } catch {
+      setUrlResults(prev => ({ ...prev, [label]: 'שגיאת רשת' }));
+    }
     setUrlLoading(null);
   };
 
@@ -195,17 +206,24 @@ export default function OnboardingPage() {
           {files.length > 0 && (
             <div className="space-y-1.5 mt-3">
               {files.map((f, i) => (
-                <div key={i} className="flex items-center gap-2 py-1.5 px-3 bg-surf rounded-lg text-sm">
-                  {f.status === 'uploading' && (
-                    <div className="w-3.5 h-3.5 border-2 border-accent border-t-transparent rounded-full animate-spin flex-shrink-0" />
-                  )}
-                  {f.status === 'done' && <span className="text-green-500 flex-shrink-0 text-xs">✓</span>}
-                  {f.status === 'error' && <span className="text-red flex-shrink-0 text-xs">✗</span>}
-                  <span className="flex-1 truncate text-xs">{f.name}</span>
-                  {f.status === 'done' && f.category && (
-                    <span className="text-[10px] text-muted bg-bg px-1.5 py-0.5 rounded-full">
-                      {categoryLabels[f.category] || f.category}
-                    </span>
+                <div key={i}>
+                  <div className="flex items-center gap-2 py-1.5 px-3 bg-surf rounded-lg text-sm">
+                    {f.status === 'uploading' && (
+                      <div className="w-3.5 h-3.5 border-2 border-accent border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                    )}
+                    {f.status === 'done' && <span className="text-green-500 flex-shrink-0 text-xs">✓</span>}
+                    {f.status === 'error' && <span className="text-red flex-shrink-0 text-xs">✗</span>}
+                    <span className="flex-1 truncate text-xs">{f.name}</span>
+                    {f.status === 'done' && f.category && (
+                      <span className="text-[10px] text-muted bg-bg px-1.5 py-0.5 rounded-full">
+                        {categoryLabels[f.category] || f.category}
+                      </span>
+                    )}
+                  </div>
+                  {f.status === 'done' && f.summary && (
+                    <p className="text-[11px] text-green-600 px-3 pb-1.5 leading-relaxed line-clamp-2">
+                      {f.summary}
+                    </p>
                   )}
                 </div>
               ))}
@@ -233,9 +251,14 @@ export default function OnboardingPage() {
                 disabled={!websiteUrl.trim() || urlLoading === 'website' || urlDone.includes('website')}
                 className="px-3 py-2 bg-accent text-white text-sm rounded-xl hover:bg-accent-hover disabled:opacity-50 transition-all flex-shrink-0"
               >
-                {urlLoading === 'website' ? '...' : urlDone.includes('website') ? '✓' : 'שלח'}
+                {urlLoading === 'website' ? 'קורא...' : urlDone.includes('website') ? '✓ נקרא' : 'שלח'}
               </button>
             </div>
+            {urlResults.website && (
+              <p className={`text-[11px] mt-1 leading-relaxed ${urlDone.includes('website') ? 'text-green-600' : 'text-red-500'}`}>
+                {urlResults.website}
+              </p>
+            )}
 
             {/* Social */}
             <div className="flex gap-2">
@@ -252,9 +275,14 @@ export default function OnboardingPage() {
                 disabled={!socialUrl.trim() || urlLoading === 'social' || urlDone.includes('social')}
                 className="px-3 py-2 bg-accent text-white text-sm rounded-xl hover:bg-accent-hover disabled:opacity-50 transition-all flex-shrink-0"
               >
-                {urlLoading === 'social' ? '...' : urlDone.includes('social') ? '✓' : 'שלח'}
+                {urlLoading === 'social' ? 'קורא...' : urlDone.includes('social') ? '✓ נקרא' : 'שלח'}
               </button>
             </div>
+            {urlResults.social && (
+              <p className={`text-[11px] mt-1 leading-relaxed ${urlDone.includes('social') ? 'text-green-600' : 'text-red-500'}`}>
+                {urlResults.social}
+              </p>
+            )}
 
             {/* Drive */}
             <div>
@@ -272,10 +300,16 @@ export default function OnboardingPage() {
                   disabled={!driveUrl.trim() || urlLoading === 'drive' || urlDone.includes('drive')}
                   className="px-3 py-2 bg-accent text-white text-sm rounded-xl hover:bg-accent-hover disabled:opacity-50 transition-all flex-shrink-0"
                 >
-                  {urlLoading === 'drive' ? '...' : urlDone.includes('drive') ? '✓' : 'שלח'}
+                  {urlLoading === 'drive' ? 'קורא...' : urlDone.includes('drive') ? '✓ נקרא' : 'שלח'}
                 </button>
               </div>
-              <p className="text-[10px] text-muted mt-1">Share → Anyone with the link</p>
+              {urlResults.drive ? (
+                <p className={`text-[11px] mt-1 leading-relaxed ${urlDone.includes('drive') ? 'text-green-600' : 'text-red-500'}`}>
+                  {urlResults.drive}
+                </p>
+              ) : (
+                <p className="text-[10px] text-muted mt-1">Share &rarr; Anyone with the link</p>
+              )}
             </div>
           </div>
         </div>

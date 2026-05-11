@@ -27,6 +27,10 @@ export async function updateSession(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser();
 
+  // Admin emails that can freely navigate between all pages
+  const ADMIN_EMAILS = ['golanliron1@gmail.com'];
+  const isAdmin = user?.email && ADMIN_EMAILS.includes(user.email);
+
   const isProtectedRoute = request.nextUrl.pathname.startsWith('/dashboard') ||
                           request.nextUrl.pathname.startsWith('/onboarding');
   const isAuthRoute = request.nextUrl.pathname.startsWith('/login') ||
@@ -36,6 +40,11 @@ export async function updateSession(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     return NextResponse.redirect(url);
+  }
+
+  // Admin can go anywhere — no forced redirects
+  if (isAdmin) {
+    return supabaseResponse;
   }
 
   if (user && isAuthRoute) {
