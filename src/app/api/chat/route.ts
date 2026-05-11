@@ -6,7 +6,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { createGrantsClient } from '@/lib/supabase/grants-db';
 import { FISHGOLD_SYSTEM_PROMPT, FISHGOLD_GRANT_EXPERTISE, FISHGOLD_FUNDER_WRITING_DNA, FISHGOLD_FUNDER_QUESTIONS, FISHGOLD_NONPROFITS_REFERENCE, FISHGOLD_ENGLISH_GRANTS, FISHGOLD_SECTOR_KNOWLEDGE, buildContext, buildOrgContext } from '@/lib/ai/fishgold';
 import { FEDERATION_INTELLIGENCE } from '@/lib/ai/federation-intelligence';
-import { detectSearchIntent, webSearch, searchCompany, searchGrants, formatSearchResults } from '@/lib/ai/web-search';
+import { detectSearchIntent, detectFunderQuery, webSearch, searchCompany, searchGrants, formatSearchResults } from '@/lib/ai/web-search';
 import { parseRfp, checkReadiness, assembleSubmission, generateOrgBlocks, formatReadinessReport } from '@/lib/ai/submission-engine';
 import type { OrgBlock, OrgBlockType, RfpStructure } from '@/types';
 // pdf-parse imported dynamically where needed to avoid serverless init failures
@@ -1972,21 +1972,32 @@ ${blockSummary}
 
     // Web Search: search the internet when user asks for current info
     let webSearchContext = '';
-    const searchQuery = detectSearchIntent(message);
-    if (searchQuery && process.env.TAVILY_API_KEY) {
+    if (process.env.TAVILY_API_KEY) {
       try {
-        // Determine search type based on tab and query
-        let results;
-        if (active_tab === 'opportunities' || /קול קורא|מענק|grant/i.test(searchQuery)) {
-          results = await searchGrants(searchQuery);
-        } else if (active_tab === 'business' || /חברה|קרן|תורם/i.test(searchQuery)) {
-          results = await searchCompany(searchQuery);
-        } else {
-          results = await webSearch(searchQuery, { maxResults: 5 });
-        }
-        if (results.length > 0) {
-          webSearchContext = formatSearchResults(results);
-          console.log(`Web search: "${searchQuery}" → ${results.length} results`);
+        // Priority 1: explicit search intent ("תחפש", "ספר לי על X", etc.)
+        const searchQuery = detectSearchIntent(message);
+        // Priority 2: funder-specific query even without explicit search keywords
+        const funderQuery = !searchQuery ? detectFunderQuery(message) : null;
+        const effectiveQuery = searchQuery || funderQuery;
+
+        if (effectiveQuery) {
+          let results;
+          if (active_tab === 'opportunities' || /קול קורא|מענק|grant/i.test(effectiveQuery)) {
+            results = await searchGrants(effectiveQuery);
+          } else if (active_tab === 'business' || active_tab === 'foundations' || /חברה|קרן|תורם|foundation|fund/i.test(effectiveQuery)) {
+            // For funder queries: search both CSR + grants context
+            const [csrResults, grantResults] = await Promise.all([
+              searchCompany(effectiveQuery),
+              webSearch(`${effectiveQuery} קרן מענק ישראל deadline`, { maxResults: 3, searchDepth: 'advanced' }),
+            ]);
+            results = [...csrResults, ...grantResults].slice(0, 6);
+          } else {
+            results = await webSearch(effectiveQuery, { maxResults: 5 });
+          }
+          if (results.length > 0) {
+            webSearchContext = formatSearchResults(results);
+            console.log(`Web search: "${effectiveQuery}" → ${results.length} results (funder=${!!funderQuery})`);
+          }
         }
       } catch (e) {
         console.error('Web search error:', e);
