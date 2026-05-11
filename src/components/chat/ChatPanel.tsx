@@ -59,18 +59,17 @@ interface ChatPanelProps {
 }
 
 export default function ChatPanel({ orgId, userId, onStageChange }: ChatPanelProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 'welcome',
-      role: 'assistant',
-      content: FISHGOLD_WELCOME,
-      timestamp: new Date().toISOString(),
-    },
-  ]);
+  const makeWelcome = (tab: string): ChatMessage[] => {
+    const content = tab === 'chat' ? FISHGOLD_WELCOME : (TAB_WELCOME[tab] || FISHGOLD_WELCOME);
+    return [{ id: `welcome-${tab}`, role: 'assistant', content, timestamp: new Date().toISOString() }];
+  };
+  const tabMessagesRef = useRef<Record<string, ChatMessage[]>>({ chat: makeWelcome('chat') });
+  const [messages, setMessages] = useState<ChatMessage[]>(tabMessagesRef.current.chat);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<string>('chat');
+  const activeTabRef = useRef('chat');
   const [loaded, setLoaded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -117,6 +116,7 @@ export default function ChatPanel({ orgId, userId, onStageChange }: ChatPanelPro
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    tabMessagesRef.current[activeTabRef.current] = messages;
   }, [messages]);
 
   // Auto-resize textarea
@@ -238,18 +238,18 @@ export default function ChatPanel({ orgId, userId, onStageChange }: ChatPanelPro
     };
     const tabHandler = (e: Event) => {
       const tab = (e as CustomEvent).detail || 'chat';
+      // Save current tab messages
+      setMessages(prev => {
+        tabMessagesRef.current[activeTabRef.current] = prev;
+        return prev;
+      });
+      activeTabRef.current = tab;
       setActiveTab(tab);
-      // Show tab-specific welcome message
-      const welcome = TAB_WELCOME[tab];
-      if (welcome) {
-        const tabMsg: ChatMessage = {
-          id: `tab-welcome-${tab}-${Date.now()}`,
-          role: 'assistant',
-          content: welcome,
-          timestamp: new Date().toISOString(),
-        };
-        setMessages(prev => [...prev, tabMsg]);
+      // Restore or create messages for new tab
+      if (!tabMessagesRef.current[tab]) {
+        tabMessagesRef.current[tab] = makeWelcome(tab);
       }
+      setMessages([...tabMessagesRef.current[tab]]);
     };
     const loadConvHandler = async (e: Event) => {
       const { conversationId: convId } = (e as CustomEvent).detail || {};
