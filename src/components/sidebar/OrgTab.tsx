@@ -11,6 +11,7 @@ interface OrgTabProps {
 // Category badge config
 const CATEGORY_BADGES: Record<string, { label: string; color: string }> = {
   identity: { label: 'היכרות', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
+  official: { label: 'רשמי', color: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300' },
   programs: { label: 'תוכניות', color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300' },
   budget: { label: 'תקציב', color: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' },
   project_budget: { label: 'תקציב פרויקט', color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' },
@@ -20,10 +21,23 @@ const CATEGORY_BADGES: Record<string, { label: string; color: string }> = {
   other: { label: 'כללי', color: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400' },
 };
 
+// Official doc patterns — identity in DB but "רשמי" in display
+const OFFICIAL_DOC_PATTERNS = /ניהול תקין|ניהול ספרים|סעיף 46|אישור 46|ניכוי מס|תעודת רישום|חברי ועד|בעלות חשבון|פרוטוקול ועד|רישום עמותה/i;
+
+function getDocBadgeKey(doc: { filename?: string; category?: string }): string {
+  const cat = doc.category || 'other';
+  // If it's "identity" but matches official patterns, show as "רשמי"
+  if (cat === 'identity' && doc.filename && OFFICIAL_DOC_PATTERNS.test(doc.filename)) {
+    return 'official';
+  }
+  return cat;
+}
+
 // Filter tabs for the document list
 const FILTER_TABS = [
   { key: 'all', label: 'הכל' },
-  { key: 'identity', label: 'רשמי' },
+  { key: 'official', label: 'רשמי' },
+  { key: 'identity', label: 'היכרות' },
   { key: 'submission', label: 'הגשות' },
   { key: 'impact', label: 'אימפקט' },
   { key: 'budget', label: 'תקציב' },
@@ -95,18 +109,19 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
     );
 
     const successCount = results.filter(r => r.status === 'fulfilled').length;
-    const failCount = results.filter(r => r.status === 'rejected').length;
+    const failedNames = results
+      .map((r, i) => r.status === 'rejected' ? fileArr[i].name : null)
+      .filter(Boolean);
 
     setUploading(false);
     loadData();
 
-    if (successCount > 0 && failCount === 0) {
+    if (successCount > 0 && failedNames.length === 0) {
       setFeedback(`${successCount} קבצים נקראו ונשמרו`);
-    } else if (successCount > 0) {
-      setFeedback(`${successCount} נקראו, ${failCount} נכשלו`);
+    } else if (successCount > 0 && failedNames.length > 0) {
+      setFeedback(`${successCount} נקראו. נכשלו: ${failedNames.join(', ')}`);
     } else {
-      const err = (results.find(r => r.status === 'rejected') as PromiseRejectedResult)?.reason?.message || 'שגיאה';
-      setFeedback(err);
+      setFeedback(`לא הצלחתי לקרוא: ${failedNames.join(', ')}`);
     }
   };
 
@@ -238,8 +253,10 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
   // Group docs by category for filtering
   const filteredDocs = documents.filter(doc => {
     if (docFilter === 'all') return true;
+    const displayKey = getDocBadgeKey(doc);
+    if (docFilter === 'identity') return displayKey === 'identity';
+    if (docFilter === 'official') return displayKey === 'official';
     const cat = doc.category === 'project' ? 'programs' : doc.category;
-    if (docFilter === 'identity') return cat === 'identity';
     return cat === docFilter;
   });
 
@@ -540,8 +557,10 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
                 const count = tab.key === 'all'
                   ? documents.length
                   : documents.filter(d => {
+                    const dk = getDocBadgeKey(d);
+                    if (tab.key === 'official') return dk === 'official';
+                    if (tab.key === 'identity') return dk === 'identity';
                     const cat = d.category === 'project' ? 'programs' : d.category;
-                    if (tab.key === 'identity') return cat === 'identity';
                     return cat === tab.key;
                   }).length;
                 if (tab.key !== 'all' && count === 0) return null;
@@ -565,7 +584,7 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
           {/* Document list */}
           <div className="space-y-0.5 max-h-[300px] overflow-y-auto">
             {filteredDocs.map(doc => {
-              const badge = CATEGORY_BADGES[doc.category || 'other'] || CATEGORY_BADGES.other;
+              const badge = CATEGORY_BADGES[getDocBadgeKey(doc)] || CATEGORY_BADGES.other;
               return (
                 <div key={doc.id} className="flex items-center gap-2 py-1.5 px-2 rounded-lg hover:bg-surf2 transition-colors text-xs group">
                   {/* Delete */}
