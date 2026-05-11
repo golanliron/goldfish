@@ -913,28 +913,28 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
                       <polyline points="14 2 14 8 20 8" />
                     </svg>
                     <span className="truncate text-[11px] flex-1">{doc.filename}</span>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                      {/* Download */}
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {/* Download/Open */}
                       <button
                         onClick={() => handleDownload(doc)}
-                        title="הורדה"
+                        title="פתיחה"
                         className="p-0.5 text-muted2 hover:text-accent transition-colors"
                       >
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-                          <polyline points="7 10 12 15 17 10" />
-                          <line x1="12" y1="15" x2="12" y2="3" />
+                          <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+                          <polyline points="15 3 21 3 21 9" />
+                          <line x1="10" y1="14" x2="21" y2="3" />
                         </svg>
                       </button>
                       {/* Delete */}
                       <button
                         onClick={() => handleDelete(doc.id)}
-                        title="מחיקה"
+                        title="הסרה"
                         className="p-0.5 text-muted2 hover:text-red-500 transition-colors"
                       >
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <polyline points="3 6 5 6 21 6" />
-                          <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                          <line x1="18" y1="6" x2="6" y2="18" />
+                          <line x1="6" y1="6" x2="18" y2="18" />
                         </svg>
                       </button>
                     </div>
@@ -966,18 +966,18 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
                   <polyline points="14 2 14 8 20 8" />
                 </svg>
                 <span className="truncate text-[11px] flex-1">{doc.filename}</span>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                  <button onClick={() => handleDownload(doc)} title="הורדה" className="p-0.5 text-muted2 hover:text-accent transition-colors">
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button onClick={() => handleDownload(doc)} title="פתיחה" className="p-0.5 text-muted2 hover:text-accent transition-colors">
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-                      <polyline points="7 10 12 15 17 10" />
-                      <line x1="12" y1="15" x2="12" y2="3" />
+                      <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+                      <polyline points="15 3 21 3 21 9" />
+                      <line x1="10" y1="14" x2="21" y2="3" />
                     </svg>
                   </button>
-                  <button onClick={() => handleDelete(doc.id)} title="מחיקה" className="p-0.5 text-muted2 hover:text-red-500 transition-colors">
+                  <button onClick={() => handleDelete(doc.id)} title="הסרה" className="p-0.5 text-muted2 hover:text-red-500 transition-colors">
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <polyline points="3 6 5 6 21 6" />
-                      <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
                     </svg>
                   </button>
                 </div>
