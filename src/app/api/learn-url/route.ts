@@ -190,6 +190,14 @@ async function handleDriveFolder(
             } catch { /* keep processing status */ }
           }
 
+          // Classify with Gemini if we have text
+          let fileCategory = 'other';
+          if (status === 'ready' && parsedText.length > 50) {
+            try {
+              fileCategory = await geminiClassify(parsedText.slice(0, 5000));
+            } catch { /* keep 'other' */ }
+          }
+
           await supabase.from('documents').insert({
             org_id: orgId,
             filename: file.name,
@@ -198,7 +206,7 @@ async function handleDriveFolder(
                        file.mimeType?.includes('spreadsheet') ? 'xlsx' :
                        file.mimeType?.includes('presentation') ? 'pptx' : 'other',
             storage_path: `drive://${file.id}`,
-            category: 'other',
+            category: fileCategory,
             parsed_text: parsedText.slice(0, 50000),
             metadata: { drive_file_id: file.id, drive_url: url, mime_type: file.mimeType },
             status,
