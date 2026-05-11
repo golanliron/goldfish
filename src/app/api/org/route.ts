@@ -2,19 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export async function GET(req: NextRequest) {
-  // Temporary debug: /api/org?debug=models
-  if (req.nextUrl.searchParams.get('debug') === 'models') {
-    const key = process.env.GEMINI_API_KEY || '';
-    if (!key) return NextResponse.json({ error: 'no GEMINI_API_KEY env var' });
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${key}`);
-    const data = await res.json();
-    if (!res.ok) return NextResponse.json({ error: data });
-    const models = (data.models || [])
-      .filter((m: { supportedGenerationMethods?: string[] }) => m.supportedGenerationMethods?.includes('generateContent'))
-      .map((m: { name: string }) => m.name);
-    return NextResponse.json({ models, keyPrefix: key.slice(0, 8) });
-  }
-
   const orgId = req.nextUrl.searchParams.get('org_id');
   if (!orgId) return NextResponse.json({ error: 'missing org_id' }, { status: 400 });
 
