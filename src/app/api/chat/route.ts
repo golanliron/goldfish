@@ -1306,6 +1306,151 @@ async function loadFundersIndex(
   }
 }
 
+// ===== Org Memory — cross-session persistent memory =====
+
+async function loadOrgMemory(
+  supabase: ReturnType<typeof createAdminClient>,
+  orgId: string
+): Promise<string> {
+  try {
+    const { data: memories } = await supabase
+      .from('org_memory')
+      .select('key, value, confidence, updated_at')
+      .eq('org_id', orgId)
+      .order('updated_at', { ascending: false })
+      .limit(50);
+
+    if (!memories?.length) return '';
+
+    const lines = memories.map(m => `${m.key}: ${m.value}`);
+    return `\n\n===== זיכרון ארגוני (${memories.length} פריטים) =====
+מידע שנאסף משיחות קודמות. השתמש בו כדי להמשיך מאיפה שעצרת:
+${lines.join('\n')}`;
+  } catch (e) {
+    console.error('Org memory load error:', e);
+    return '';
+  }
+}
+
+async function loadSubmissionHistory(
+  supabase: ReturnType<typeof createAdminClient>,
+  orgId: string
+): Promise<string> {
+  try {
+    const { data: subs } = await supabase
+      .from('submissions')
+      .select('status, outcome, approved_amount, requested_amount, funder_feedback, lessons_learned, created_at, opportunity:opportunities(title, funder)')
+      .eq('org_id', orgId)
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    if (!subs?.length) return '';
+
+    const lines = subs.map(s => {
+      const opp = s.opportunity as unknown as { title: string; funder: string } | null;
+      const parts = [
+        opp?.title || 'ללא שם',
+        opp?.funder ? `(${opp.funder})` : '',
+        `סטטוס: ${s.status}`,
+      ];
+      if (s.outcome) parts.push(`תוצאה: ${s.outcome}`);
+      if (s.approved_amount) parts.push(`אושר: ${Number(s.approved_amount).toLocaleString('he-IL')} ש"ח`);
+      if (s.requested_amount) parts.push(`בוקש: ${Number(s.requested_amount).toLocaleString('he-IL')} ש"ח`);
+      if (s.funder_feedback) parts.push(`משוב: ${s.funder_feedback}`);
+      if (s.lessons_learned) parts.push(`לקחים: ${s.lessons_learned}`);
+      return parts.join(' | ');
+    });
+
+    return `\n\n===== היסטוריית הגשות (${subs.length}) =====
+הגשות קודמות של הארגון — השתמש בלקחים כדי לשפר הגשות חדשות:
+${lines.join('\n')}`;
+  } catch (e) {
+    console.error('Submission history load error:', e);
+    return '';
+  }
+}
+
+async function extractAndSaveMemory(
+  supabase: ReturnType<typeof createAdminClient>,
+  orgId: string,
+  userMessage: string,
+  assistantResponse: string
+): Promise<void> {
+  try {
+    const combined = userMessage + ' ' + assistantResponse;
+    if (combined.length < 100) return;
+
+    const memoryItems: { key: string; value: string; confidence: string }[] = [];
+
+    // Extract fundraising strategy mentions
+    const strategyPatterns = [
+      { pattern: /אסטרטגי[הת]\s+גיוס[^.]{10,80}/g, key: 'fundraising_strategy' },
+      { pattern: /יעד\s+גיוס[^.]{5,60}/g, key: 'fundraising_target' },
+      { pattern: /תקציב\s+שנתי[^.]{5,60}/g, key: 'annual_budget' },
+    ];
+
+    for (const { pattern, key } of strategyPatterns) {
+      const match = combined.match(pattern);
+      if (match) {
+        memoryItems.push({ key, value: match[0].trim(), confidence: 'medium' });
+      }
+    }
+
+    // Extract explicit preferences from user messages
+    const prefPatterns = [
+      { pattern: /(?:אנחנו )?(?:לא )?(?:אוהבים?|מעדיפים?|רוצים?)[^.]{5,80}/g, key: 'writing_preference' },
+      { pattern: /(?:הקרן |קרן )[^.]{5,60}(?:אישרה?|דחתה?|אהבה?)[^.]{5,60}/g, key: 'funder_relationship' },
+    ];
+
+    for (const { pattern, key } of prefPatterns) {
+      const matches = userMessage.match(pattern);
+      if (matches) {
+        for (let i = 0; i < Math.min(matches.length, 3); i++) {
+          const suffix = matches.length > 1 ? `_${i + 1}` : '';
+          memoryItems.push({ key: `${key}${suffix}`, value: matches[i].trim(), confidence: 'high' });
+        }
+      }
+    }
+
+    // Extract mentioned contact names
+    const contactMatch = userMessage.match(/(?:איש|אשת|אנשי)\s+קשר[^.]{5,80}/);
+    if (contactMatch) {
+      memoryItems.push({ key: 'contact_info', value: contactMatch[0].trim(), confidence: 'medium' });
+    }
+
+    // Extract deadline mentions
+    const deadlineMatch = combined.match(/דדליין[^.]{5,60}/);
+    if (deadlineMatch) {
+      memoryItems.push({ key: 'upcoming_deadline', value: deadlineMatch[0].trim(), confidence: 'high' });
+    }
+
+    if (memoryItems.length === 0) return;
+
+    // Upsert memories (update if key exists, insert if not)
+    for (const item of memoryItems) {
+      await supabase
+        .from('org_memory')
+        .upsert(
+          {
+            org_id: orgId,
+            key: item.key,
+            value: item.value,
+            source: 'chat',
+            confidence: item.confidence,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'org_id,key' }
+        );
+    }
+
+    if (memoryItems.length > 0) {
+      console.log(`Saved ${memoryItems.length} memory items for org ${orgId}`);
+    }
+  } catch (e) {
+    console.error('Memory extraction error:', e);
+  }
+}
+
 // ===== Sector Intelligence =====
 
 const SECTOR_KEYWORDS = ['מגזר שלישי', 'עמותות', 'מתחרים', 'מגמות', 'טרנדים', 'חדשות', 'סטארטאפ חברתי', 'אימפקט', 'CSR', 'פילנתרופיה', 'תרומות בישראל', 'קרנות בישראל', 'שוק', 'מגזר', 'תחרות', 'benchmarking', 'דוח מגזרי', 'נתוני שוק'];
@@ -1415,7 +1560,7 @@ export async function POST(request: NextRequest) {
     const orgContext = buildOrgContext(profile?.data ?? null, org?.name ?? null);
 
     // Load all knowledge layers in parallel
-    const [opportunityContext, companyContext, sectorContext, companiesIndex, grantsIndex, fundersIndex] = await Promise.all([
+    const [opportunityContext, companyContext, sectorContext, companiesIndex, grantsIndex, fundersIndex, orgMemory, submissionHistory] = await Promise.all([
       scanOpportunities(
         supabase, org_id, profile?.data as Record<string, unknown> | null, org?.name ?? null, message
       ),
@@ -1426,6 +1571,8 @@ export async function POST(request: NextRequest) {
       loadCompaniesIndex(supabase),
       loadGrantsIndex(),
       loadFundersIndex(supabase),
+      loadOrgMemory(supabase, org_id),
+      loadSubmissionHistory(supabase, org_id),
     ]);
 
     // Tab-specific focus instructions
@@ -1495,7 +1642,7 @@ export async function POST(request: NextRequest) {
       console.log(`Grant writing mode: loaded ${grantWritingContext.length} chars of full documents`);
     }
 
-    let systemPrompt = FISHGOLD_SYSTEM_PROMPT + FISHGOLD_GRANT_EXPERTISE + FISHGOLD_SECTOR_KNOWLEDGE + FEDERATION_INTELLIGENCE + tabFocus + orgContext + docSummary + knowledge + rag + grantWritingContext + opportunityContext + companyContext + companiesIndex + grantsIndex + fundersIndex + sectorContext;
+    let systemPrompt = FISHGOLD_SYSTEM_PROMPT + FISHGOLD_GRANT_EXPERTISE + FISHGOLD_SECTOR_KNOWLEDGE + FEDERATION_INTELLIGENCE + tabFocus + orgContext + orgMemory + submissionHistory + docSummary + knowledge + rag + grantWritingContext + opportunityContext + companyContext + companiesIndex + grantsIndex + fundersIndex + sectorContext;
 
     // Safety: truncate system prompt if too large (Claude Sonnet context = 200K tokens ~ 600K chars)
     // Leave room for conversation history + response
@@ -1596,6 +1743,11 @@ export async function POST(request: NextRequest) {
 
           convId = newConv?.id;
         }
+
+        // Extract and save memory from this conversation (non-blocking)
+        extractAndSaveMemory(supabase, org_id, message, fullResponse).catch(e =>
+          console.error('Memory save failed:', e)
+        );
 
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify({ done: true, conversation_id: convId })}\n\n`)

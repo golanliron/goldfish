@@ -23,6 +23,11 @@ interface SubmissionItem {
   version: number;
   created_at: string;
   submitted_at: string | null;
+  outcome: string | null;
+  approved_amount: number | null;
+  requested_amount: number | null;
+  funder_feedback: string | null;
+  lessons_learned: string | null;
   opportunity: { title: string; funder: string | null } | null;
 }
 
@@ -31,6 +36,8 @@ export default function HistoryTab({ stage, orgId }: HistoryTabProps) {
   const [submissions, setSubmissions] = useState<SubmissionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<'conversations' | 'submissions'>('conversations');
+  const [editingSub, setEditingSub] = useState<SubmissionItem | null>(null);
+  const [savingOutcome, setSavingOutcome] = useState(false);
 
   useEffect(() => {
     if (!orgId) { setLoading(false); return; }
@@ -45,7 +52,7 @@ export default function HistoryTab({ stage, orgId }: HistoryTabProps) {
         .limit(20),
       supabase
         .from('submissions')
-        .select('id, status, version, created_at, submitted_at, opportunity:opportunities(title, funder)')
+        .select('id, status, version, created_at, submitted_at, outcome, approved_amount, requested_amount, funder_feedback, lessons_learned, opportunity:opportunities(title, funder)')
         .eq('org_id', orgId)
         .order('created_at', { ascending: false })
         .limit(20),
@@ -80,6 +87,35 @@ export default function HistoryTab({ stage, orgId }: HistoryTabProps) {
     submitted: { text: 'הוגש', color: 'bg-blue-100 text-blue-700' },
     approved: { text: 'אושר', color: 'bg-green-100 text-green-700' },
     rejected: { text: 'נדחה', color: 'bg-red-100 text-red-700' },
+  };
+
+  const outcomeLabels: Record<string, { text: string; color: string }> = {
+    approved: { text: 'אושר', color: 'bg-green-100 text-green-700' },
+    rejected: { text: 'נדחה', color: 'bg-red-100 text-red-700' },
+    partial: { text: 'אושר חלקית', color: 'bg-amber-100 text-amber-700' },
+    pending: { text: 'ממתין לתשובה', color: 'bg-blue-100 text-blue-700' },
+    no_response: { text: 'ללא מענה', color: 'bg-gray-200 text-gray-500' },
+  };
+
+  const saveOutcome = async (sub: SubmissionItem) => {
+    if (!orgId) return;
+    setSavingOutcome(true);
+    const supabase = createClient();
+    await supabase
+      .from('submissions')
+      .update({
+        outcome: sub.outcome,
+        approved_amount: sub.approved_amount,
+        requested_amount: sub.requested_amount,
+        funder_feedback: sub.funder_feedback,
+        lessons_learned: sub.lessons_learned,
+        outcome_at: new Date().toISOString(),
+      })
+      .eq('id', sub.id);
+
+    setSubmissions(prev => prev.map(s => s.id === sub.id ? { ...s, ...sub } : s));
+    setSavingOutcome(false);
+    setEditingSub(null);
   };
 
   const loadConversation = (convId: string) => {
@@ -165,10 +201,12 @@ export default function HistoryTab({ stage, orgId }: HistoryTabProps) {
           ) : (
             submissions.map(sub => {
               const status = statusLabels[sub.status] || statusLabels.draft;
+              const outcome = sub.outcome ? outcomeLabels[sub.outcome] : null;
               return (
                 <div
                   key={sub.id}
-                  className="flex items-start gap-2.5 py-2.5 px-3 rounded-lg hover:bg-surf2 transition-colors"
+                  className="flex items-start gap-2.5 py-2.5 px-3 rounded-lg hover:bg-surf2 transition-colors cursor-pointer"
+                  onClick={() => setEditingSub({ ...sub })}
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted2 mt-0.5 flex-shrink-0">
                     <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
@@ -181,10 +219,20 @@ export default function HistoryTab({ stage, orgId }: HistoryTabProps) {
                     {sub.opportunity?.funder && (
                       <p className="text-[9px] text-muted2 truncate">{sub.opportunity.funder}</p>
                     )}
-                    <div className="flex items-center gap-2 mt-1">
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
                       <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${status.color}`}>
                         {status.text}
                       </span>
+                      {outcome && (
+                        <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${outcome.color}`}>
+                          {outcome.text}
+                        </span>
+                      )}
+                      {!!sub.approved_amount && (
+                        <span className="text-[9px] text-green-600 font-medium">
+                          {Number(sub.approved_amount).toLocaleString('he-IL')} ש&quot;ח
+                        </span>
+                      )}
                       <span className="text-[9px] text-muted2">v{sub.version}</span>
                       <span className="text-[9px] text-muted2">{getTimeAgo(sub.created_at)}</span>
                     </div>
@@ -193,6 +241,97 @@ export default function HistoryTab({ stage, orgId }: HistoryTabProps) {
               );
             })
           )}
+        </div>
+      )}
+
+      {/* Outcome editing modal */}
+      {!!editingSub && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setEditingSub(null)}>
+          <div className="bg-bg rounded-xl shadow-xl w-full max-w-sm p-4 space-y-3" dir="rtl" onClick={e => e.stopPropagation()}>
+            <h3 className="text-sm font-bold">
+              {editingSub.opportunity?.title || 'הגשה'}
+            </h3>
+            {editingSub.opportunity?.funder && (
+              <p className="text-xs text-muted2">{editingSub.opportunity.funder}</p>
+            )}
+
+            <div>
+              <label className="text-[10px] font-medium text-muted2 block mb-1">תוצאה</label>
+              <select
+                value={editingSub.outcome || ''}
+                onChange={e => setEditingSub({ ...editingSub, outcome: e.target.value || null })}
+                className="w-full text-xs border border-surf2 rounded-lg px-2.5 py-1.5 bg-bg"
+              >
+                <option value="">לא ידוע</option>
+                <option value="approved">אושר</option>
+                <option value="partial">אושר חלקית</option>
+                <option value="rejected">נדחה</option>
+                <option value="pending">ממתין לתשובה</option>
+                <option value="no_response">ללא מענה</option>
+              </select>
+            </div>
+
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <label className="text-[10px] font-medium text-muted2 block mb-1">סכום שבוקש</label>
+                <input
+                  type="number"
+                  value={editingSub.requested_amount || ''}
+                  onChange={e => setEditingSub({ ...editingSub, requested_amount: e.target.value ? Number(e.target.value) : null })}
+                  placeholder="ש&quot;ח"
+                  className="w-full text-xs border border-surf2 rounded-lg px-2.5 py-1.5 bg-bg"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="text-[10px] font-medium text-muted2 block mb-1">סכום שאושר</label>
+                <input
+                  type="number"
+                  value={editingSub.approved_amount || ''}
+                  onChange={e => setEditingSub({ ...editingSub, approved_amount: e.target.value ? Number(e.target.value) : null })}
+                  placeholder="ש&quot;ח"
+                  className="w-full text-xs border border-surf2 rounded-lg px-2.5 py-1.5 bg-bg"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-[10px] font-medium text-muted2 block mb-1">משוב מהקרן</label>
+              <textarea
+                value={editingSub.funder_feedback || ''}
+                onChange={e => setEditingSub({ ...editingSub, funder_feedback: e.target.value || null })}
+                placeholder="מה הקרן אמרה? מה אהבו? מה חסר?"
+                rows={2}
+                className="w-full text-xs border border-surf2 rounded-lg px-2.5 py-1.5 bg-bg resize-none"
+              />
+            </div>
+
+            <div>
+              <label className="text-[10px] font-medium text-muted2 block mb-1">לקחים להגשות הבאות</label>
+              <textarea
+                value={editingSub.lessons_learned || ''}
+                onChange={e => setEditingSub({ ...editingSub, lessons_learned: e.target.value || null })}
+                placeholder="מה ללמוד מהפעם הזו?"
+                rows={2}
+                className="w-full text-xs border border-surf2 rounded-lg px-2.5 py-1.5 bg-bg resize-none"
+              />
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => setEditingSub(null)}
+                className="flex-1 text-xs py-1.5 rounded-lg border border-surf2 hover:bg-surf2 transition-colors"
+              >
+                ביטול
+              </button>
+              <button
+                onClick={() => saveOutcome(editingSub)}
+                disabled={savingOutcome}
+                className="flex-1 text-xs py-1.5 rounded-lg bg-accent text-white hover:bg-accent/90 transition-colors disabled:opacity-50"
+              >
+                {savingOutcome ? 'שומר...' : 'שמירה'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

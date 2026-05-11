@@ -181,6 +181,23 @@ export interface Submission {
   pdf_path: string | null;
   created_at: string;
   submitted_at: string | null;
+  outcome: 'approved' | 'rejected' | 'partial' | 'pending' | 'no_response' | null;
+  approved_amount: number | null;
+  requested_amount: number | null;
+  funder_feedback: string | null;
+  lessons_learned: string | null;
+  outcome_at: string | null;
+}
+
+export interface OrgMemory {
+  id: string;
+  org_id: string;
+  key: string;
+  value: string;
+  source: 'chat' | 'upload' | 'manual';
+  confidence: 'low' | 'medium' | 'high';
+  created_at: string;
+  updated_at: string;
 }
 
 export interface SubmissionSection {
