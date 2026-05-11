@@ -57,7 +57,10 @@ export default function OnboardingPage() {
   }, [orgId, authLoading]);
 
   const uploadFile = async (file: File, index: number) => {
-    if (!orgId) return;
+    if (!orgId) {
+      setFiles(prev => prev.map((f, i) => i === index ? { ...f, status: 'error' } : f));
+      return;
+    }
     const formData = new FormData();
     formData.append('file', file);
     formData.append('org_id', orgId);
@@ -92,7 +95,11 @@ export default function OnboardingPage() {
   const [urlResults, setUrlResults] = useState<Record<string, string>>({});
 
   const learnUrl = async (url: string, label: string) => {
-    if (!orgId || !url.trim()) return;
+    if (!url.trim()) return;
+    if (!orgId) {
+      setUrlResults(prev => ({ ...prev, [label]: 'טוען נתוני ארגון... נסו שוב בעוד שנייה' }));
+      return;
+    }
     setUrlLoading(label);
     try {
       const res = await fetch('/api/learn-url', {

@@ -276,6 +276,10 @@ async function handleSocialPage(
   return { text, title };
 }
 
+// ===== Route Config =====
+
+export const maxDuration = 60;
+
 // ===== Main Handler =====
 
 export async function POST(request: NextRequest) {

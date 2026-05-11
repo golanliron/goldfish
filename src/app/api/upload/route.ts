@@ -123,6 +123,10 @@ function chunkText(text: string, maxChars: number = 2000): string[] {
   return chunks.length > 0 ? chunks : [text.slice(0, maxChars)];
 }
 
+// ===== Route Config =====
+
+export const maxDuration = 60;
+
 // ===== Main Handler =====
 
 export async function POST(request: NextRequest) {
