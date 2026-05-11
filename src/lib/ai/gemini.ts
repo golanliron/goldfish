@@ -83,6 +83,7 @@ export async function geminiExtract(text: string, category?: string, orgName?: s
 - mission: ייעוד ומטרות (עד 3 משפטים)
 - focus_areas[]: תחומי פעילות עיקריים
 - target_populations[]: אוכלוסיות יעד
+- sub_populations[]: תתי-אוכלוסיות (נשים, ערבים, עולים, חד-הוריים, אתיופים, חרדים, בדואים, דרוזים, LGBTQ)
 - regions[]: אזורי פעילות גיאוגרפיים
 - beneficiaries_count: מספר מוטבים
 - employees_count: מספר עובדים
@@ -91,6 +92,12 @@ export async function geminiExtract(text: string, category?: string, orgName?: s
 - revenue_sources[]: מקורות הכנסה
 - contact_name, contact_email, contact_phone, website
 - key_achievements[], partners[], key_people[], impact_metrics[]
+- theory_of_change: תיאוריית השינוי (Logic Model: מה הבעיה → מה עושים → מה התוצאה)
+- unique_model: מה ייחודי במודל הפעולה (מה שמבדיל מארגונים אחרים)
+- strengths[]: חוזקות מרכזיות (מחקר מלווה, מודל ייחודי, ניסיון, רשת שותפים)
+- challenges[]: אתגרים וחוסרים (מה חסר, מה קשה, מה צריך לשפר)
+- age_range: טווח גילאי אוכלוסיית היעד (למשל 14-18, 18-26, 0-6)
+- certifications[]: אישורים בתוקף (ניהול תקין, סעיף 46, ניכוי מס, ניהול ספרים)
 ${category ? `\nקטגוריית המסמך: ${category}` : ''}
 
 חלץ כל מה שזמין. עברית מותרת בערכים. דייק במספרים ובשמות. אם לא בטוח לגבי ערך, עדיף לא לכלול אותו.
@@ -165,11 +172,21 @@ ${text.slice(0, 100000)}
 החזר JSON עם המבנה הבא:
 {
   "category": "identity|budget|project|grant|submission|impact|linkedin|other",
-  "metadata": {},
+  "metadata": {
+    "name": "שם הארגון",
+    "theory_of_change": "תיאוריית השינוי: בעיה → פעולה → תוצאה",
+    "unique_model": "מה ייחודי במודל הפעולה",
+    "strengths": ["חוזקות מרכזיות"],
+    "challenges": ["אתגרים"],
+    "sub_populations": ["תתי-אוכלוסיות"],
+    "age_range": "טווח גילאים",
+    "certifications": ["אישורים בתוקף"],
+    "...": "כל שדה רלוונטי נוסף"
+  },
   "summary": "סיכום מעמיק ב-4-6 משפטים בעברית",
-  "insights": "תובנות לגיוס משאבים",
-  "missing_info": ["רשימת מידע חסר"]
-}`, 6000);
+  "insights": "תובנות לגיוס משאבים — זוויות הגשה, קרנות מתאימות, חוזקות לשיווק",
+  "missing_info": ["רשימת מידע חסר שנדרש להגשות"]
+}`, 8000);
 
   try {
     const jsonMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, raw];

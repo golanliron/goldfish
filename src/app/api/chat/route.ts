@@ -1549,22 +1549,29 @@ async function extractAndSaveMemory(
 תשובת הסוכן:
 "${assistantResponse.slice(0, 1500)}"
 
-חלץ עד 6 עובדות חשובות. התמקד במה שיעזור לסוכן בשיחות עתידיות:
+חלץ עד 10 עובדות חשובות. התמקד במה שיעזור לסוכן בשיחות עתידיות:
 - תוצאות הגשות (אושר/נדחה, סכום, משוב מהגוף המממן)
 - העדפות כתיבה של הארגון
 - מידע ייחודי שלא במסמכים (שותפויות, מספרים, יעדים)
 - יחסים עם גופים מממנים (חיובי/שלילי/היסטוריה)
 - לקחים מהגשות קודמות
 - דדליינים וצירי זמן חשובים
+- תתי-אוכלוסיות שהארגון מלווה (נשים, ערבים, עולים, אתיופים, חרדים, בדואים, LGBTQ, חד-הוריים)
+- תיאוריית שינוי / מודל פעולה ייחודי (Theory of Change)
+- חוזקות ייחודיות (מחקר מלווה, טכנולוגיה, רשת שותפים, ניסיון)
+- מספרי מוטבים, בתי ספר, ערים, עובדים חדשים שנזכרו
+- שמות אנשי מפתח (מנכ"ל/ית, יו"ר, רכזים) ופרטי קשר
 
 החזר JSON בלבד, ללא טקסט נוסף:
 {"items":[{"key":"מזהה_קצר_באנגלית","value":"הערך בעברית","confidence":"high|medium|low"}]}
+
+דוגמאות ל-key טובים: theory_of_change, unique_model, sub_populations, ceo_name, total_beneficiaries, partner_orgs, funder_relation_joint, strength_research, age_range, cities_active
 
 אם אין עובדות חשובות לשמור, החזר: {"items":[]}`;
 
     const response = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 600,
+      max_tokens: 1000,
       messages: [{ role: 'user', content: extractionPrompt }],
     });
 

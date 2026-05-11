@@ -914,10 +914,28 @@ export function buildOrgContext(profile: Record<string, unknown> | null, orgName
   }
   if (Array.isArray(profile.revenue_sources) && (profile.revenue_sources as string[]).length > 0) parts.push(`מקורות הכנסה: ${(profile.revenue_sources as string[]).join(', ')}`);
   if (Array.isArray(profile.partners) && (profile.partners as string[]).length > 0) parts.push(`שותפויות: ${(profile.partners as string[]).join(', ')}`);
-  if (mem.get('מנכלית')) parts.push(`מנכ"לית: ${mem.get('מנכלית')}`);
-  if (mem.get('מודל_פעולה')) parts.push(`מודל: ${mem.get('מודל_פעולה')}`);
+  if (mem.get('מנכלית') || mem.get('ceo_name')) parts.push(`מנכ"ל/ית: ${mem.get('מנכלית') || mem.get('ceo_name')}`);
+  if (mem.get('מודל_פעולה') || mem.get('unique_model')) parts.push(`מודל: ${mem.get('מודל_פעולה') || mem.get('unique_model')}`);
   if (mem.get('ייחוד_מודל')) parts.push(`ייחוד: ${mem.get('ייחוד_מודל')}`);
   if (mem.get('אישורים')) parts.push(`אישורים: ${mem.get('אישורים')}`);
+  if (mem.get('theory_of_change')) parts.push(`תיאוריית שינוי: ${mem.get('theory_of_change')}`);
+  if (mem.get('sub_populations')) parts.push(`תתי-אוכלוסיות: ${mem.get('sub_populations')}`);
+  if (mem.get('age_range')) parts.push(`טווח גילאים: ${mem.get('age_range')}`);
+  if (mem.get('strength_research')) parts.push(`חוזקה מחקרית: ${mem.get('strength_research')}`);
+  if (mem.get('cities_active')) parts.push(`ערים פעילות: ${mem.get('cities_active')}`);
+  if (mem.get('total_beneficiaries')) parts.push(`סה"כ מוטבים: ${mem.get('total_beneficiaries')}`);
+
+  // Show all org_memory items that aren't already displayed above
+  if (orgMemories) {
+    const displayedKeys = new Set(['שם_עמותה', 'שם_מותג', 'מספר_עמותה', 'שנת_הקמה', 'תקציב_2025', 'פריסה_גיאוגרפית', 'מנכלית', 'ceo_name', 'מודל_פעולה', 'unique_model', 'ייחוד_מודל', 'אישורים', 'theory_of_change', 'sub_populations', 'age_range', 'strength_research', 'cities_active', 'total_beneficiaries']);
+    const extraMemories = orgMemories.filter(m => !displayedKeys.has(m.key) && m.value.length > 3);
+    if (extraMemories.length > 0) {
+      parts.push('\nזיכרון ארגוני נוסף:');
+      for (const m of extraMemories.slice(0, 20)) {
+        parts.push(`${m.key}: ${m.value}`);
+      }
+    }
+  }
 
   // Impact metrics — critical for grant writing
   if (Array.isArray(profile.impact_metrics) && (profile.impact_metrics as { metric: string; value: string; year?: string }[]).length > 0) {
@@ -975,6 +993,15 @@ export function buildOrgContext(profile: Record<string, unknown> | null, orgName
       parts.push(`- ${ach}`);
     }
   }
+
+  // Strategic intelligence from profile (extracted by Gemini)
+  if (profile.theory_of_change && !mem.get('theory_of_change')) parts.push(`\nתיאוריית שינוי: ${profile.theory_of_change}`);
+  if (profile.unique_model && !mem.get('unique_model') && !mem.get('מודל_פעולה')) parts.push(`מודל ייחודי: ${profile.unique_model}`);
+  if (Array.isArray(profile.strengths) && (profile.strengths as string[]).length > 0) parts.push(`חוזקות: ${(profile.strengths as string[]).join(', ')}`);
+  if (Array.isArray(profile.challenges) && (profile.challenges as string[]).length > 0) parts.push(`אתגרים: ${(profile.challenges as string[]).join(', ')}`);
+  if (Array.isArray(profile.sub_populations) && (profile.sub_populations as string[]).length > 0 && !mem.get('sub_populations')) parts.push(`תתי-אוכלוסיות: ${(profile.sub_populations as string[]).join(', ')}`);
+  if (profile.age_range && !mem.get('age_range')) parts.push(`טווח גילאים: ${profile.age_range}`);
+  if (Array.isArray(profile.certifications) && (profile.certifications as string[]).length > 0 && !mem.get('אישורים')) parts.push(`אישורים: ${(profile.certifications as string[]).join(', ')}`);
 
   // Summary
   if (profile.summary) parts.push(`\nסיכום: ${profile.summary}`);
