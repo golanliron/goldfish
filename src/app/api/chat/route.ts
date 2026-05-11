@@ -881,15 +881,12 @@ async function scanOpportunities(
     if (filtered.length === 0) return '';
 
     // AI scoring — enrich with org memory for better matching
-    let orgContext = buildOrgContext(profileData, orgName);
     const { data: memories } = await supabase
       .from('org_memory')
       .select('key, value')
       .eq('org_id', orgId)
       .limit(30);
-    if (memories?.length) {
-      orgContext += '\n\nנתוני ליבה מאומתים:\n' + memories.map(m => `${m.key}: ${m.value}`).join('\n');
-    }
+    const orgContext = buildOrgContext(profileData, orgName, memories || undefined);
     const oppList = filtered.map((o, i) =>
       `${i + 1}. "${o.title}" | קטגוריות: ${o.categories?.join(', ') || '-'} | אוכלוסיות: ${o.target_populations?.join(', ') || '-'} | דדליין: ${o.deadline || '-'} | גוף: ${o.funder || '-'}${o.description ? ` | תיאור: ${o.description.slice(0, 150)}` : ''}`
     ).join('\n');
@@ -1717,14 +1714,13 @@ export async function POST(request: NextRequest) {
     ]);
 
     const urlContent = formatUrlsForMessage(fetchedUrls);
-    const orgContext = buildOrgContext(profile?.data ?? null, org?.name ?? null);
 
     // Load knowledge layers — only what's needed for this tab
     const isCompanyTab = active_tab === 'business' || active_tab === 'foundations';
     const isOpportunityTab = active_tab === 'opportunities';
     const isOrgTab = active_tab === 'org';
 
-    const [opportunityContext, companyContext, sectorContext, companiesIndex, grantsIndex, fundersIndex, orgMemory, submissionHistory] = await Promise.all([
+    const [opportunityContext, companyContext, sectorContext, companiesIndex, grantsIndex, fundersIndex, orgMemory, submissionHistory, rawMemories] = await Promise.all([
       isOpportunityTab
         ? scanOpportunities(supabase, org_id, profile?.data as Record<string, unknown> | null, org?.name ?? null, message)
         : Promise.resolve(''),
@@ -1737,10 +1733,17 @@ export async function POST(request: NextRequest) {
       isCompanyTab ? loadFundersIndex(supabase) : Promise.resolve(''),
       loadOrgMemory(supabase, org_id),
       isOrgTab ? Promise.resolve('') : loadSubmissionHistory(supabase, org_id),
+      supabase.from('org_memory').select('key, value').eq('org_id', org_id).limit(50).then(r => r.data as { key: string; value: string }[] || []),
     ]);
+
+    // Build org context with memory overrides (memory has verified data that's more accurate than profile)
+    const orgContext = buildOrgContext(profile?.data ?? null, org?.name ?? null, rawMemories);
 
     // Tab-specific focus instructions
     const TAB_FOCUS: Record<string, string> = {
+      chat: `\n\n===== צ׳אט ראשי =====
+יש לך כרטיס ארגון מאומת ואת כל המסמכים. כשעונה על שאלות, השתמש בנתונים אמיתיים. כשמבקשים לכתוב הגשה, שלוף מספרים מכרטיס הארגון ומהמחקר. כשמציע קולות קוראים, ודא שהם באמת מתאימים לתחום הארגון.
+כלל סגנון: תכתוב כמו בן אדם. בלי כוכביות, בלי מקפים, בלי כותרות. פסקאות חופשיות.`,
       opportunities: `\n\n===== הקשר נוכחי: קולות קוראים =====
 המשתמש בלשונית קולות קוראים. יש לך את כל המסמכים של הארגון. השתמש בהם.
 
