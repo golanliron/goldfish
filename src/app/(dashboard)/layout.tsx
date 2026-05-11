@@ -116,8 +116,9 @@ function DashboardInner({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="h-dvh flex items-center justify-center bg-bg">
+      <div className="h-dvh flex flex-col items-center justify-center bg-bg gap-3">
         <FishLogo size={48} className="swim" />
+        <p className="text-sm text-muted animate-pulse">שוחה בשבילך נגד הזרם...</p>
       </div>
     );
   }

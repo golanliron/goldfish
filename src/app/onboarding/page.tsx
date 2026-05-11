@@ -25,11 +25,19 @@ export default function OnboardingPage() {
   const [urlDone, setUrlDone] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const grantInputRef = useRef<HTMLInputElement>(null);
-  const { orgId } = useAuth();
+  const { orgId, loading: authLoading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!orgId) return;
+    // Still loading auth
+    if (authLoading) return;
+
+    // Auth done but no orgId — shouldn't happen (middleware redirects), but handle gracefully
+    if (!orgId) {
+      setStep('welcome');
+      return;
+    }
+
     const supabase = createClient();
     supabase
       .from('org_profiles')
@@ -44,7 +52,7 @@ export default function OnboardingPage() {
           setStep('welcome');
         }
       });
-  }, [orgId, router]);
+  }, [orgId, authLoading, router]);
 
   const uploadFile = async (file: File, index: number) => {
     if (!orgId) return;
@@ -124,8 +132,9 @@ export default function OnboardingPage() {
 
   if (step === 'loading') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-bg">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-bg gap-3">
         <FishLogo size={48} className="swim" />
+        <p className="text-sm text-muted animate-pulse">שוחה בשבילך נגד הזרם...</p>
       </div>
     );
   }
