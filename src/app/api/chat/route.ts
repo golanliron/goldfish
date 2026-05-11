@@ -1560,18 +1560,21 @@ export async function POST(request: NextRequest) {
     const urlContent = formatUrlsForMessage(fetchedUrls);
     const orgContext = buildOrgContext(profile?.data ?? null, org?.name ?? null);
 
-    // Load all knowledge layers in parallel
+    // Load knowledge layers — only what's needed for this tab
+    const isCompanyTab = active_tab === 'business' || active_tab === 'foundations';
+    const isOpportunityTab = active_tab === 'opportunities';
+
     const [opportunityContext, companyContext, sectorContext, companiesIndex, grantsIndex, fundersIndex, orgMemory, submissionHistory] = await Promise.all([
-      scanOpportunities(
-        supabase, org_id, profile?.data as Record<string, unknown> | null, org?.name ?? null, message
-      ),
-      scanCompanies(
-        supabase, profile?.data as Record<string, unknown> | null, org?.name ?? null, message
-      ),
+      isOpportunityTab
+        ? scanOpportunities(supabase, org_id, profile?.data as Record<string, unknown> | null, org?.name ?? null, message)
+        : Promise.resolve(''),
+      isCompanyTab
+        ? scanCompanies(supabase, profile?.data as Record<string, unknown> | null, org?.name ?? null, message)
+        : Promise.resolve(''),
       loadSectorIntelligence(supabase, message),
-      loadCompaniesIndex(supabase),
-      loadGrantsIndex(),
-      loadFundersIndex(supabase),
+      isCompanyTab ? loadCompaniesIndex(supabase) : Promise.resolve(''),
+      isOpportunityTab || active_tab === 'chat' ? loadGrantsIndex() : Promise.resolve(''),
+      isCompanyTab ? loadFundersIndex(supabase) : Promise.resolve(''),
       loadOrgMemory(supabase, org_id),
       loadSubmissionHistory(supabase, org_id),
     ]);
