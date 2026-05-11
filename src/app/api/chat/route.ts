@@ -880,15 +880,24 @@ async function scanOpportunities(
 
     if (filtered.length === 0) return '';
 
-    // AI scoring
-    const orgContext = buildOrgContext(profileData, orgName);
+    // AI scoring — enrich with org memory for better matching
+    let orgContext = buildOrgContext(profileData, orgName);
+    const { data: memories } = await supabase
+      .from('org_memory')
+      .select('key, value')
+      .eq('org_id', orgId)
+      .limit(30);
+    if (memories?.length) {
+      orgContext += '\n\nנתוני ליבה מאומתים:\n' + memories.map(m => `${m.key}: ${m.value}`).join('\n');
+    }
     const oppList = filtered.map((o, i) =>
-      `${i + 1}. "${o.title}" | קטגוריות: ${o.categories?.join(', ') || '-'} | אוכלוסיות: ${o.target_populations?.join(', ') || '-'} | דדליין: ${o.deadline || '-'} | גוף: ${o.funder || '-'}`
+      `${i + 1}. "${o.title}" | קטגוריות: ${o.categories?.join(', ') || '-'} | אוכלוסיות: ${o.target_populations?.join(', ') || '-'} | דדליין: ${o.deadline || '-'} | גוף: ${o.funder || '-'}${o.description ? ` | תיאור: ${o.description.slice(0, 150)}` : ''}`
     ).join('\n');
 
     const res = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      system: `אתה מומחה גיוס משאבים ישראלי. דרג כל קול קורא 1-10 לפי התאמה **ספציפית** לארגון.
+      system: `אתה מומחה גיוס משאבים ישראלי. דרג כל קול קורא 1-10 לפי התאמה ספציפית לארגון.
+קרא בעיון את נתוני הליבה של הארגון וודא שאתה מבין מה הם באמת עושים לפני שאתה נותן ציון.
 קריטריונים: תחום פעילות (30%), אוכלוסיית יעד (30%), גיאוגרפיה (25%), גודל ארגון (15%).
 
 כללים קריטיים:
@@ -1473,8 +1482,8 @@ async function loadOrgMemory(
     if (!memories?.length) return '';
 
     const lines = memories.map(m => `${m.key}: ${m.value}`);
-    return `\n\n===== זיכרון ארגוני (${memories.length} פריטים) =====
-מידע שנאסף משיחות קודמות. השתמש בו כדי להמשיך מאיפה שעצרת:
+    return `\n\n===== כרטיס ארגון (${memories.length} עובדות מאומתות) =====
+אלה נתונים אמיתיים שנשלפו מהמסמכים הרשמיים של הארגון. השתמש בהם תמיד. אל תשאל שאלות שהתשובות כאן.
 ${lines.join('\n')}`;
   } catch (e) {
     console.error('Org memory load error:', e);
