@@ -30,14 +30,26 @@ export default function OnboardingPage() {
   const orgId = authOrgId || localOrgId;
   const router = useRouter();
 
-  // Fallback: if auth context doesn't have orgId, fetch it directly
+  // Fallback: if auth context doesn't have orgId, fetch it directly (with retry)
   useEffect(() => {
     if (authOrgId || !user) return;
     const supabase = createClient();
-    supabase.from('users').select('org_id').eq('id', user.id).single()
-      .then(({ data }) => {
-        if (data?.org_id) setLocalOrgId(data.org_id);
-      }, () => {});
+    let cancelled = false;
+    const tryFetch = (attempt: number) => {
+      supabase.from('users').select('org_id').eq('id', user.id).single()
+        .then(({ data }) => {
+          if (cancelled) return;
+          if (data?.org_id) {
+            setLocalOrgId(data.org_id);
+          } else if (attempt < 3) {
+            setTimeout(() => tryFetch(attempt + 1), 1500);
+          }
+        }, () => {
+          if (!cancelled && attempt < 3) setTimeout(() => tryFetch(attempt + 1), 1500);
+        });
+    };
+    tryFetch(0);
+    return () => { cancelled = true; };
   }, [authOrgId, user]);
 
   // Global safety timeout — never stay stuck, even if auth hangs

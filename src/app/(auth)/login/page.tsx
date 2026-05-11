@@ -35,10 +35,17 @@ function LoginInner() {
       if (authError) {
         setError('מייל או סיסמה שגויים');
         setLoading(false);
-      } else {
-        const dest = email === 'golanliron1@gmail.com' ? '/dashboard' : '/onboarding';
-        window.location.href = dest;
+        return;
       }
+
+      // Auth succeeded — force navigate with fallback
+      const dest = email === 'golanliron1@gmail.com' ? '/dashboard' : '/onboarding';
+      // Try immediate navigation
+      window.location.href = dest;
+      // Fallback: if still here after 2s, force reload
+      setTimeout(() => {
+        window.location.replace(dest);
+      }, 2000);
     } catch (err) {
       setError(`שגיאת התחברות: ${err}`);
       setLoading(false);
