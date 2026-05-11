@@ -107,6 +107,7 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
   const [freeText, setFreeText] = useState('');
   const [savingText, setSavingText] = useState(false);
   const [expandedMission, setExpandedMission] = useState(false);
+  const [textSaved, setTextSaved] = useState<string | null>(null);
   const [driveUrl, setDriveUrl] = useState('');
   const [connectingDrive, setConnectingDrive] = useState(false);
   const [driveStatus, setDriveStatus] = useState<string | null>(null);
@@ -633,8 +634,9 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
             onClick={async () => {
               if (!orgId || !freeText.trim()) return;
               setSavingText(true);
+              setTextSaved(null);
               try {
-                await fetch('/api/upload', {
+                const res = await fetch('/api/upload', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
@@ -644,9 +646,13 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
                     filename: 'תיאור חופשי.txt',
                   }),
                 });
+                const data = await res.json();
                 setFreeText('');
+                setTextSaved(data.summary || 'Goldfish קרא ולמד את התוכן');
                 loadData();
-              } catch {}
+              } catch {
+                setTextSaved('שגיאה בשמירה, נסו שוב');
+              }
               setSavingText(false);
             }}
             disabled={savingText}
@@ -654,6 +660,11 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
           >
             {savingText ? 'שומר...' : 'שמור. Goldfish ילמד את זה'}
           </button>
+        )}
+        {textSaved && (
+          <p className={`text-[11px] mt-2 leading-relaxed ${textSaved.includes('שגיאה') ? 'text-red-500' : 'text-green-600'}`}>
+            {textSaved}
+          </p>
         )}
       </div>
 
