@@ -1531,7 +1531,8 @@ export async function POST(request: NextRequest) {
     const { message, conversation_id, org_id, user_id, active_tab } = await request.json();
 
     if (!message || !org_id || !user_id) {
-      return Response.json({ error: 'Missing required fields' }, { status: 400 });
+      console.error('Missing required fields:', { message: !!message, org_id, user_id });
+      return Response.json({ error: 'Missing required fields', debug: { hasMessage: !!message, org_id, user_id } }, { status: 400 });
     }
 
     const supabase = createAdminClient();
