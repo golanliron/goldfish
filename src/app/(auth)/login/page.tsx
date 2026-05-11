@@ -28,15 +28,20 @@ function LoginInner() {
     setLoading(true);
     setError('');
 
-    const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    try {
+      const supabase = createClient();
+      const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
 
-    if (error) {
-      setError('מייל או סיסמה שגויים');
+      if (authError) {
+        setError('מייל או סיסמה שגויים');
+        setLoading(false);
+      } else {
+        const dest = email === 'golanliron1@gmail.com' ? '/dashboard' : '/onboarding';
+        window.location.href = dest;
+      }
+    } catch (err) {
+      setError(`שגיאת התחברות: ${err}`);
       setLoading(false);
-    } else {
-      // Admin goes straight to dashboard, others to onboarding
-      window.location.href = email === 'golanliron1@gmail.com' ? '/dashboard' : '/onboarding';
     }
   };
 
