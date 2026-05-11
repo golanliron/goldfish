@@ -145,11 +145,15 @@ export default function BusinessTab({ orgId, companyTypeFilter }: BusinessTabPro
     return parts;
   };
 
+  const sendToChat = (detail: string) => {
+    window.dispatchEvent(new CustomEvent('fishgold:closeSidebar'));
+    setTimeout(() => window.dispatchEvent(new CustomEvent('fishgold:send', { detail })), 50);
+  };
+
   const handleAskGoldfish = (company: Company) => {
     const parts = buildCompanyContext(company);
     parts.push(`\nנתח את החברה הזאת. למי הם תורמים? למה שווה לפנות אליהם? מה החיבור לארגון שלנו? תציע דרך פנייה.`);
-    window.dispatchEvent(new CustomEvent('fishgold:send', { detail: parts.join('\n') }));
-    window.dispatchEvent(new CustomEvent('fishgold:closeSidebar'));
+    sendToChat(parts.join('\n'));
   };
 
   const handleScanFund = (company: Company) => {
@@ -161,8 +165,7 @@ export default function BusinessTab({ orgId, companyTypeFilter }: BusinessTabPro
     parts.push(`4. אם יש התאמה — מה בדיוק הכי מחבר? איזה פרויקט שלנו הכי רלוונטי?`);
     parts.push(`5. מה הדרך הטובה ביותר לפנות אליהם? מי איש הקשר? מה הטון?`);
     parts.push(`\nתן תשובה מסודרת עם כותרות. אם יש מידע שאתה לא בטוח בו — אמור.`);
-    window.dispatchEvent(new CustomEvent('fishgold:send', { detail: parts.join('\n') }));
-    window.dispatchEvent(new CustomEvent('fishgold:closeSidebar'));
+    sendToChat(parts.join('\n'));
   };
 
   const handleDraftEmail = (company: Company) => {
@@ -177,8 +180,7 @@ export default function BusinessTab({ orgId, companyTypeFilter }: BusinessTabPro
     if (company.contact_email) parts.push(`מייל: ${company.contact_email}`);
     if (company.website) parts.push(`אתר: ${company.website}`);
     parts.push(`\nתנסח מייל פנייה חכם ל${company.name}. קח מילים מתוך מה שהם עושים וחבר לארגון שלנו. אל תבקש כסף. תציע חיבור, שותפות, או שיחה. המייל חייב להרגיש כתוב אישית, לא template.`);
-    window.dispatchEvent(new CustomEvent('fishgold:send', { detail: parts.join('\n') }));
-    window.dispatchEvent(new CustomEvent('fishgold:closeSidebar'));
+    sendToChat(parts.join('\n'));
   };
 
   const activeFilters = [selectedType, minRelevance, fundSubType].filter(Boolean).length;

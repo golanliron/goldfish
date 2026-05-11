@@ -398,9 +398,9 @@ function OpportunityCard({ opp, match }: { opp: Opportunity; match?: MatchScore 
     if (opp.eligibility) parts.push(`תנאי סף: ${opp.eligibility}`);
     if (opp.how_to_apply) parts.push(`אופן הגשה: ${opp.how_to_apply}`);
     const detail = parts.join('\n');
-    window.dispatchEvent(new CustomEvent('fishgold:send', { detail }));
-    // Close sidebar on mobile so user sees the chat
+    // Close sidebar first (mobile), then send after ChatPanel mounts
     window.dispatchEvent(new CustomEvent('fishgold:closeSidebar'));
+    setTimeout(() => window.dispatchEvent(new CustomEvent('fishgold:send', { detail })), 50);
   };
 
   return (
