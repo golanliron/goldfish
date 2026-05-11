@@ -168,6 +168,88 @@ export interface Match {
   created_at: string;
 }
 
+// ===== RFP Parsing — Extracted structure from a specific grant application =====
+
+export interface RfpQuestion {
+  id: string;                    // e.g. "q1", "q2"
+  question: string;              // The actual question text
+  section: string;               // Section it belongs to (e.g. "org_identity", "project", "budget")
+  char_limit?: number;           // Character limit if specified
+  word_limit?: number;           // Word limit if specified
+  is_required: boolean;          // Whether it's mandatory
+  field_type: 'text' | 'number' | 'date' | 'file' | 'dropdown' | 'budget_table';
+  mapped_block?: OrgBlockType;   // Which org block answers this question
+}
+
+export interface RfpEligibility {
+  min_annual_budget?: number;    // e.g. 2000000
+  min_years_active?: number;     // e.g. 3
+  required_org_type?: string[];  // e.g. ["amuta", "public_benefit"]
+  required_regions?: string[];
+  required_populations?: string[];
+  max_funding_percent?: number;  // e.g. 30 (max 30% of project budget)
+  min_self_funding?: number;     // e.g. 15 (must fund 15% yourself)
+  overhead_cap?: number;         // e.g. 22 (max 22% overhead)
+  other_conditions?: string[];
+}
+
+export interface RfpStructure {
+  id?: string;
+  org_id: string;
+  opportunity_id?: string;       // Link to opportunities table
+  funder_name: string;
+  funder_type: 'government' | 'foundation' | 'corporate' | 'federation' | 'other';
+  rfp_title: string;
+  deadline?: string;
+  max_amount?: number;
+  questions: RfpQuestion[];
+  required_documents: string[];
+  eligibility: RfpEligibility;
+  evaluation_criteria?: { criterion: string; weight: number }[];
+  raw_text?: string;             // Original text for reference
+  parsed_at: string;
+}
+
+// ===== Org Blocks — Reusable content blocks per organization =====
+
+export type OrgBlockType =
+  | 'identity'        // Who we are
+  | 'problem'         // The need/problem we address
+  | 'solution'        // What we do / methodology
+  | 'capacity'        // Track record, team, experience
+  | 'budget'          // Financial data
+  | 'measurement'     // KPIs, evaluation, Theory of Change
+  | 'documents';      // Required docs checklist
+
+export type BlockLength = 'mini' | 'standard' | 'extended';
+
+export interface OrgBlock {
+  id?: string;
+  org_id: string;
+  block_type: OrgBlockType;
+  project_id?: string;           // null = org-wide, string = project-specific
+  content: {
+    mini: string;                // Up to 500 chars
+    standard: string;            // Up to 1500 chars
+    extended: string;            // Up to 2500 chars
+  };
+  metadata?: Record<string, unknown>;  // Extra structured data (e.g. budget table, KPI list)
+  last_updated: string;
+  auto_generated: boolean;       // true = AI generated from docs, false = user edited
+}
+
+// ===== Readiness Score =====
+
+export interface ReadinessResult {
+  score: number;                 // 0-100
+  eligible: boolean;             // Passes all threshold conditions
+  eligibility_issues: string[];  // What fails (e.g. "מחזור מתחת ל-2M")
+  blocks_ready: { block: OrgBlockType; available: boolean; freshness: 'fresh' | 'stale' | 'missing' }[];
+  documents_ready: { doc: string; status: 'valid' | 'expired' | 'missing' }[];
+  missing_answers: string[];     // Questions we can't answer from blocks
+  estimated_completion: number;  // Minutes to complete missing parts
+}
+
 // ===== Submissions =====
 
 export interface Submission {

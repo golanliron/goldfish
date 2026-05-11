@@ -6,6 +6,8 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { createGrantsClient } from '@/lib/supabase/grants-db';
 import { FISHGOLD_SYSTEM_PROMPT, FISHGOLD_GRANT_EXPERTISE, FISHGOLD_SECTOR_KNOWLEDGE, buildContext, buildOrgContext } from '@/lib/ai/fishgold';
 import { FEDERATION_INTELLIGENCE } from '@/lib/ai/federation-intelligence';
+import { parseRfp, checkReadiness, assembleSubmission, generateOrgBlocks, formatReadinessReport } from '@/lib/ai/submission-engine';
+import type { OrgBlock, OrgBlockType, RfpStructure } from '@/types';
 // pdf-parse imported dynamically where needed to avoid serverless init failures
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -575,6 +577,113 @@ ${alertLines.join('\n')}
   } catch {
     return { knowledge: '', rag: '', docSummary: '' };
   }
+}
+
+// ===== Submission Engine Integration =====
+
+const RFP_PARSE_KEYWORDS = ['נתח קול קורא', 'נתח את הקול קורא', 'תנתח קול קורא', 'תנתח את זה', 'בדוק מוכנות', 'בדיקת מוכנות', 'בדוק התאמה', 'האם אנחנו מתאימים', 'תבדוק אם מתאים', 'parse rfp', 'analyze rfp'];
+
+function userAsksForRfpParse(message: string): boolean {
+  return RFP_PARSE_KEYWORDS.some((kw) => message.toLowerCase().includes(kw.toLowerCase()));
+}
+
+async function loadOrgBlocks(
+  supabase: ReturnType<typeof createAdminClient>,
+  orgId: string,
+  projectId?: string
+): Promise<OrgBlock[]> {
+  const { data } = await supabase
+    .from('org_blocks')
+    .select('*')
+    .eq('org_id', orgId)
+    .order('block_type');
+
+  if (!data?.length) return [];
+
+  return data.map((row: Record<string, unknown>) => ({
+    id: row.id as string,
+    org_id: row.org_id as string,
+    block_type: row.block_type as OrgBlockType,
+    project_id: row.project_id as string | undefined,
+    content: {
+      mini: (row.content_mini as string) || '',
+      standard: (row.content_standard as string) || '',
+      extended: (row.content_extended as string) || '',
+    },
+    metadata: (row.metadata as Record<string, unknown>) || {},
+    last_updated: (row.last_updated as string) || new Date().toISOString(),
+    auto_generated: (row.auto_generated as boolean) ?? true,
+  }));
+}
+
+async function saveOrgBlocks(
+  supabase: ReturnType<typeof createAdminClient>,
+  orgId: string,
+  blocks: Partial<Record<OrgBlockType, OrgBlock>>
+): Promise<void> {
+  for (const [blockType, block] of Object.entries(blocks)) {
+    if (!block) continue;
+    await supabase
+      .from('org_blocks')
+      .upsert({
+        org_id: orgId,
+        block_type: blockType,
+        content_mini: block.content.mini,
+        content_standard: block.content.standard,
+        content_extended: block.content.extended,
+        metadata: block.metadata || {},
+        auto_generated: block.auto_generated ?? true,
+        last_updated: new Date().toISOString(),
+      }, { onConflict: 'org_id,block_type,COALESCE(project_id, \'__org__\')' })
+      .then(undefined, (err: unknown) => {
+        // Fallback: try without onConflict — delete + insert
+        console.error('Upsert failed, trying delete+insert:', err);
+        return supabase
+          .from('org_blocks')
+          .delete()
+          .eq('org_id', orgId)
+          .eq('block_type', blockType)
+          .is('project_id', null)
+          .then(() =>
+            supabase.from('org_blocks').insert({
+              org_id: orgId,
+              block_type: blockType,
+              content_mini: block.content.mini,
+              content_standard: block.content.standard,
+              content_extended: block.content.extended,
+              metadata: block.metadata || {},
+              auto_generated: block.auto_generated ?? true,
+              last_updated: new Date().toISOString(),
+            })
+          );
+      });
+  }
+}
+
+async function saveRfpParsed(
+  supabase: ReturnType<typeof createAdminClient>,
+  orgId: string,
+  rfp: RfpStructure
+): Promise<string | null> {
+  const { data } = await supabase
+    .from('rfp_parsed')
+    .insert({
+      org_id: orgId,
+      funder_name: rfp.funder_name,
+      funder_type: rfp.funder_type,
+      rfp_title: rfp.rfp_title,
+      deadline: rfp.deadline || null,
+      max_amount: rfp.max_amount || null,
+      questions: rfp.questions,
+      required_documents: rfp.required_documents,
+      eligibility: rfp.eligibility,
+      evaluation_criteria: rfp.evaluation_criteria || [],
+      raw_text: rfp.raw_text?.slice(0, 50000) || null,
+    })
+    .select('id')
+    .single();
+
+  return (data as { id: string } | null)?.id || null;
 }
 
 // ===== Grant Writing Detection & Full Document Loading =====
@@ -1646,7 +1755,99 @@ export async function POST(request: NextRequest) {
       console.log(`Grant writing mode: loaded ${grantWritingContext.length} chars of full documents`);
     }
 
-    let systemPrompt = FISHGOLD_SYSTEM_PROMPT + FISHGOLD_GRANT_EXPERTISE + FISHGOLD_SECTOR_KNOWLEDGE + FEDERATION_INTELLIGENCE + tabFocus + orgContext + orgMemory + submissionHistory + docSummary + knowledge + rag + grantWritingContext + opportunityContext + companyContext + companiesIndex + grantsIndex + fundersIndex + sectorContext;
+    // Submission Engine: RFP parsing + readiness check + org blocks
+    let submissionEngineContext = '';
+    try {
+      if (userAsksForRfpParse(message) || userAsksForGrantWriting(message)) {
+        // Load existing blocks
+        let blocks = await loadOrgBlocks(supabase, org_id);
+
+        // If no blocks exist yet, generate them from documents
+        if (blocks.length === 0 && profile?.data) {
+          const { data: docs } = await supabase
+            .from('documents')
+            .select('filename, category, parsed_text')
+            .eq('org_id', org_id)
+            .in('category', ['identity', 'budget', 'project', 'impact', 'programs', 'submission'])
+            .limit(10);
+
+          if (docs?.length) {
+            console.log(`Generating org blocks from ${docs.length} documents...`);
+            const docTexts = docs
+              .filter((d: { parsed_text: string | null }) => d.parsed_text)
+              .map((d: { category: string; parsed_text: string | null; filename: string }) => ({
+                category: d.category,
+                text: d.parsed_text || '',
+                filename: d.filename,
+              }));
+
+            const generated = await generateOrgBlocks(profile.data as import('@/types').OrgProfileData, docTexts);
+            await saveOrgBlocks(supabase, org_id, generated);
+            blocks = await loadOrgBlocks(supabase, org_id);
+            console.log(`Generated and saved ${blocks.length} org blocks`);
+          }
+        }
+
+        // If there's a URL in the message that might be an RFP, or if fetchedUrls contain RFP content
+        const rfpText = fetchedUrls.find(u => u.content.length > 500)?.content;
+
+        if (rfpText && userAsksForRfpParse(message)) {
+          console.log('Parsing RFP...');
+          const rfp = await parseRfp(rfpText);
+          rfp.org_id = org_id;
+          const rfpId = await saveRfpParsed(supabase, org_id, rfp);
+          console.log(`RFP parsed: ${rfp.questions.length} questions, saved as ${rfpId}`);
+
+          // Load org docs for readiness check
+          const { data: orgDocs } = await supabase
+            .from('documents')
+            .select('filename, category, metadata')
+            .eq('org_id', org_id);
+
+          const readiness = checkReadiness(
+            rfp,
+            (profile?.data || {}) as import('@/types').OrgProfileData,
+            blocks,
+            (orgDocs || []) as { filename: string; category: string; metadata?: Record<string, unknown> }[]
+          );
+
+          const assembled = assembleSubmission(rfp, blocks);
+          const answeredCount = assembled.filter(a => a.answer && !a.answer.startsWith('[נדרש')).length;
+
+          submissionEngineContext = `\n\n===== ניתוח קול קורא — מנוע הגשות =====
+קול קורא: ${rfp.rfp_title}
+גוף מממן: ${rfp.funder_name} (${rfp.funder_type})
+${rfp.deadline ? `דדליין: ${rfp.deadline}` : ''}
+${rfp.max_amount ? `סכום מקסימלי: ${rfp.max_amount.toLocaleString()} ₪` : ''}
+
+שאלות שזוהו: ${rfp.questions.length}
+שאלות שיש תשובה מוכנה: ${answeredCount}/${rfp.questions.length}
+מסמכים נדרשים: ${rfp.required_documents.join(', ') || 'לא צוינו'}
+
+${formatReadinessReport(readiness, rfp.rfp_title)}
+
+תנאי סף: ${rfp.eligibility.other_conditions?.join('; ') || 'לא צוינו'}
+${rfp.evaluation_criteria?.length ? `קריטריוני הערכה: ${rfp.evaluation_criteria.map(c => `${c.criterion} (${c.weight}%)`).join(', ')}` : ''}
+
+הנחיות: הצג את הניתוח למשתמש. אם ציון המוכנות נמוך — הסבר מה חסר ואיך להשלים. אם גבוה — הצע להתחיל לכתוב טיוטה.`;
+
+        } else if (blocks.length > 0) {
+          // Just let Claude know about available blocks
+          const blockSummary = blocks.map(b =>
+            `${b.block_type}: ${b.content.standard.slice(0, 100)}...`
+          ).join('\n');
+
+          submissionEngineContext = `\n\n===== בלוקי תוכן מוכנים (${blocks.length}) =====
+${blockSummary}
+הנחיה: יש בלוקי תוכן מוכנים לארגון. כשכותב הגשה — השתמש בהם כבסיס והתאם לקול הקורא הספציפי.`;
+        }
+      }
+    } catch (engineErr) {
+      console.error('Submission engine error:', engineErr);
+      // Non-fatal — continue without engine context
+    }
+
+    let systemPrompt = FISHGOLD_SYSTEM_PROMPT + FISHGOLD_GRANT_EXPERTISE + FISHGOLD_SECTOR_KNOWLEDGE + FEDERATION_INTELLIGENCE + tabFocus + orgContext + orgMemory + submissionHistory + docSummary + knowledge + rag + grantWritingContext + submissionEngineContext + opportunityContext + companyContext + companiesIndex + grantsIndex + fundersIndex + sectorContext;
 
     // Safety: truncate system prompt if too large (Claude Sonnet context = 200K tokens ~ 600K chars)
     // Leave room for conversation history + response
