@@ -144,6 +144,11 @@ async function handleDriveFolder(
       const listUrl = `https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents+and+trashed=false&key=${apiKey}&fields=files(id,name,mimeType,size)&pageSize=50`;
       const res = await fetch(listUrl);
 
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => '');
+        console.error(`Drive API ${res.status}: ${errBody.slice(0, 500)}`);
+      }
+
       if (res.ok) {
         const data = await res.json();
         const files = data.files || [];
@@ -227,6 +232,8 @@ async function handleDriveFolder(
     } catch (e) {
       console.error('Drive API error:', e);
     }
+  } else {
+    console.error('GOOGLE_API_KEY not set — cannot read Drive folders');
   }
 
   const text = filesFound > 0
