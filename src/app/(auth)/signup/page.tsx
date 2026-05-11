@@ -66,7 +66,7 @@ function SignupInner() {
       return;
     }
 
-    router.push('/dashboard');
+    router.push('/onboarding');
   };
 
   const handleGoogleSignup = async () => {

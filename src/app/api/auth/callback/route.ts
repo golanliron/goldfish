@@ -6,7 +6,7 @@ export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl;
   const code = searchParams.get('code');
   const invite = searchParams.get('invite');
-  const next = searchParams.get('next') ?? '/dashboard';
+  const next = searchParams.get('next') ?? '/onboarding';
 
   if (!code) {
     return NextResponse.redirect(`${origin}/login?error=missing_code`);
