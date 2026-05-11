@@ -842,6 +842,18 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
             );
           })}
         </div>
+
+        {/* Bulk upload */}
+        <div className="mt-3 pt-3 border-t border-amber-200/50">
+          <button
+            onClick={() => triggerUpload('identity')}
+            disabled={uploading}
+            className="w-full py-2 text-[11px] font-medium border-2 border-dashed border-amber-300 text-amber-700 rounded-lg hover:bg-amber-50 transition-colors disabled:opacity-50"
+          >
+            {uploading ? 'מעלה...' : 'העלו כמה קבצים יחד'}
+          </button>
+          <p className="text-[9px] text-muted2 mt-1 text-center">PDF, Word, Excel, PPT — ניתן לבחור כמה קבצים בבת אחת</p>
+        </div>
       </div>
 
       {/* Document categories */}
