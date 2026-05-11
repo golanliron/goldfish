@@ -25,8 +25,20 @@ export default function OnboardingPage() {
   const [dragging, setDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
-  const { orgId, loading: authLoading } = useAuth();
+  const { orgId: authOrgId, loading: authLoading, user } = useAuth();
+  const [localOrgId, setLocalOrgId] = useState<string | null>(null);
+  const orgId = authOrgId || localOrgId;
   const router = useRouter();
+
+  // Fallback: if auth context doesn't have orgId, fetch it directly
+  useEffect(() => {
+    if (authOrgId || !user) return;
+    const supabase = createClient();
+    supabase.from('users').select('org_id').eq('id', user.id).single()
+      .then(({ data }) => {
+        if (data?.org_id) setLocalOrgId(data.org_id);
+      }, () => {});
+  }, [authOrgId, user]);
 
   // Global safety timeout — never stay stuck, even if auth hangs
   useEffect(() => {
