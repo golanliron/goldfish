@@ -109,6 +109,12 @@ function DashboardInner({ children }: { children: React.ReactNode }) {
     const saved = localStorage.getItem('fishgold_stage');
     if (saved) setStage(Number(saved) as AppStage);
 
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get('tab');
+    if (tabParam && ['opportunities', 'org', 'business', 'foundations'].includes(tabParam)) {
+      switchTab(tabParam as SidebarTab);
+    }
+
     const closeSidebar = () => switchTab('chat');
     window.addEventListener('fishgold:closeSidebar', closeSidebar);
     return () => window.removeEventListener('fishgold:closeSidebar', closeSidebar);

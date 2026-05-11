@@ -96,7 +96,7 @@ export default function OnboardingPage() {
   };
 
   const finish = async () => {
-    if (!orgId) { router.push('/dashboard'); return; }
+    if (!orgId) { router.push('/dashboard?tab=org'); return; }
     setFinishing(true);
     const supabase = createClient();
     const { data: profile } = await supabase
@@ -112,7 +112,7 @@ export default function OnboardingPage() {
       last_updated: new Date().toISOString(),
     }, { onConflict: 'org_id' });
 
-    router.push('/dashboard');
+    router.push('/dashboard?tab=org');
   };
 
   const categoryLabels: Record<string, string> = {
