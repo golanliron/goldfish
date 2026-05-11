@@ -1,15 +1,23 @@
 'use client';
 
 import ChatPanel from '@/components/chat/ChatPanel';
-
-const DEV_ORG_ID = 'd5f860e8-4958-408c-a00f-679a93f1d470';
-const DEV_USER_ID = 'dev-user';
+import { useAuth } from '@/lib/auth-context';
 
 export default function DashboardPage() {
+  const { orgId, userId, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   return (
     <ChatPanel
-      orgId={DEV_ORG_ID}
-      userId={DEV_USER_ID}
+      orgId={orgId || ''}
+      userId={userId || ''}
       onStageChange={(stage) => {
         localStorage.setItem('fishgold_stage', String(stage));
       }}

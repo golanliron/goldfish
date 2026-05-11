@@ -249,7 +249,7 @@ export default function LandingPage() {
             <a href="#whatsapp" className="text-sm text-text2 hover:text-accent transition-colors">גם בוואטסאפ שלך</a>
             <a href="#pricing" className="text-sm text-text2 hover:text-accent transition-colors">מחירים</a>
             <button
-              onClick={() => router.push('/dashboard')}
+              onClick={() => router.push('/signup')}
               className="px-5 py-2 bg-accent text-white text-sm font-medium rounded-xl hover:bg-accent-hover transition-all hover:scale-105 active:scale-95"
             >
               כניסה למערכת
@@ -280,7 +280,7 @@ export default function LandingPage() {
             <a href="#whatsapp" onClick={() => setMobileMenu(false)} className="block text-sm font-medium py-2 px-3 rounded-xl hover:bg-surf2 transition-colors">גם בוואטסאפ שלך</a>
             <a href="#pricing" onClick={() => setMobileMenu(false)} className="block text-sm font-medium py-2 px-3 rounded-xl hover:bg-surf2 transition-colors">מחירים</a>
             <button
-              onClick={() => { setMobileMenu(false); router.push('/dashboard'); }}
+              onClick={() => { setMobileMenu(false); router.push('/signup'); }}
               className="w-full py-2.5 bg-accent text-white text-sm font-medium rounded-xl hover:bg-accent-hover transition-all"
             >
               כניסה למערכת
@@ -318,7 +318,7 @@ export default function LandingPage() {
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3 fade-up" style={{ animationDelay: '0.6s' }}>
           <button
-            onClick={() => router.push('/dashboard')}
+            onClick={() => router.push('/signup')}
             className="group w-full sm:w-auto px-8 py-4 bg-accent text-white font-semibold rounded-2xl text-base hover:bg-accent-hover transition-all hover:shadow-xl hover:shadow-accent/25 hover:scale-105 active:scale-95"
           >
             <span className="flex items-center justify-center gap-2">
@@ -470,7 +470,7 @@ export default function LandingPage() {
               כתבו לGoldfish...
             </div>
             <button
-              onClick={() => router.push('/dashboard')}
+              onClick={() => router.push('/signup')}
               className="px-4 py-2.5 bg-accent text-white text-[13px] font-medium rounded-xl hover:bg-accent-hover transition-all hover:scale-105 active:scale-95"
             >
               נסו עכשיו
@@ -534,7 +534,7 @@ export default function LandingPage() {
           <div className="px-5 py-3 border-t border-border bg-surf2/30 flex items-center justify-between">
             <span className="text-[11px] text-muted">+ 8 קולות קוראים ו-3 חברות נוספים</span>
             <button
-              onClick={() => router.push('/dashboard')}
+              onClick={() => router.push('/signup')}
               className="text-[12px] font-medium text-accent hover:underline"
             >
               צפו בכולם →
@@ -900,7 +900,7 @@ export default function LandingPage() {
                 ))}
               </ul>
               <button
-                onClick={() => router.push('/dashboard')}
+                onClick={() => router.push('/signup')}
                 className="group w-full py-3 bg-accent text-white font-semibold rounded-xl text-base hover:bg-accent-hover transition-all hover:shadow-md hover:scale-[1.02] active:scale-95"
               >
                 <span className="flex items-center justify-center gap-2">
@@ -945,7 +945,7 @@ export default function LandingPage() {
             בלי התחייבות. אפשר לבטל בכל רגע.
           </p>
           <button
-            onClick={() => router.push('/dashboard')}
+            onClick={() => router.push('/signup')}
             className="group relative px-10 py-4 bg-accent text-white font-semibold rounded-2xl text-base hover:bg-accent-hover transition-all hover:shadow-xl hover:shadow-accent/25 hover:scale-105 active:scale-95"
           >
             <span className="flex items-center justify-center gap-2">
@@ -993,7 +993,7 @@ export default function LandingPage() {
             <span className="text-xs text-muted">סורק. מתאים. כותב הגשות.</span>
           </div>
           <button
-            onClick={() => router.push('/dashboard')}
+            onClick={() => router.push('/signup')}
             className="px-6 py-2.5 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover transition-all hover:scale-105 active:scale-95 whitespace-nowrap shadow-lg shadow-accent/20"
           >
             כניסה למערכת

@@ -1,26 +1,23 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import SplashScreen from '@/components/SplashScreen';
 import FishLogo from '@/components/chat/FishLogo';
 import Link from 'next/link';
 import SidebarPanel from '@/components/sidebar/SidebarPanel';
+import { useAuth } from '@/lib/auth-context';
 import type { AppStage, SidebarTab } from '@/types';
-
-// Dev mode - skip auth entirely
-const DEV_ORG_ID = 'd5f860e8-4958-408c-a00f-679a93f1d470';
-const DEV_USER_ID = 'dev-user';
 
 const MOBILE_TABS: { id: 'chat' | SidebarTab; label: string; icon: string }[] = [
   { id: 'chat', label: 'צ\'אט', icon: 'M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z' },
   { id: 'opportunities', label: 'הגשות', icon: 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z' },
   { id: 'org', label: 'הארגון', icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4' },
-
   { id: 'business', label: 'עסקיות', icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4' },
   { id: 'foundations', label: 'קרנות', icon: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5' },
 ];
 
-function FeedbackModal({ onClose }: { onClose: () => void }) {
+function FeedbackModal({ onClose, orgId }: { onClose: () => void; orgId: string | null }) {
   const [type, setType] = useState<'bug' | 'idea' | 'love' | 'other'>('idea');
   const [text, setText] = useState('');
   const [sent, setSent] = useState(false);
@@ -33,7 +30,7 @@ function FeedbackModal({ onClose }: { onClose: () => void }) {
     try {
       const supabase = (await import('@/lib/supabase/client')).createClient();
       await supabase.from('feedback').insert({
-        org_id: DEV_ORG_ID,
+        org_id: orgId,
         type,
         message: text,
       });
@@ -100,8 +97,9 @@ function DashboardInner({ children }: { children: React.ReactNode }) {
   const [stage, setStage] = useState<AppStage>(0);
   const [mobileTab, setMobileTab] = useState<'chat' | SidebarTab>('chat');
   const [showFeedback, setShowFeedback] = useState(false);
+  const { orgId, user, loading, signOut } = useAuth();
+  const router = useRouter();
 
-  // Broadcast active tab so ChatPanel can update placeholder
   const switchTab = (tab: 'chat' | SidebarTab) => {
     setMobileTab(tab);
     window.dispatchEvent(new CustomEvent('fishgold:activeTab', { detail: tab }));
@@ -116,13 +114,22 @@ function DashboardInner({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('fishgold:closeSidebar', closeSidebar);
   }, []);
 
+  if (loading) {
+    return (
+      <div className="h-dvh flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   if (showSplash) {
     return <SplashScreen onComplete={() => setShowSplash(false)} />;
   }
 
+  const userInitial = user?.user_metadata?.full_name?.[0] || user?.email?.[0]?.toUpperCase() || '?';
+
   return (
     <div className="h-dvh flex flex-col fade-in">
-      {/* Top bar with brand accent */}
       <header className="flex items-center justify-between px-4 py-2 border-b border-border bg-bg2 flex-shrink-0 relative">
         <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-gradient-to-l from-accent via-accent/40 to-transparent" />
         <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
@@ -131,7 +138,6 @@ function DashboardInner({ children }: { children: React.ReactNode }) {
           <span className="text-xs text-muted hidden sm:inline">| מילה של דג זהב</span>
         </Link>
         <div className="flex items-center gap-2">
-          {/* Feedback */}
           <button
             onClick={() => setShowFeedback(true)}
             className="text-[11px] text-muted hover:text-accent transition-colors px-2 py-1 rounded-lg hover:bg-surf2"
@@ -139,7 +145,6 @@ function DashboardInner({ children }: { children: React.ReactNode }) {
           >
             🐟 כתבו לנו
           </button>
-          {/* Share */}
           <button
             onClick={() => {
               if (navigator.share) {
@@ -154,27 +159,29 @@ function DashboardInner({ children }: { children: React.ReactNode }) {
           >
             📤 אהבתם? שתפו חבר
           </button>
-          <div className="w-7 h-7 rounded-full bg-accent text-white flex items-center justify-center text-xs font-bold">
-            ל
-          </div>
+          <button
+            onClick={async () => {
+              await signOut();
+              router.push('/login');
+            }}
+            className="w-7 h-7 rounded-full bg-accent text-white flex items-center justify-center text-xs font-bold hover:bg-accent-hover transition-colors"
+            title="יציאה"
+          >
+            {userInitial}
+          </button>
         </div>
       </header>
 
-      {/* Desktop: Sidebar + Chat side by side */}
       <div className="flex-1 hidden md:flex overflow-hidden">
-        {/* Sidebar - right side (RTL) */}
         <aside className="w-[370px] flex-shrink-0 border-l border-border overflow-hidden bg-bg2">
-          <SidebarPanel stage={stage} orgId={DEV_ORG_ID} />
+          <SidebarPanel stage={stage} orgId={orgId || ''} />
         </aside>
-        {/* Chat */}
         <main className="flex-1 overflow-hidden">
           {children}
         </main>
       </div>
 
-      {/* Mobile: Full screen tabs */}
       <div className="flex-1 md:hidden overflow-hidden flex flex-col">
-        {/* Tab content area */}
         <div className="flex-1 overflow-hidden">
           {mobileTab === 'chat' ? (
             <main className="h-full overflow-hidden">
@@ -182,12 +189,11 @@ function DashboardInner({ children }: { children: React.ReactNode }) {
             </main>
           ) : (
             <div className="h-full overflow-y-auto bg-bg2">
-              <SidebarPanel stage={stage} orgId={DEV_ORG_ID} initialTab={mobileTab as SidebarTab} />
+              <SidebarPanel stage={stage} orgId={orgId || ''} initialTab={mobileTab as SidebarTab} />
             </div>
           )}
         </div>
 
-        {/* Bottom tab bar - app style */}
         <nav className="flex-shrink-0 bg-bg2 border-t border-border safe-area-bottom">
           <div className="flex">
             {MOBILE_TABS.map(tab => (
@@ -210,7 +216,7 @@ function DashboardInner({ children }: { children: React.ReactNode }) {
           </div>
         </nav>
       </div>
-      {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} />}
+      {showFeedback && <FeedbackModal onClose={() => setShowFeedback(false)} orgId={orgId} />}
     </div>
   );
 }
