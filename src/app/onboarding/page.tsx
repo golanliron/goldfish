@@ -62,6 +62,8 @@ export default function OnboardingPage() {
   }, []);
 
   useEffect(() => {
+    const isPreviewMode = typeof window !== 'undefined' && window.location.search.includes('preview=1');
+    if (isPreviewMode) { setReady(true); return; }
     if (authLoading) return;
     if (!orgId) { setReady(true); return; }
 
