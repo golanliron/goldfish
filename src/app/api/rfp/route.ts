@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { geminiCall } from '@/lib/ai/gemini';
 
+export const maxDuration = 120; // seconds — Vercel Pro/Team plan
+
 // POST /api/rfp — parse a grant call (URL or text) and generate a draft submission
 export async function POST(req: NextRequest) {
   const { org_id, url, text, opportunity_id } = await req.json();
@@ -33,7 +35,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  if (!rawText || rawText.length < 50) {
+  if (!rawText || rawText.length < 20) {
     return NextResponse.json({ error: 'לא הצלחתי לקרוא את קול הקורא. נסי להדביק את הטקסט ישירות.' }, { status: 400 });
   }
 

@@ -3,6 +3,8 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import Anthropic from '@anthropic-ai/sdk';
 import { randomUUID } from 'crypto';
 
+export const maxDuration = 120; // seconds — Vercel Pro/Team plan
+
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // GET /api/submissions?org_id=xxx — list all submissions for org
