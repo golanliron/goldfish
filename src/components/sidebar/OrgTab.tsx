@@ -26,8 +26,10 @@ const OFFICIAL_DOC_PATTERNS = /ניהול תקין|ניהול ספרים|סעי�
 
 function getDocBadgeKey(doc: { filename?: string; category?: string }): string {
   const cat = doc.category || 'other';
+  // If category is already official — keep it
+  if (cat === 'official') return 'official';
   // If it's "identity" but matches official patterns, show as "רשמי"
-  if (cat === 'identity' && doc.filename && OFFICIAL_DOC_PATTERNS.test(doc.filename)) {
+  if ((cat === 'identity' || cat === 'other') && doc.filename && OFFICIAL_DOC_PATTERNS.test(doc.filename)) {
     return 'official';
   }
   return cat;
@@ -604,6 +606,41 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
           </p>
         )}
       </div>
+
+      {/* ===== BLOCK 2.5: Document Readiness Card ===== */}
+      {documents.length > 0 && (
+        <div className="rounded-xl border border-border bg-surf p-3">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-xs font-semibold">מסמכים להגשה</h4>
+            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+              missingDocs.length === 0 ? 'bg-green-100 text-green-700' :
+              missingDocs.length <= 2 ? 'bg-amber-100 text-amber-700' :
+              'bg-red-100 text-red-600'
+            }`}>
+              {missingDocs.length === 0 ? 'הכל מוכן' : `חסרים ${missingDocs.length}`}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-1.5">
+            {REQUIRED_DOCS.map((req) => {
+              const docTexts = documents.map(d => `${d.filename} ${(d.metadata as Record<string,unknown>)?.doc_type || ''} ${d.parsed_text?.slice(0, 300) || ''}`);
+              const exists = docTexts.some(t => req.pattern.test(t));
+              return (
+                <div key={req.label} className={`flex items-center gap-1.5 text-[11px] px-2 py-1.5 rounded-lg ${
+                  exists ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'
+                }`}>
+                  <span className="flex-shrink-0">{exists ? '✓' : '✗'}</span>
+                  <span className="truncate">{req.label}</span>
+                </div>
+              );
+            })}
+          </div>
+          {missingDocs.length > 0 && (
+            <p className="text-[10px] text-muted mt-2 leading-relaxed">
+              מסמכים חסרים עלולים לעצור הגשה. העלי אותם דרך "הוספת מסמך" למטה.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* ===== BLOCK 3: Document File — flat list with filters ===== */}
       {documents.length > 0 && (

@@ -323,7 +323,17 @@ async function updateOrgProfile(
   }
 
   // Category-specific overrides (these always update, not just fill gaps)
-  if (category === 'identity') {
+  if (category === 'official') {
+    // Official docs: extract registration numbers, certifications
+    for (const key of ['registration_number', 'certifications', 'founded_year']) {
+      if (newData[key]) merged[key] = newData[key];
+    }
+    // Track which official docs exist
+    const officialDocs = (merged.official_docs as string[]) || [];
+    if (newData.doc_type && !officialDocs.includes(newData.doc_type as string)) {
+      merged.official_docs = [...officialDocs, newData.doc_type as string];
+    }
+  } else if (category === 'identity') {
     for (const key of ['name', 'registration_number', 'founded_year', 'mission', 'focus_areas', 'target_populations', 'regions', 'beneficiaries_count', 'employees_count', 'volunteers_count']) {
       if (newData[key]) merged[key] = newData[key];
     }
