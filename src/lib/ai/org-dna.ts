@@ -201,23 +201,84 @@ export const HEBREW_TAG_TO_DOMAIN: Record<string, string> = {
 };
 
 export const HEBREW_TAG_TO_POPULATION: Record<string, string> = {
+  // Youth
   'ילדים ונוער': 'youth',
   'כללי (ילדים ונוער)': 'youth',
+  'נוער': 'youth',
+  'ילדים': 'youth',
+  'בני נוער': 'youth',
+  // At-risk youth
   'ילדים ונוער בסיכון': 'youth_at_risk',
+  'נוער בסיכון': 'youth_at_risk',
+  'צעירים בסיכון': 'youth_at_risk',
+  'נושרים': 'youth_at_risk',
+  'נשירה': 'youth_at_risk',
+  // Young adults
+  'צעירים': 'young_adults',
+  'בוגרים צעירים': 'young_adults',
+  // Women
   'נשים ונערות': 'women',
+  'נשים': 'women',
+  'בנות': 'women',
+  // Disabilities
   'צרכים מיוחדים ומוגבלויות': 'disabilities',
+  'מוגבלויות': 'disabilities',
+  'מוגבלות': 'disabilities',
+  // Elderly
+  'קשישים': 'elderly',
+  'גיל שלישי': 'elderly',
+  'גיל הזהב': 'elderly',
+  // Immigrants/Ethiopian
+  'עולים': 'immigrants',
+  'יוצאי אתיופיה': 'immigrants',
+  'אתיופים': 'immigrants',
+  // Arab society
+  'חברה ערבית': 'arab',
+  'ערבים': 'arab',
+  'בדואים': 'arab',
+  // Haredi
+  'חרדים': 'haredi',
+  'חרדי': 'haredi',
+  // Soldiers
+  'חיילים': 'soldiers',
+  'משוחררים': 'soldiers',
+  'חיילים משוחררים': 'soldiers',
+  // Homeless/poverty
+  'חסרי בית': 'homeless',
+  'דרי רחוב': 'homeless',
+  // Addiction
+  'התמכרות': 'addiction',
+  'גמילה': 'addiction',
+  // LGBTQ
+  'להט"ב': 'lgbtq',
+  // Refugees
+  'פליטים': 'refugees',
+  'מבקשי מקלט': 'refugees',
+  // Prisoners
+  'אסירים': 'prisoners',
+  'שחרורי כלא': 'prisoners',
 };
 
 // Resolve Hebrew tags from company interests array to Goldfish domain/population keys
+// Uses exact map lookup + pattern-based fallback for free-text tags
 export function resolveInterestTags(interests: string[]): { domains: string[]; populations: string[] } {
   const domains = new Set<string>();
   const populations = new Set<string>();
   for (const tag of interests) {
+    // 1. Exact map lookup
     if (HEBREW_TAG_TO_DOMAIN[tag]) domains.add(HEBREW_TAG_TO_DOMAIN[tag]);
     if (HEBREW_TAG_TO_POPULATION[tag]) populations.add(HEBREW_TAG_TO_POPULATION[tag]);
-    // Also treat Goldfish-native keys directly
+    // 2. Native slug passthrough
     if (DOMAIN_PATTERNS.some(d => d.key === tag)) domains.add(tag);
     if (POPULATION_PATTERNS.some(p => p.key === tag)) populations.add(tag);
+    // 3. Pattern-based fallback for free-text Hebrew tags
+    const tagLower = tag.toLowerCase();
+    for (const pop of POPULATION_PATTERNS) {
+      if (pop.patterns.test(tagLower)) populations.add(pop.key);
+    }
+    for (const dom of DOMAIN_PATTERNS) {
+      if (dom.patterns.test(tagLower)) domains.add(dom.key);
+    }
   }
   return { domains: [...domains], populations: [...populations] };
 }
