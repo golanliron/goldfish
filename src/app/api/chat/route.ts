@@ -335,7 +335,15 @@ async function learnFromUrls(
       const jsonMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, raw];
       const extracted = JSON.parse(jsonMatch[1]!.trim()) as Record<string, unknown>;
 
-      // 2. Save as document for RAG
+      // 2. Save as document for RAG — skip if URL already exists
+      const { data: existingDoc } = await supabase
+        .from('documents')
+        .select('id')
+        .eq('org_id', orgId)
+        .eq('storage_path', url)
+        .single();
+      if (existingDoc) continue;
+
       const { data: doc } = await supabase
         .from('documents')
         .insert({
@@ -826,7 +834,7 @@ async function scanOpportunities(
         const lines = matches.map((m) => {
           const opp = grantsMap.get(m.opportunity_id);
           if (!opp) return null;
-          return `- **${opp.title}** (ציון: ${m.score}/100)${opp.deadline ? ` | דדליין: ${opp.deadline}` : ''}${opp.funder ? ` | ${opp.funder}` : ''}${opp.amount_max ? ` | עד ${(opp.amount_max / 1000).toFixed(0)}K ש"ח` : ''}${opp.url ? ` | לינק: ${opp.url}` : ''}${opp.contact_info ? ` | ${opp.contact_info}` : ''}\n  ${m.reasoning}${opp.description ? `\n  תיאור: ${opp.description.slice(0, 200)}` : ''}`;
+          return `- **${opp.title}** (ציון: ${Math.round(m.score / 10)}/10)${opp.deadline ? ` | דדליין: ${opp.deadline}` : ''}${opp.funder ? ` | ${opp.funder}` : ''}${opp.amount_max ? ` | עד ${(opp.amount_max / 1000).toFixed(0)}K ש"ח` : ''}${opp.url ? ` | לינק: ${opp.url}` : ''}${opp.contact_info ? ` | ${opp.contact_info}` : ''}\n  ${m.reasoning}${opp.description ? `\n  תיאור: ${opp.description.slice(0, 200)}` : ''}`;
         }).filter(Boolean);
 
         if (lines.length > 0) {
@@ -1265,6 +1273,7 @@ async function loadGrantsIndex(): Promise<string> {
     const { data: grants } = await oppDb
       .from('opportunities')
       .select('id, title, funder, deadline, description, categories, target_populations, url, amount_max, type, eligibility, how_to_apply, contact_info, tags')
+      .eq('active', true)
       .order('deadline', { ascending: true, nullsFirst: false });
 
     if (!grants?.length) return '';
