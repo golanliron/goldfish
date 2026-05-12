@@ -154,6 +154,69 @@ const AGE_PATTERNS: { key: string; label: string; patterns: RegExp }[] = [
   { key: '65+', label: 'גיל שלישי (65+)', patterns: /קשישים|זקנים|65\+|גיל שלישי/ },
 ];
 
+// ===== Atlas Grants Taxonomy Mapping =====
+// Maps Atlas Hebrew tags (46 tags) to Goldfish domain/population keys for better matching
+export const ATLAS_TAG_TO_DOMAIN: Record<string, string> = {
+  'חינוך, השכלה והכשרה מקצועית': 'education',
+  'השכלה גבוהה': 'education',
+  'חינוך משלים': 'education',
+  'חינוך לגיל הרך': 'education',
+  'מצויינות': 'education',
+  'פיתוח מנהיגות': 'community',
+  'בריאות': 'health',
+  'בריאות הנפש': 'mental_health',
+  'מחקר רפואי': 'health',
+  'ציוד רפואי': 'health',
+  'בריאות ושירותי חירום': 'health',
+  'מצוקה חברתית': 'welfare',
+  'שוויון זכויות': 'legal',
+  'זכויות אדם': 'legal',
+  'עזרה הומניטארית': 'welfare',
+  'פיתוח קהילתי': 'community',
+  'קהילה וחברה': 'community',
+  'חברה משותפת': 'coexistence',
+  'רשויות מקומיות': 'community',
+  'תעסוקה והכשרה מקצועית': 'employment',
+  'יזמות חברתית': 'social_innovation',
+  'אומנות': 'culture',
+  'תרבות ואמנות': 'culture',
+  'מורשת או הנצחה': 'culture',
+  'זהות יהודית': 'religion',
+  'יהדות ישראלית': 'religion',
+  'איכות הסביבה': 'environment',
+  'רווחת בעלי חיים': 'environment',
+  'כללי (מחקר, מדע וטכנולוגיה)': 'technology',
+  'מידע ותקשורת': 'technology',
+  'כללי (ספורט)': 'sport',
+  'מדעי החברה': 'science',
+  'פוליטיקה וממשל': 'community',
+  'קשרים בינלאומיים': 'community',
+  'פיתוח הנגב והגליל': 'community',
+  'הצטיידות': 'infrastructure',
+};
+
+export const ATLAS_TAG_TO_POPULATION: Record<string, string> = {
+  'ילדים ונוער': 'youth',
+  'כללי (ילדים ונוער)': 'youth',
+  'ילדים ונוער בסיכון': 'youth_at_risk',
+  'נשים ונערות': 'women',
+  'צרכים מיוחדים ומוגבלויות': 'disabilities',
+};
+
+// Resolve Atlas tags from company interests array to Goldfish domain/population keys
+export function resolveAtlasTags(interests: string[]): { domains: string[]; populations: string[] } {
+  const domains = new Set<string>();
+  const populations = new Set<string>();
+  for (const tag of interests) {
+    if (ATLAS_TAG_TO_DOMAIN[tag]) domains.add(ATLAS_TAG_TO_DOMAIN[tag]);
+    if (ATLAS_TAG_TO_POPULATION[tag]) populations.add(ATLAS_TAG_TO_POPULATION[tag]);
+    // Also treat Goldfish-native keys directly
+    if (DOMAIN_PATTERNS.some(d => d.key === tag)) domains.add(tag);
+    if (POPULATION_PATTERNS.some(p => p.key === tag)) populations.add(tag);
+  }
+  return { domains: [...domains], populations: [...populations] };
+}
+
 // ===== Main DNA Extraction =====
 
 export function extractOrgDNA(
@@ -455,7 +518,7 @@ export async function extractOrgDNAWithAI(
   const prompt = `אתה מנתח ארגוני מגזר שלישי בישראל. קרא את הטקסט הבא על ארגון והחזר JSON בלבד (ללא הסברים).
 
 טקסט הארגון:
-${orgText.slice(0, 4000)}
+${orgText.slice(0, 12000)}
 
 החזר JSON עם המפתחות הבאים בלבד. השתמש רק בערכים מהרשימות שמופיעות כאן:
 
@@ -514,17 +577,17 @@ ${orgText.slice(0, 4000)}
   }
 }
 
-// Merge AI-extracted DNA with regex-extracted DNA (AI takes priority)
+// Merge AI-extracted DNA with regex-extracted DNA (union — keep all findings from both)
 export function mergeOrgDNA(regexDna: OrgDNA, aiDna: Partial<OrgDNA>): OrgDNA {
   const merged: OrgDNA = {
-    populations: aiDna.populations?.length ? aiDna.populations : regexDna.populations,
-    domains: aiDna.domains?.length ? aiDna.domains : regexDna.domains,
-    subDomains: aiDna.subDomains?.length ? aiDna.subDomains : regexDna.subDomains,
-    interventionTypes: aiDna.interventionTypes?.length ? aiDna.interventionTypes : regexDna.interventionTypes,
-    geography: aiDna.geography?.length ? aiDna.geography : regexDna.geography,
-    ageGroups: aiDna.ageGroups?.length ? aiDna.ageGroups : regexDna.ageGroups,
+    populations: [...new Set([...(aiDna.populations || []), ...regexDna.populations])],
+    domains: [...new Set([...(aiDna.domains || []), ...regexDna.domains])],
+    subDomains: [...new Set([...(aiDna.subDomains || []), ...regexDna.subDomains])],
+    interventionTypes: [...new Set([...(aiDna.interventionTypes || []), ...regexDna.interventionTypes])],
+    geography: [...new Set([...(aiDna.geography || []), ...regexDna.geography])],
+    ageGroups: [...new Set([...(aiDna.ageGroups || []), ...regexDna.ageGroups])],
     orgType: regexDna.orgType,
-    themes: aiDna.themes?.length ? [...new Set([...(aiDna.themes || []), ...regexDna.themes])] : regexDna.themes,
+    themes: [...new Set([...(aiDna.themes || []), ...regexDna.themes])],
     excludePopulations: [],
     excludeDomains: [],
   };
