@@ -251,44 +251,82 @@ async function handleDriveFolder(
   return { text, title: `Google Drive (${filesFound} קבצים)`, filesFound };
 }
 
+// ===== Facebook Graph API Handler =====
+
+async function fetchFacebookPageInfo(url: string): Promise<{ text: string; title: string } | null> {
+  const token = process.env.FACEBOOK_ACCESS_TOKEN;
+  if (!token) return null;
+
+  // Extract page name/id from URL
+  const pageMatch = url.match(/facebook\.com\/([^/?#]+)/i);
+  if (!pageMatch) return null;
+  const pageId = pageMatch[1];
+
+  try {
+    const fields = 'name,about,description,category,fan_count,location,website,emails,founded';
+    const apiUrl = `https://graph.facebook.com/v18.0/${pageId}?fields=${fields}&access_token=${token}`;
+    const res = await fetch(apiUrl);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.error) return null;
+
+    const parts: string[] = [];
+    if (data.name) parts.push(`שם: ${data.name}`);
+    if (data.about) parts.push(`אודות: ${data.about}`);
+    if (data.description) parts.push(`תיאור: ${data.description}`);
+    if (data.category) parts.push(`קטגוריה: ${data.category}`);
+    if (data.fan_count) parts.push(`עוקבים: ${data.fan_count}`);
+    if (data.website) parts.push(`אתר: ${data.website}`);
+    if (data.emails?.length) parts.push(`מייל: ${data.emails.join(', ')}`);
+    if (data.founded) parts.push(`נוסד: ${data.founded}`);
+    if (data.location) {
+      const loc = data.location;
+      const locStr = [loc.city, loc.country].filter(Boolean).join(', ');
+      if (locStr) parts.push(`מיקום: ${locStr}`);
+    }
+
+    return { text: parts.join('\n'), title: data.name || pageId };
+  } catch {
+    return null;
+  }
+}
+
 // ===== Social Page Handler (Facebook/Instagram/LinkedIn) =====
 
 async function handleSocialPage(
   url: string,
   urlType: UrlType
-): Promise<{ text: string; title: string }> {
-  const { html, ok } = await smartFetch(url);
-
-  if (!ok || html.length < 100) {
-    // Social pages often block server fetches — use the URL itself as context
-    const platformName = urlType === 'facebook' ? 'פייסבוק' :
-                         urlType === 'instagram' ? 'אינסטגרם' : 'לינקדאין';
-    return {
-      text: `עמוד ${platformName} של הארגון: ${url}\nהפלטפורמה חוסמת קריאה אוטומטית. Goldfish ישתמש בקישור הזה כהפניה.`,
-      title: `עמוד ${platformName}`,
-    };
+): Promise<{ text: string; title: string; blocked: boolean }> {
+  // Try Facebook Graph API first (most reliable for Facebook)
+  if (urlType === 'facebook') {
+    const graphResult = await fetchFacebookPageInfo(url);
+    if (graphResult && graphResult.text.length > 30) {
+      return { ...graphResult, blocked: false };
+    }
   }
 
-  // Extract meta tags — social pages put the good info in OG tags
-  const meta = extractMetaTags(html);
-  const ogTitle = meta['og:title'] || '';
-  const ogDesc = meta['og:description'] || meta['description'] || '';
-  const ogType = meta['og:type'] || '';
+  // Try regular fetch — works for LinkedIn, sometimes for others
+  const { html, ok } = await smartFetch(url);
 
-  // Also strip HTML for body text
-  const bodyText = stripHtml(html);
+  if (ok && html.length > 100) {
+    // Extract meta tags — social pages put the good info in OG tags
+    const meta = extractMetaTags(html);
+    const ogTitle = meta['og:title'] || '';
+    const ogDesc = meta['og:description'] || meta['description'] || '';
+    const ogType = meta['og:type'] || '';
+    const bodyText = stripHtml(html);
 
-  // Combine OG info with body text for the richest context
-  const parts: string[] = [];
-  if (ogTitle) parts.push(`שם: ${ogTitle}`);
-  if (ogDesc) parts.push(`תיאור: ${ogDesc}`);
-  if (ogType) parts.push(`סוג: ${ogType}`);
-  parts.push(`\nתוכן העמוד:\n${bodyText}`);
+    const parts: string[] = [];
+    if (ogTitle) parts.push(`שם: ${ogTitle}`);
+    if (ogDesc) parts.push(`תיאור: ${ogDesc}`);
+    if (ogType) parts.push(`סוג: ${ogType}`);
+    parts.push(`\nתוכן העמוד:\n${bodyText}`);
 
-  const text = parts.join('\n');
-  const title = ogTitle || url;
+    return { text: parts.join('\n'), title: ogTitle || url, blocked: false };
+  }
 
-  return { text, title };
+  // Blocked — return empty text so caller can handle gracefully
+  return { text: '', title: url, blocked: true };
 }
 
 // ===== Route Config =====
@@ -332,6 +370,40 @@ export async function POST(request: NextRequest) {
       const result = await handleSocialPage(url, urlType);
       text = result.text;
       title = result.title;
+
+      // If blocked — save URL reference and return clear message (no fabrication)
+      if (result.blocked || text.length < 30) {
+        const platformName = urlType === 'facebook' ? 'פייסבוק' :
+                             urlType === 'instagram' ? 'אינסטגרם' : 'לינקדאין';
+
+        // Save just the URL so Goldfish knows it exists
+        await supabase.from('documents').insert({
+          org_id,
+          filename: `עמוד ${platformName}`,
+          file_type: 'url',
+          storage_path: url,
+          category: 'identity',
+          parsed_text: `קישור ${platformName}: ${url}`,
+          metadata: { source_url: url, url_type: urlType, blocked: true },
+          status: 'ready',
+        });
+
+        // Save URL in org profile
+        const { data: existingProfile } = await supabase.from('org_profiles').select('data').eq('org_id', org_id).single();
+        const profileData = (existingProfile?.data as Record<string, unknown>) || {};
+        if (urlType === 'facebook') profileData.facebook_url = url;
+        if (urlType === 'instagram') profileData.instagram_url = url;
+        if (urlType === 'linkedin') profileData.linkedin_url = url;
+        await supabase.from('org_profiles').upsert({ org_id, data: profileData, last_updated: new Date().toISOString() }, { onConflict: 'org_id' });
+
+        return NextResponse.json({
+          title: `עמוד ${platformName}`,
+          category: 'identity',
+          summary: `הקישור נשמר. ${platformName} חוסמת קריאה אוטומטית — כדי שאוכל לקרוא את תוכן הדף, העתיקי את תיאור הארגון מהעמוד והדביקי אותו ישירות בצ'אט, או העלי PDF עם תיאור הארגון.`,
+          url_saved: true,
+          blocked: true,
+        });
+      }
     } else {
       // Regular website
       const { html, ok, status } = await smartFetch(url);
@@ -356,9 +428,8 @@ export async function POST(request: NextRequest) {
       text = parts.join('\n\n');
     }
 
-    // Minimum content check
+    // Minimum content check (for regular websites)
     if (text.length < 30) {
-      // Even if we couldn't fetch content, save the URL reference
       await supabase.from('documents').insert({
         org_id,
         filename: title || new URL(url).hostname,
@@ -369,20 +440,10 @@ export async function POST(request: NextRequest) {
         metadata: { source_url: url, url_type: urlType, note: 'לא הצלחנו לקרוא תוכן' },
         status: 'ready',
       });
-
-      const platformNames: Record<UrlType, string> = {
-        facebook: 'פייסבוק',
-        instagram: 'אינסטגרם',
-        linkedin: 'לינקדאין',
-        drive_folder: 'Google Drive',
-        drive_file: 'Google Drive',
-        website: 'האתר',
-      };
-
       return NextResponse.json({
-        title: platformNames[urlType],
+        title: title || url,
         category: 'identity',
-        summary: `הקישור נשמר. ${platformNames[urlType]} חוסם קריאה אוטומטית — Goldfish ישתמש בו כהפניה.`,
+        summary: `לא הצלחתי לקרוא את תוכן האתר. הקישור נשמר כהפניה.`,
         url_saved: true,
       });
     }
