@@ -140,8 +140,8 @@ const SOURCES = [
   },
   {
     name: 'משרד האוצר — תמיכות',
-    url: 'https://tmichot.mof.gov.il/call-for-proposals/',
-    funder: '',
+    url: 'https://www.gov.il/he/departments/topics/support-and-funding-for-public-institutions/govil-landing-page',
+    funder: 'משרד האוצר',
   },
 ];
 
