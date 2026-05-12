@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
 
   const [profileRes, docsRes] = await Promise.all([
     supabase.from('org_profiles').select('data').eq('org_id', orgId).single(),
-    supabase.from('documents').select('*').eq('org_id', orgId).not('metadata->blocked', 'eq', 'true').order('uploaded_at', { ascending: false }),
+    supabase.from('documents').select('*').eq('org_id', orgId).order('uploaded_at', { ascending: false }),
   ]);
 
   return NextResponse.json({

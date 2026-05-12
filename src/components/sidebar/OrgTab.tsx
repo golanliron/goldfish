@@ -80,7 +80,9 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
       .then(r => r.json())
       .then(({ profile: p, documents: d }) => {
         if (p) setProfile(p as OrgProfileData);
-        setDocuments(d || []);
+        // Filter out blocked documents (social pages that couldn't be read)
+        const visibleDocs = (d || []).filter((doc: FgDoc) => !(doc.metadata as Record<string, unknown>)?.blocked);
+        setDocuments(visibleDocs);
       })
       .catch(() => {});
   };
