@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
   return Response.json(results);
 }
 
-// Sources to scan
+// Sources to scan — Israeli grant aggregators and government sites
 const SOURCES = [
   {
     name: 'שתיל - קולות קוראים',
@@ -25,13 +25,8 @@ const SOURCES = [
     type: 'html' as const,
   },
   {
-    name: 'מיזם אטלס',
-    url: 'https://app.atlas-grants.com/grants',
-    type: 'api' as const,
-  },
-  {
     name: 'ביטוח לאומי - קולות קוראים',
-    url: 'https://www.btl.gov.il/Grants/Pages/default.aspx',
+    url: 'https://www.btl.gov.il/Funds/kolotkorim/Pages/default.aspx',
     type: 'html' as const,
   },
   {
@@ -40,19 +35,34 @@ const SOURCES = [
     type: 'html' as const,
   },
   {
-    name: 'קרן שלם',
-    url: 'https://www.shalemfund.org.il/',
+    name: 'רשות החדשנות',
+    url: 'https://innovationisrael.org.il/kol-kore/',
     type: 'html' as const,
   },
   {
-    name: 'מפעל הפיס',
-    url: 'https://www.pfrp.co.il/',
+    name: 'gov.il קולות קוראים',
+    url: 'https://www.gov.il/he/Departments/DynamicCollectors/kolkore-list',
     type: 'html' as const,
   },
   {
-    name: 'Grants.gov RSS',
-    url: 'https://www.grants.gov/rss/GG_NewOppByCategory.xml',
-    type: 'rss' as const,
+    name: 'מפעל הפיס - תרבות',
+    url: 'https://culture.pais.co.il/',
+    type: 'html' as const,
+  },
+  {
+    name: 'קקל',
+    url: 'https://www.kkl.org.il/about-us/tenders/call-for-proposals/',
+    type: 'html' as const,
+  },
+  {
+    name: 'משרד החינוך מו"פ',
+    url: 'https://mop.education/open-call/',
+    type: 'html' as const,
+  },
+  {
+    name: 'תקומה - שיקום העוטף',
+    url: 'https://govextra.gov.il/minisite-new/tkuma-zmani/home/tenders-new/',
+    type: 'html' as const,
   },
 ];
 
@@ -70,11 +80,23 @@ async function scanAllSources() {
   const supabase = createAdminClient();
   let totalNew = 0;
   let totalSkipped = 0;
+  let deactivated = 0;
   const errors: string[] = [];
 
+  // === Step 1: Cleanup expired opportunities ===
+  const today = new Date().toISOString().split('T')[0];
+  const { data: expired } = await supabase
+    .from('opportunities')
+    .update({ active: false })
+    .lt('deadline', today)
+    .eq('active', true)
+    .not('deadline', 'is', null)
+    .select('id');
+  deactivated = expired?.length || 0;
+
+  // === Step 2: Scan all sources ===
   for (const source of SOURCES) {
     try {
-      // Fetch the page
       const res = await fetch(source.url, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -89,12 +111,16 @@ async function scanAllSources() {
       }
 
       const html = await res.text();
-
-      // Use Claude to extract grant opportunities from the page
       const items = await extractOpportunities(html.slice(0, 30000), source.name, source.url);
 
       for (const item of items) {
-        if (!item.title || item.title.length < 5) continue;
+        if (!item.title || item.title.length < 8) continue;
+
+        // Skip foundation profiles (not actual grants)
+        if (!item.deadline && !item.description && !item.url &&
+            (item.title.startsWith('קרן ') || item.title.length < 15)) {
+          continue;
+        }
 
         // Check if already exists (by title similarity)
         const { data: existing } = await supabase
@@ -108,17 +134,17 @@ async function scanAllSources() {
           continue;
         }
 
-        // Insert new opportunity
         await supabase.from('opportunities').insert({
           title: item.title,
           description: item.description || null,
-          funder: item.funder || source.name,
+          funder: item.funder || null,
           deadline: item.deadline || null,
-          url: item.url || source.url,
+          url: item.url || null,
           categories: item.categories || [],
           target_populations: item.target_populations || [],
           active: true,
           source: source.name,
+          type: 'grant',
         });
         totalNew++;
       }
@@ -141,6 +167,7 @@ async function scanAllSources() {
     scanned: SOURCES.length,
     new_opportunities: totalNew,
     skipped: totalSkipped,
+    deactivated_expired: deactivated,
     errors,
     timestamp: new Date().toISOString(),
   };
@@ -150,19 +177,23 @@ async function extractOpportunities(html: string, sourceName: string, sourceUrl:
   const res = await anthropic.messages.create({
     model: 'claude-haiku-4-5-20251001',
     system: `אתה מחלץ קולות קוראים ומענקים מדפי HTML.
-החזר JSON בלבד — מערך של אובייקטים.
-כל אובייקט:
+חוקים קריטיים:
+1. חלץ רק קולות קוראים/מענקים/תמיכות פתוחים — לא פרופילים של קרנות, לא דפי מידע כלליים.
+2. אם הכותרת היא רק שם קרן (כמו "קרן הדסה") בלי פרטי קול קורא — דלג.
+3. חייב לינק ישיר לדף הקול הקורא. לינק לדף הבית של קרן = לא מספיק.
+
+החזר JSON בלבד — מערך של אובייקטים:
 {
-  "title": "שם הקול קורא",
+  "title": "שם הקול קורא המלא",
   "description": "תיאור קצר (עד 200 תווים)",
-  "funder": "שם הגוף המממן",
+  "funder": "שם הגוף המממן (לא שם הקול קורא)",
   "deadline": "YYYY-MM-DD או null",
-  "url": "לינק ישיר אם קיים",
-  "categories": ["education", "welfare", "health", "employment", "community", "culture", "environment", "technology", "housing", "legal", "security", "other"],
-  "target_populations": ["youth", "youth_at_risk", "women", "elderly", "disabilities", "new_immigrants", "arab", "haredi", "students", "south_residents", "north_residents", "periphery_residents", "other"]
+  "url": "לינק ישיר לדף הקול קורא",
+  "categories": ["education", "welfare", "health", "employment", "community", "culture", "environment", "technology", "housing", "legal", "sport", "other"],
+  "target_populations": ["youth", "youth_at_risk", "young_adults", "women", "elderly", "disabilities", "immigrants", "arab", "haredi", "soldiers", "students", "periphery_residents", "other"]
 }
 
-סווג לפי קטגוריות ואוכלוסיות בהתאם לתוכן. אם אין קולות קוראים בדף — החזר מערך ריק [].
+אם אין קולות קוראים בדף — החזר מערך ריק [].
 לא להמציא. רק מה שרואים בטקסט.`,
     messages: [{
       role: 'user',
