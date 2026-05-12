@@ -36,15 +36,15 @@ export async function updateSession(request: NextRequest) {
   const isAuthRoute = request.nextUrl.pathname.startsWith('/login') ||
                       request.nextUrl.pathname.startsWith('/signup');
 
+  // Admin can go anywhere — no forced redirects whatsoever
+  if (isAdmin) {
+    return supabaseResponse;
+  }
+
   if (!user && isProtectedRoute) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     return NextResponse.redirect(url);
-  }
-
-  // Admin can go anywhere — no forced redirects
-  if (isAdmin) {
-    return supabaseResponse;
   }
 
   if (user && isAuthRoute) {
