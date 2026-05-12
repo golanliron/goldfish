@@ -138,6 +138,11 @@ const SOURCES = [
     url: 'https://www.gov.il/he/departments/topics/allowance_from_the_estates_committee/govil-landing-page',
     funder: 'ועדת העזבונות',
   },
+  {
+    name: 'משרד האוצר — תמיכות',
+    url: 'https://tmichot.mof.gov.il/call-for-proposals/',
+    funder: '',
+  },
 ];
 
 // ============================================================
