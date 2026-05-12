@@ -46,22 +46,32 @@ export async function geminiCall(prompt: string, maxTokens: number = 500, temp: 
 }
 
 async function geminiCallMultimodal(parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }>, maxTokens: number = 16000): Promise<string> {
-  const res = await fetch(`${BASE}:generateContent?key=${GEMINI_KEY}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts }],
-      generationConfig: { maxOutputTokens: maxTokens, temperature: 0 },
-    }),
-  });
+  const delays = [5000, 12000, 20000];
+  for (let attempt = 0; attempt <= delays.length; attempt++) {
+    const res = await fetch(`${BASE}:generateContent?key=${GEMINI_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts }],
+        generationConfig: { maxOutputTokens: maxTokens, temperature: 0 },
+      }),
+    });
 
-  if (!res.ok) {
-    const err = await res.text().catch(() => '');
-    throw new Error(`Gemini ${res.status}: ${err.slice(0, 200)}`);
+    if (res.status === 429 && attempt < delays.length) {
+      console.warn(`[gemini multimodal] 429, retrying in ${delays[attempt]}ms`);
+      await new Promise(r => setTimeout(r, delays[attempt]));
+      continue;
+    }
+
+    if (!res.ok) {
+      const err = await res.text().catch(() => '');
+      throw new Error(`Gemini ${res.status}: ${err.slice(0, 200)}`);
+    }
+
+    const data = await res.json();
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
   }
-
-  const data = await res.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  throw new Error('Gemini multimodal failed after retries');
 }
 
 /**
