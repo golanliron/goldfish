@@ -297,24 +297,23 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
 
   const filledCategories = Object.keys(docsByCategory).filter(k => k !== 'other');
 
+  // Each check represents a meaningful piece of knowledge Goldfish has about the org.
+  // Max possible = 20 points. Score is capped so typical orgs start low and grow with real data.
   const checks = [
-    { met: !!(docsByCategory['identity']?.length), w: 2 },
-    { met: !!(docsByCategory['programs']?.length), w: 2 },
-    { met: !!(docsByCategory['budget']?.length), w: 2 },
-    { met: !!(docsByCategory['impact']?.length), w: 2 },
-    { met: !!(docsByCategory['submission']?.length), w: 2 },
-    { met: !!(profile?.mission && profile.mission.length > 20), w: 2 },
-    { met: !!(profile?.annual_budget && profile.annual_budget > 0), w: 2 },
-    { met: !!(profile?.beneficiaries_count && profile.beneficiaries_count > 0), w: 2 },
-    { met: !!(profile?.focus_areas && profile.focus_areas.length > 0), w: 1 },
-    { met: !!profile?.registration_number, w: 1 },
-    { met: documents.length >= 3, w: 2 },
-    { met: documents.length >= 5, w: 2 },
-    { met: filledCategories.length >= 3, w: 2 },
-    { met: !!(profile?.mission && profile.mission.length > 50), w: 2 },
+    // Profile fields — foundational identity
+    { met: !!(profile?.mission && profile.mission.length > 50), w: 3, label: 'תיאור מטרה' },
+    { met: !!(profile?.annual_budget && profile.annual_budget > 0), w: 2, label: 'מחזור שנתי' },
+    { met: !!(profile?.beneficiaries_count && profile.beneficiaries_count > 0), w: 2, label: 'מספר מוטבים' },
+    { met: !!(profile?.focus_areas && profile.focus_areas.length > 0), w: 1, label: 'תחומי פעילות' },
+    { met: !!profile?.registration_number, w: 1, label: 'מספר עמותה' },
+    // Documents by category — real knowledge depth
+    { met: !!(docsByCategory['identity']?.length), w: 2, label: 'מסמך זהות' },
+    { met: !!(docsByCategory['programs']?.length), w: 3, label: 'תיאור תוכניות' },
+    { met: !!(docsByCategory['budget']?.length), w: 3, label: 'דוח כספי' },
+    { met: !!(docsByCategory['impact']?.length), w: 2, label: 'דוח אימפקט' },
+    { met: !!(docsByCategory['submission']?.length), w: 1, label: 'הגשה קודמת' },
   ];
-
-  const totalWeight = checks.reduce((s, c) => s + c.w, 0);
+  const totalWeight = checks.reduce((s, c) => s + c.w, 0); // = 20
   const earnedWeight = checks.filter(c => c.met).reduce((s, c) => s + c.w, 0);
   const completeness = Math.round((earnedWeight / totalWeight) * 100);
 

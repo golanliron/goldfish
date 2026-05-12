@@ -48,9 +48,29 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (user && isAuthRoute) {
+    // Check if user already has an org profile — if so, go to dashboard
+    const { data: existing } = await supabase
+      .from('organizations')
+      .select('id')
+      .eq('user_id', user.id)
+      .maybeSingle();
     const url = request.nextUrl.clone();
-    url.pathname = '/onboarding';
+    url.pathname = existing ? '/' : '/onboarding';
     return NextResponse.redirect(url);
+  }
+
+  // If user is logged in and goes to /onboarding without ?edit=1, and already has profile — send to dashboard
+  if (user && request.nextUrl.pathname === '/onboarding' && !request.nextUrl.searchParams.has('edit')) {
+    const { data: existing } = await supabase
+      .from('organizations')
+      .select('id')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (existing) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/';
+      return NextResponse.redirect(url);
+    }
   }
 
   return supabaseResponse;
