@@ -1043,7 +1043,41 @@ export const FISHGOLD_NONPROFITS_PART2 = `
 
 מחקר חברתי: מכון ברוקדייל (JDC, brookdale.jdc.org.il). מרכז טאוב (מדיניות חברתית, taubcenter.org.il). מרכז אדוה (שוויון ותקציבים, adva.org). מכון ון-ליר (vanleer.org.il).
 
+===== ארגוני חברה אזרחית — רשת שתיל (shatil.org.il) =====
+שתיל מייצגת ~200 ארגוני שינוי חברתי בישראל — כולם פוטנציאל לקוחות Goldfish ומהווים את הליבה של המגזר האזרחי-עצמאי.
+
+זכויות אדם ואזרח: האגודה לזכויות האזרח/ACRI (acri.org.il, mail@acri.org.il). בצלם (btselem.org). גישה (gisha.org, info@gisha.org). המוקד להגנת הפרט (hamoked.org.il). הוועד הציבורי נגד עינויים (stoptorture.org.il). זולת (zulat.org.il, info@zulat.org.il). בזכות — זכויות אנשים עם מוגבלויות (bizchut.org.il). במקום — מתכננים לזכויות בתכנון (bimkom.org). האגודה לצדק חלוקתי (iadj@iadj.org.il).
+
+פליטים ומהגרים: א.ס.ף (assaf.org.il, info@assaf.org.il). המוקד לפליטים ומהגרים (hotline.org.il, info@hotline.org.il). המרכז לקידום פליטים אפריקאיים/ARDC (ardc-israel.org, info@ardc-israel.org).
+
+להט"ב: איגי — נוער להט"בי (igy.org.il, office@igy.org.il). האגודה למען הלהט"ב (lgbt.org.il, aguda@lgbt.org.il). בת קול — נשים דתיות להט"ביות (bat-kol.org, info@bat-kol.org).
+
+נשים ופמיניזם: אחותי — תנועה פמיניסטית-מזרחית (achoti@zahav.net.il). איגוד מרכזי הסיוע לנפגעות תקיפה מינית (1202.org.il, content@igud1202.org.il). שדולת הנשים בישראל (iwn.org.il, admin@iwn.org.il). באשר תלכי — נשים חרדיות בגירושין (baasher.co.il, info@baasher.co.il). רקמת המדבר — נשים בדואיות בלקייה (desert-embroidery.org, rikma@lakia2.org). אלנוהוד — השכלת נשים בדואיות (alnuhud@gmail.com).
+
+דו-קיום יהודי-ערבי: אג'יק/AJEEC-NISPED — שינוי חברתי בנגב (a-n.org.il, info@a-n.org.il). אפשר אחרת (anewway.org.il, info@anewway.org.il). גבעת חביבה (givathaviva.org.il). בית ספר לשלום נווה שלום (wasns.org). תג מאיר — מניעת פשעי שנאה (tagmeir2011@gmail.com). זזים — קמפיינים יהודים-ערבים (zazim.org.il, contact@zazim.org.il). תנועת לוחמים לשלום (cfpeace.org). תיאטרון יפו (jaffatheatre.org.il).
+
+בדואים ונגב: אחוזת נגב — פיתוח קהילתי (polinagraeev1310@gmail.com). אלנוהוד (alnuhud@gmail.com). רקמת המדבר (rikma@lakia2.org).
+
+אתיופים: אגודת יהודי אתיופיה (iaej.co.il, contact@iaej.co.il). היווט (hiyot@012.net.il).
+
+חרדים: הציבור החרדי ממלכתי — ארגון גג לאמהות (newharedim.org). באשר תלכי — נשים חרדיות (baasher.co.il).
+
+סביבה: אדם טבע ודין (adamteva.org.il, members@adamteva.org.il). אל"ס — אזרחים למען הסביבה בגליל (cfenvironment.org.il, cfe.at.galil@gmail.com).
+
+דמוקרטיה ושלטון: אידאה — דמוקרטיה ליברלית (idea.org.il, info@idea.org.il). דרכנו (darkenu.org.il, thisis@darkenu.org.il). הבלוק הדמוקרטי. המכון הישראלי לדמוקרטיה (idi.org.il). התנועה לאיכות השלטון (mqg.org.il, mqg@mqg.org.il). התנועה לחופש המידע (meida.org.il, office@meida.org.il). הסדנא לידע ציבורי (hasadna.org.il, info@hasadna.org.il). העין השביעית (the7eye.org.il). שלום עכשיו (peacenow.org.il).
+
+חינוך ונוער: ברל כצנלסון — קרן (berl.org.il, contact@berl.org.il). המכללה החברתית-כלכלית (sea.org.il). תנועת החלוץ/המדרשה — חינוך נוער (hamidrasha.org.il, sharon_o@hamidrasha.org.il). בוסתן בני אברהם — חינוך לחיים משותפים (orchard.of.abraham@gmail.com). אלמינא — תיאטרון לילדים ביפו (elminajaffa.com, elminajaffa@gmail.com).
+
+דת ומדינה: המרכז הרפורמי לדת ומדינה/IRAC (irac.org, irac@irac.org). הפורום החילוני (hiloni.org.il). שומרי משפט — רבנים לזכויות אדם (rhr.org.il, media@rhr.org.il). תנועת תיקון (officetikun4@gmail.com).
+
+דיור ועוני: המעברה — מחאת דיור (Hamaabara@gmail.com). הפרדס — קהילה דרום ת"א (hapardesngo@gmail.com).
+
+רווחה: המשמר החברתי — חקיקה חברתית (hamishmar.org.il, ceo@hamishmar.org.il). תנועת עתידנו — עובדים סוציאליים (maavakos@gmail.com).
+
+קהילה ועירוני: ארץעיר — קהילתיות עירונית (eretzir.org.il, info@eretzir.org.il).
+
 `;
+
 
 // ===== Grants & Funder Intelligence =====
 export const FISHGOLD_GRANTS_INTELLIGENCE = `
