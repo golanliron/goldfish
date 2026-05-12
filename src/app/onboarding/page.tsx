@@ -25,6 +25,8 @@ export default function OnboardingPage() {
   const [orgName, setOrgName] = useState('');
   const [orgDesc, setOrgDesc] = useState('');
   const [orgPopulation, setOrgPopulation] = useState('');
+  const [selectedPopulations, setSelectedPopulations] = useState<string[]>([]);
+  const [selectedDomains, setSelectedDomains] = useState<string[]>([]);
   const [urlResults, setUrlResults] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
@@ -83,6 +85,8 @@ export default function OnboardingPage() {
           if (d?.name) setOrgName(d.name as string);
           if (d?.summary) setOrgDesc(d.summary as string);
           if (Array.isArray(d?.target_populations) && d.target_populations[0]) setOrgPopulation(d.target_populations[0] as string);
+          if (Array.isArray(d?.populations)) setSelectedPopulations(d.populations as string[]);
+          if (Array.isArray(d?.domains)) setSelectedDomains(d.domains as string[]);
           setReady(true);
         }
       }, () => setReady(true));
@@ -183,6 +187,8 @@ export default function OnboardingPage() {
             ...(orgName.trim() ? { name: orgName.trim() } : {}),
             ...(orgDesc.trim() ? { summary: orgDesc.trim() } : {}),
             ...(orgPopulation.trim() ? { target_populations: [orgPopulation.trim()] } : {}),
+            ...(selectedPopulations.length > 0 ? { populations: selectedPopulations } : {}),
+            ...(selectedDomains.length > 0 ? { domains: selectedDomains } : {}),
             onboarding_complete: true,
           },
           last_updated: new Date().toISOString(),
@@ -288,14 +294,77 @@ export default function OnboardingPage() {
             </div>
 
             <div>
-              <label className="text-xs font-medium text-muted block mb-1">אוכלוסיית יעד</label>
-              <input
-                type="text"
-                value={orgPopulation}
-                onChange={e => setOrgPopulation(e.target.value)}
-                placeholder="למשל: נוער בסיכון גילאי 16-25"
-                className="w-full px-3 py-2.5 rounded-xl border border-border bg-surf text-sm focus:outline-none focus:border-accent transition-colors"
-              />
+              <label className="text-xs font-medium text-muted block mb-1">מי הם המוטבים שלכם? <span className="text-muted/60">(בחרו הכל שרלוונטי)</span></label>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { key: 'youth_at_risk', label: 'נוער בסיכון' },
+                  { key: 'youth', label: 'נוער / ילדים' },
+                  { key: 'young_adults', label: 'צעירים (18-26)' },
+                  { key: 'women', label: 'נשים' },
+                  { key: 'elderly', label: 'קשישים' },
+                  { key: 'disabilities', label: 'אנשים עם מוגבלות' },
+                  { key: 'immigrants', label: 'עולים / אתיופים' },
+                  { key: 'arab', label: 'חברה ערבית' },
+                  { key: 'haredi', label: 'חרדים' },
+                  { key: 'homeless', label: 'חסרי בית' },
+                  { key: 'soldiers', label: 'חיילים / משוחררים' },
+                  { key: 'addiction', label: 'התמכרויות' },
+                  { key: 'lgbtq', label: 'להט"ב' },
+                  { key: 'general', label: 'אוכלוסייה כללית' },
+                ].map(({ key, label }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setSelectedPopulations(prev =>
+                      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+                    )}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                      selectedPopulations.includes(key)
+                        ? 'bg-accent text-white border-accent'
+                        : 'bg-surf border-border text-muted hover:border-accent/50'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-muted block mb-1">תחומי פעילות <span className="text-muted/60">(בחרו הכל שרלוונטי)</span></label>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { key: 'education', label: 'חינוך' },
+                  { key: 'welfare', label: 'רווחה' },
+                  { key: 'employment', label: 'תעסוקה' },
+                  { key: 'health', label: 'בריאות' },
+                  { key: 'mental_health', label: 'בריאות הנפש' },
+                  { key: 'community', label: 'קהילה' },
+                  { key: 'social_innovation', label: 'חדשנות חברתית' },
+                  { key: 'dropout_prevention', label: 'מניעת נשירה' },
+                  { key: 'technology', label: 'טכנולוגיה' },
+                  { key: 'culture', label: 'תרבות' },
+                  { key: 'coexistence', label: 'דו-קיום' },
+                  { key: 'legal', label: 'זכויות וייצוג' },
+                  { key: 'housing', label: 'דיור' },
+                  { key: 'environment', label: 'סביבה' },
+                ].map(({ key, label }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setSelectedDomains(prev =>
+                      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+                    )}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                      selectedDomains.includes(key)
+                        ? 'bg-accent text-white border-accent'
+                        : 'bg-surf border-border text-muted hover:border-accent/50'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>
