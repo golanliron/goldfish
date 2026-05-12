@@ -1,44 +1,85 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 
-// Keyword-based relevance scoring for companies
+interface OrgProfile {
+  focus_areas?: string[];
+  mission?: string;
+  regions?: string[];
+  populations?: string[];
+  domains?: string[];
+  _dna?: {
+    populations?: string[];
+    domains?: string[];
+    regions?: string[];
+    negative_matches?: string[];
+  };
+}
+
+interface OrgMemoryFact {
+  key: string;
+  value: string;
+}
+
+// DNA + keyword relevance scoring for companies
 function scoreCompany(
   company: { description: string | null; interests: string[] | null; company_type: string },
   orgKeywords: string[],
-  orgMission: string
+  orgMission: string,
+  orgPopulations: string[],
+  orgDomains: string[],
+  orgGeoRegions: string[],
+  negativeMatches: string[]
 ): number {
-  if (!orgKeywords.length) return 0;
-
   const companyText = [
     ...(company.interests || []),
     company.description || '',
   ].join(' ').toLowerCase();
 
+  // Negative match — hard reject
+  for (const neg of negativeMatches) {
+    if (companyText.includes(neg.toLowerCase())) return 0;
+  }
+
   let score = 0;
+
+  // DNA population overlap (strongest signal)
+  for (const pop of orgPopulations) {
+    if (companyText.includes(pop)) score += 20;
+  }
+
+  // DNA domain overlap
+  for (const domain of orgDomains) {
+    if (companyText.includes(domain)) score += 18;
+  }
+
+  // Geographic region overlap
+  for (const region of orgGeoRegions) {
+    if (companyText.includes(region)) score += 12;
+  }
 
   // Keyword overlap with org focus areas
   for (const kw of orgKeywords) {
-    if (companyText.includes(kw)) score += 15;
+    if (companyText.includes(kw)) score += 10;
   }
 
-  // Israel-specific keywords boost
-  const israelKeywords = ['ישראל', 'israel', 'חינוך', 'נוער', 'צעירים', 'רווחה', 'קהילה', 'פריפריה', 'סיכון', 'נשירה'];
-  for (const kw of israelKeywords) {
-    if (companyText.includes(kw)) score += 5;
-  }
-
-  // Mission overlap
+  // Mission word overlap
   if (orgMission) {
-    const missionWords = orgMission.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+    const missionWords = orgMission.toLowerCase().split(/\s+/).filter(w => w.length > 3);
     for (const w of missionWords) {
       if (companyText.includes(w)) score += 3;
     }
   }
 
-  // Fund type bonus (more likely to give grants)
-  if (company.company_type === 'fund') score += 10;
+  // Israel grants boost (for federations that fund Israel)
+  if (company.interests?.includes('israel_grants')) score += 25;
 
-  // Penalize if no description and no interests (we know nothing about them)
+  // Federation with Israeli focus areas — strong signal
+  if (company.interests?.includes('federation') && orgGeoRegions.length > 0) score += 10;
+
+  // Fund type bonus
+  if (company.company_type === 'fund') score += 8;
+
+  // Penalize if no data
   if (!company.description && (!company.interests || company.interests.length === 0)) {
     score = Math.max(0, score - 20);
   }
@@ -91,34 +132,50 @@ export async function GET(req: NextRequest) {
   let matchedCount = 0;
 
   if (orgId) {
-    const { data: profile } = await supabase
-      .from('org_profiles')
-      .select('data')
-      .eq('org_id', orgId)
-      .single();
+    // Load profile + org_memory in parallel
+    const [profileRes, memoryRes] = await Promise.all([
+      supabase.from('org_profiles').select('data').eq('org_id', orgId).single(),
+      supabase.from('org_memory').select('key, value').eq('org_id', orgId).limit(50),
+    ]);
 
-    const profileData = (profile?.data as Record<string, unknown>) || {};
-    const focusAreas = (profileData.focus_areas as string[]) || [];
-    const mission = (profileData.mission as string) || '';
-    const regions = (profileData.regions as string[]) || [];
-    const orgKeywords = [...focusAreas, ...regions]
+    const profileData = ((profileRes.data as { data?: OrgProfile } | null)?.data || {}) as OrgProfile;
+    const memoryFacts: OrgMemoryFact[] = (memoryRes.data || []) as OrgMemoryFact[];
+
+    // Build org context from profile + memory
+    const focusAreas = profileData.focus_areas || [];
+    const mission = profileData.mission || '';
+    const geoRegions = profileData.regions || [];
+
+    // DNA from profile (if AI extracted it)
+    const dna = profileData._dna || {};
+    const orgPopulations = dna.populations || profileData.populations || [];
+    const orgDomains = dna.domains || profileData.domains || [];
+    const orgGeoRegions = [...new Set([...geoRegions, ...(dna.regions || [])])];
+    const negativeMatches = dna.negative_matches || [];
+
+    // Augment keywords from org_memory (e.g. "target_population: נוער בסיכון")
+    const memoryKeywords = memoryFacts
+      .filter(f => ['target_population', 'domain', 'region', 'focus', 'activity'].includes(f.key))
+      .map(f => f.value.toLowerCase())
+      .filter(v => v.length > 2);
+
+    const orgKeywords = [...focusAreas, ...memoryKeywords]
       .map(s => s.toLowerCase())
       .filter(s => s.length > 2);
 
-    if (orgKeywords.length > 0) {
+    if (orgKeywords.length > 0 || orgPopulations.length > 0 || orgDomains.length > 0) {
       const withScores = scored.map(c => ({
         ...c,
-        relevance_score: scoreCompany(c, orgKeywords, mission),
+        relevance_score: scoreCompany(c, orgKeywords, mission, orgPopulations, orgDomains, orgGeoRegions, negativeMatches),
       }));
 
-      // Sort by relevance
       withScores.sort((a, b) => b.relevance_score - a.relevance_score);
       matchedCount = withScores.filter(c => c.relevance_score >= 20).length;
 
       if (matchedOnly) {
-        scored = withScores.filter(c => c.relevance_score >= 20).slice(0, 200);
+        scored = withScores.filter(c => c.relevance_score >= 20).slice(0, 300);
       } else {
-        scored = withScores.slice(0, 200);
+        scored = withScores.slice(0, 300);
       }
     }
   }

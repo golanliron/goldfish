@@ -50,10 +50,21 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
   const [showOnlyMatched, setShowOnlyMatched] = useState(false);
   const [minMatchScore, setMinMatchScore] = useState<'' | '60' | '70' | '80' | '90'>('');
   const [showTimeline, setShowTimeline] = useState(false);
+  const [selectedRegion, setSelectedRegion] = useState('');
 
   const categories = useMemo(() => taxonomy.filter(t => t.type === 'category'), [taxonomy]);
   const populations = useMemo(() => taxonomy.filter(t => t.type === 'population'), [taxonomy]);
   const matchedCount = useMemo(() => matchScores.size, [matchScores]);
+
+  const GEO_LABELS: Record<string, string> = {
+    negev: 'נגב',
+    galilee: 'גליל',
+    periphery: 'פריפריה',
+    center: 'מרכז',
+    jerusalem: 'ירושלים',
+    haifa: 'חיפה',
+    national: 'ארצי',
+  };
 
   useEffect(() => {
     fetch(`/api/opportunities${orgId ? `?org_id=${orgId}` : ''}`)
@@ -109,6 +120,10 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
       result = result.filter(o => o.type === selectedType);
     }
 
+    if (selectedRegion) {
+      result = result.filter(o => (o.regions as string[] | undefined)?.includes(selectedRegion));
+    }
+
     // Sort by match score (highest first) when we have matches
     if (matchScores.size > 0) {
       result = [...result].sort((a, b) => {
@@ -121,7 +136,7 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
     return result;
   }, [opportunities, search, selectedCategory, selectedPopulation, selectedType, showOnlyMatched, minMatchScore, matchScores]);
 
-  const activeFilters = [selectedCategory, selectedPopulation, minMatchScore].filter(Boolean).length + (showOnlyMatched ? 1 : 0);
+  const activeFilters = [selectedCategory, selectedPopulation, minMatchScore, selectedRegion].filter(Boolean).length + (showOnlyMatched ? 1 : 0);
 
   if (loading) {
     return (
@@ -305,12 +320,31 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
               </select>
             )}
 
+            {/* Region filter */}
+            <div>
+              <div className="text-[10px] text-muted mb-1">אזור גאוגרפי</div>
+              <div className="flex flex-wrap gap-1">
+                {Object.entries(GEO_LABELS).map(([key, label]) => (
+                  <button
+                    key={key}
+                    onClick={() => setSelectedRegion(selectedRegion === key ? '' : key)}
+                    className={`text-[9px] px-1.5 py-0.5 rounded-md font-medium transition-colors ${
+                      selectedRegion === key ? 'bg-accent text-white' : 'bg-surf2 text-muted hover:text-text'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {activeFilters > 0 && (
               <button
                 onClick={() => {
                   setSelectedCategory('');
                   setSelectedPopulation('');
                   setMinMatchScore('');
+                  setSelectedRegion('');
                 }}
                 className="text-[10px] text-accent hover:underline"
               >
@@ -435,7 +469,6 @@ function FitAnalysisCard({ analysis, onProceed, onCancel }: { analysis: FitAnaly
 
 function OpportunityCard({ opp, match, orgId }: { opp: Opportunity; match?: MatchScore; orgId?: string | null }) {
   const [expanded, setExpanded] = useState(false);
-  const [showShare, setShowShare] = useState(false);
   const [draftState, setDraftState] = useState<'idle' | 'parsing' | 'analyzing' | 'fit_review' | 'generating' | 'done' | 'error'>('idle');
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
@@ -801,48 +834,6 @@ function OpportunityCard({ opp, match, orgId }: { opp: Opportunity; match?: Matc
             </a>
           </div>
 
-          {/* Share options */}
-          {showShare && (
-            <div className="flex gap-1.5 pt-1.5">
-              <a
-                href={`mailto:?subject=${encodeURIComponent(opp.title)}&body=${encodeURIComponent(buildShareText(opp))}`}
-                onClick={e => e.stopPropagation()}
-                className="flex-1 py-1.5 text-[10px] font-medium text-center border border-border rounded-lg hover:bg-surf2 transition-colors flex items-center justify-center gap-1"
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-                  <polyline points="22,6 12,13 2,6" />
-                </svg>
-                מייל
-              </a>
-              <a
-                href={`https://wa.me/?text=${encodeURIComponent(buildShareText(opp))}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={e => e.stopPropagation()}
-                className="flex-1 py-1.5 text-[10px] font-medium text-center border border-green-300 text-green-700 rounded-lg hover:bg-green-50 transition-colors flex items-center justify-center gap-1"
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" />
-                </svg>
-                וואטסאפ
-              </a>
-              <button
-                onClick={e => {
-                  e.stopPropagation();
-                  navigator.clipboard.writeText(buildShareText(opp));
-                  setShowShare(false);
-                }}
-                className="px-2.5 py-1.5 text-[10px] border border-border rounded-lg hover:bg-surf2 transition-colors"
-                title="העתק"
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                  <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-                </svg>
-              </button>
-            </div>
-          )}
         </div>
       )}
     </div>
