@@ -368,8 +368,12 @@ async function scanAllSources() {
           item.funder = source.funder;
         }
 
-        // Dedup: check URL and title prefix
-        if (item.url && existingUrls.has(item.url)) {
+        // Dedup: check URL (only specific URLs, not homepages) and title prefix
+        const isGenericUrl = item.url && (
+          item.url.replace(/\/+$/, '').split('/').length <= 3 || // just domain
+          item.url.match(/^https?:\/\/[^/]+\/?$/) // homepage
+        );
+        if (item.url && !isGenericUrl && existingUrls.has(item.url)) {
           totalSkipped++;
           continue;
         }

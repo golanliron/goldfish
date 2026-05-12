@@ -27,7 +27,9 @@ export async function GET(req: NextRequest) {
   ]);
 
   const opportunities = (oppRes.data || []).filter(
-    (o: Record<string, unknown>) => !o.deadline || String(o.deadline) >= today
+    (o: Record<string, unknown>) =>
+      (!o.deadline || String(o.deadline) >= today) &&
+      o.type !== 'fund' // funds belong in the companies/funds tab, not here
   );
 
   let matches = matchRes.data || [];
