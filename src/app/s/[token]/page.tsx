@@ -27,6 +27,7 @@ interface RfpInfo {
 
 interface Submission {
   id: string;
+  org_id: string;
   status: string;
   version: number;
   content: SubmissionBlock[];
@@ -77,7 +78,7 @@ export default function SharedSubmissionPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: `אני עורך טיוטת הגשה לקרן.\n\nהשאלה: ${block.question}\n\nהתשובה הנוכחית:\n${block.answer}\n\n${prompt || 'שפר את התשובה — הפוך אותה ממוקדת, משכנעת ומקצועית יותר.'}\n\nהחזר רק את התשובה המשופרת, ללא הסברים.`,
-          org_id: 'DEV_ORG_001',
+          org_id: submission?.org_id || '',
           user_id: 'shared_editor',
           active_tab: 'chat',
         }),
