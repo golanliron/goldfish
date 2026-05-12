@@ -73,10 +73,13 @@ export default function OnboardingPage() {
       .single()
       .then(({ data: profile }) => {
         const d = profile?.data as Record<string, unknown> | null;
-        if (d?.onboarding_complete) {
+        const isEditMode = window.location.search.includes('edit') || document.referrer.includes('/dashboard');
+        if (d?.onboarding_complete && !isEditMode) {
           window.location.href = '/dashboard';
         } else {
           if (d?.name) setOrgName(d.name as string);
+          if (d?.summary) setOrgDesc(d.summary as string);
+          if (Array.isArray(d?.target_populations) && d.target_populations[0]) setOrgPopulation(d.target_populations[0] as string);
           setReady(true);
         }
       }, () => setReady(true));

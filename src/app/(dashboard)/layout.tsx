@@ -93,6 +93,7 @@ function FeedbackModal({ onClose, orgId }: { onClose: () => void; orgId: string 
 }
 
 function DashboardInner({ children }: { children: React.ReactNode }) {
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const [showSplash, setShowSplash] = useState(() => {
     if (typeof window !== 'undefined') {
       // Skip splash if already seen this session or coming from onboarding
@@ -174,16 +175,37 @@ function DashboardInner({ children }: { children: React.ReactNode }) {
           >
             📤 אהבתם? שתפו חבר
           </button>
-          <button
-            onClick={async () => {
-              await signOut();
-              router.push('/login');
-            }}
-            className="w-7 h-7 rounded-full bg-accent text-white flex items-center justify-center text-xs font-bold hover:bg-accent-hover transition-colors"
-            title="יציאה"
-          >
-            {userInitial}
-          </button>
+          <div className="relative">
+            <button
+              onClick={() => setShowUserMenu(v => !v)}
+              className="w-7 h-7 rounded-full bg-accent text-white flex items-center justify-center text-xs font-bold hover:bg-accent-hover transition-colors"
+              title="תפריט משתמש"
+            >
+              {userInitial}
+            </button>
+            {showUserMenu && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowUserMenu(false)} />
+                <div className="absolute left-0 top-9 z-50 bg-bg border border-border rounded-xl shadow-lg py-1 min-w-[160px]" dir="rtl">
+                  <div className="px-3 py-2 border-b border-border">
+                    <p className="text-xs text-muted truncate">{user?.email}</p>
+                  </div>
+                  <button
+                    onClick={() => { setShowUserMenu(false); router.push('/onboarding'); }}
+                    className="w-full text-right px-3 py-2 text-sm hover:bg-surf2 transition-colors"
+                  >
+                    ✏️ ערוך פרופיל ארגון
+                  </button>
+                  <button
+                    onClick={async () => { setShowUserMenu(false); await signOut(); router.push('/login'); }}
+                    className="w-full text-right px-3 py-2 text-sm hover:bg-surf2 transition-colors text-red-500"
+                  >
+                    יציאה
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </header>
 
