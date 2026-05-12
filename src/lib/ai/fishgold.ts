@@ -1049,7 +1049,7 @@ export const FISHGOLD_NONPROFITS_PART2 = `
 export const FISHGOLD_GRANTS_INTELLIGENCE = `
 ===== מודיעין קולות קוראים וגופים מממנים =====
 
-תמונת כמות: 411+ קולות קוראים פעילים במערכת, 49 פתוחים עכשיו (מאי 2026), 957 חברות וארגונים, 247 קרנות ופדרציות.
+תמונת כמות: 411+ קולות קוראים פעילים במערכת, 49 פתוחים עכשיו (מאי 2026), 957 חברות וארגונים, 285 קרנות ופדרציות.
 
 קטגוריות קולות קוראים לפי נפח: קהילה (23 פתוחים), חינוך (22), רווחה (20), תרבות (12), פריפריה (11), מדע וטכנולוגיה (10), תעסוקה (9).
 
@@ -1456,7 +1456,30 @@ EU NDICI — 7.2M אירו ב-2024 לחברה אזרחית בישראל. 500K-75
 קרן רוזה לוקסמבורג — גרמנית. צדק חברתי, זכויות. סניף בישראל.
 Horizon Europe — ישראל חברה מלאה. מיליארדי אירו. גם לארגונים חברתיים בקונסורציומים.
 
-סה"כ 247 קרנות ופדרציות במאגר עם אנשי קשר, תיאורים ותחומי מימון.
+קרנות נוספות מסריקת מאגרים (אצווה 2):
+קרן הורוביץ — בריאות, קשישים, אמנויות. אלי הורוביץ (טבע). hurvitz.org.il
+קרן יק"א (ICA) — מ-1891. חינוך, חקלאות, תיירות. פריפריה. ica-is.org.il
+Steinmetz Foundation — נוער בסיכון, רפואה, מחקר סרטן. steinmetz-foundation.co.il
+NADAV Foundation — פרויקטים חברתיים, חינוך. תל אביב. nadavfund.org.il
+אשוקה ישראל — יזמים חברתיים, changemakers. ashoka.org
+Clore Israel Foundation — מנהיגות, חינוך. מלגות קלור. clore-foundation.org.il
+Helen Bader Foundation — אלצהיימר, חינוך, נוער. hbf.org
+Milken Foundation — חינוך, מחקר, רפואה. פרסי מורים. mff.org
+Bloomberg Philanthropies — 1B$+ שנתי. חינוך, בריאות, סביבה.
+The Broad Foundation — רפורמה בחינוך, אמנויות. broadfoundation.org
+Dell Foundation — עוני ילדים, חינוך, טכנולוגיה. 2B$ חולקו.
+Blank Foundation — Home Depot. משפחות, חינוך. blankfoundation.org
+Ford Foundation — 600M$+ שנתי. צדק חברתי, חברה אזרחית.
+JDC (ג׳וינט) — 70 מדינות. חדשנות, evidence-based. jdc.org
+Birthright Israel Foundation — מאות אלפי צעירים לישראל.
+Covenant Foundation — פרסי מחנכים יהודיים. covenantfn.org
+Harold Grinspoon Foundation — PJ Library, 1M+ ילדים. hgf.org
+Kohelet Foundation — חינוך, מדיניות ציבורית.
+Pershing Square Foundation — Bill Ackman. חינוך, מנהיגות.
+Taube Foundation — חינוך, מורשת יהודית. taubephilanthropies.org
+Dorot Foundation — Fellowship בישראל. dorot.org
+
+סה"כ 285 קרנות ופדרציות במאגר עם אנשי קשר, תיאורים, אתרים ותחומי מימון.
 
 75 מקורות סריקה יומית:
 ממשלתי (21): tmichot.mof.gov.il, grants.gov.il, pob.education.gov.il, btl.gov.il, innovationisrael.org.il
