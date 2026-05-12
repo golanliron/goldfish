@@ -58,12 +58,10 @@ export default function SharedSubmissionPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: [{
-            role: 'user',
-            content: `אני עורך טיוטת הגשה לקרן.\n\nהשאלה: ${block.question}\n\nהתשובה הנוכחית:\n${block.answer}\n\n${prompt || 'שפר את התשובה — הפוך אותה ממוקדת, משכנעת ומקצועית יותר.'}\n\nהחזר רק את התשובה המשופרת, ללא הסברים.`,
-          }],
-          org_id: 'shared',
-          skip_context: true,
+          message: `אני עורך טיוטת הגשה לקרן.\n\nהשאלה: ${block.question}\n\nהתשובה הנוכחית:\n${block.answer}\n\n${prompt || 'שפר את התשובה — הפוך אותה ממוקדת, משכנעת ומקצועית יותר.'}\n\nהחזר רק את התשובה המשופרת, ללא הסברים.`,
+          org_id: 'DEV_ORG_001',
+          user_id: 'shared_editor',
+          active_tab: 'chat',
         }),
       });
       if (!res.ok || !res.body) throw new Error('failed');
@@ -75,8 +73,7 @@ export default function SharedSubmissionPage() {
         if (done) break;
         result += decoder.decode(value, { stream: true });
       }
-      // strip SSE format if needed
-      const clean = result.replace(/^data: /gm, '').replace(/\[DONE\]/g, '').trim();
+      const clean = result.trim();
       const updated = [...editContent];
       updated[blockIndex] = { ...updated[blockIndex], answer: clean };
       setEditContent(updated);
@@ -216,8 +213,9 @@ export default function SharedSubmissionPage() {
 
         {/* Editor name prompt */}
         {!editorName && (
-          <div className="bg-white rounded-2xl border border-gray-200 p-6">
-            <div className="text-sm font-medium text-gray-700 mb-3">מה שמך? (לצורך עריכה והערות)</div>
+          <div className="bg-orange-50 rounded-2xl border border-orange-200 p-6">
+            <div className="text-base font-semibold text-orange-800 mb-1">✏️ רוצה לערוך או לשפר עם AI?</div>
+            <div className="text-sm text-orange-600 mb-3">הכניסי שם כדי להתחיל לערוך ולהשתמש בגולדפיש לשיפור תשובות</div>
             <div className="flex gap-2">
               <input
                 type="text"
