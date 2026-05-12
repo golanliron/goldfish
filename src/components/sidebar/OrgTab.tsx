@@ -324,6 +324,11 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
   if (!(profile?.mission && profile.mission.length > 20)) missingKnowledge.push('תיאור מטרה');
   if (!(profile?.annual_budget && profile.annual_budget > 0)) missingKnowledge.push('מחזור שנתי');
 
+  // Readiness color + label
+  const readinessColor = completeness >= 80 ? 'text-green-600' : completeness >= 50 ? 'text-amber-500' : 'text-red-500';
+  const readinessBg = completeness >= 80 ? 'bg-green-500' : completeness >= 50 ? 'bg-amber-400' : 'bg-red-400';
+  const readinessLabel = completeness >= 80 ? 'מוכן להגשה' : completeness >= 50 ? 'כמעט מוכן' : 'צריך להשלים';
+
   return (
     <div className="space-y-4">
       {/* Hidden file input */}
@@ -335,6 +340,47 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
         accept=".pdf,.docx,.doc,.xlsx,.xls,.txt,.md,.csv,.html,.pptx"
         onChange={handleUpload}
       />
+
+      {/* ===== READINESS SCORE ===== */}
+      <div className="bg-surf rounded-xl border border-border p-4 slide-in-right">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <span className={`text-2xl font-bold ${readinessColor}`}>{completeness}%</span>
+            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+              completeness >= 80 ? 'bg-green-100 text-green-700' :
+              completeness >= 50 ? 'bg-amber-100 text-amber-700' :
+              'bg-red-100 text-red-600'
+            }`}>{readinessLabel}</span>
+          </div>
+          <span className="text-[10px] text-muted">מוכנות פרופיל</span>
+        </div>
+
+        {/* Progress bar */}
+        <div className="h-2 bg-surf2 rounded-full overflow-hidden mb-3">
+          <div
+            className={`h-full rounded-full transition-all duration-700 ${readinessBg}`}
+            style={{ width: `${completeness}%` }}
+          />
+        </div>
+
+        {/* Missing items */}
+        {missingKnowledge.length > 0 && (
+          <div className="space-y-1">
+            <p className="text-[10px] text-muted font-medium">חסר להשלמה:</p>
+            <div className="flex flex-wrap gap-1">
+              {missingKnowledge.map((item, i) => (
+                <span key={i} className="text-[10px] px-2 py-0.5 bg-surf2 border border-border rounded-full text-muted2">
+                  + {item}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {completeness >= 80 && (
+          <p className="text-[10px] text-green-600 mt-1">הפרופיל מוכן — ניתן לייצר טיוטות מדויקות</p>
+        )}
+      </div>
 
       {/* ===== BLOCK 1: Org Identity Card ===== */}
       {profile?.name && (
