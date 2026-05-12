@@ -453,11 +453,50 @@ ${docIds.length > 0 ? `\n[document_ids: ${docIds.join(',')}]` : ''}
     setInput('');
   };
 
+  // History drawer state
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyList, setHistoryList] = useState<{ id: string; title: string; updated_at: string; preview: string; message_count: number }[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  const openHistory = async () => {
+    setShowHistory(true);
+    if (!orgId || !userId) return;
+    setHistoryLoading(true);
+    try {
+      const res = await fetch(`/api/conversations?org_id=${orgId}&user_id=${userId}&list=true`);
+      const data = await res.json();
+      setHistoryList(data.conversations || []);
+    } catch { /* ignore */ }
+    finally { setHistoryLoading(false); }
+  };
+
+  const loadConversation = (convId: string) => {
+    window.dispatchEvent(new CustomEvent('fishgold:loadConversation', { detail: { conversationId: convId } }));
+    setShowHistory(false);
+  };
+
+  const formatDate = (iso: string) => {
+    const d = new Date(iso);
+    const now = new Date();
+    const diffDays = Math.floor((now.getTime() - d.getTime()) / 86400000);
+    if (diffDays === 0) return 'היום';
+    if (diffDays === 1) return 'אתמול';
+    if (diffDays < 7) return `לפני ${diffDays} ימים`;
+    return d.toLocaleDateString('he-IL', { day: 'numeric', month: 'short' });
+  };
+
   return (
-    <div className="flex flex-col h-full">
-      {/* Chat header with new chat button */}
+    <div className="flex flex-col h-full relative">
+      {/* Chat header with new chat + history buttons */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-bg2/50 flex-shrink-0">
-        <span className="text-xs text-muted">Goldfish Chat</span>
+        <button
+          onClick={openHistory}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] text-muted hover:text-accent hover:bg-surf2 rounded-lg transition-colors"
+          title="היסטוריית שיחות"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>
+          היסטוריה
+        </button>
         <button
           onClick={startNewChat}
           className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] text-muted hover:text-accent hover:bg-surf2 rounded-lg transition-colors"
@@ -466,6 +505,44 @@ ${docIds.length > 0 ? `\n[document_ids: ${docIds.join(',')}]` : ''}
           שיחה חדשה
         </button>
       </div>
+
+      {/* History drawer */}
+      {showHistory && (
+        <div className="absolute inset-0 z-20 flex flex-col bg-bg border-r border-border" dir="rtl">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+            <span className="text-sm font-medium text-text">היסטוריית שיחות</span>
+            <button onClick={() => setShowHistory(false)} className="p-1.5 rounded-lg hover:bg-surf2 text-muted hover:text-text transition-colors">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-1">
+            {historyLoading && (
+              <div className="text-center text-muted text-sm py-8">טוען שיחות...</div>
+            )}
+            {!historyLoading && historyList.length === 0 && (
+              <div className="text-center text-muted text-sm py-8">אין שיחות קודמות עדיין</div>
+            )}
+            {!historyLoading && historyList.map(conv => (
+              <button
+                key={conv.id}
+                onClick={() => loadConversation(conv.id)}
+                className="w-full text-right px-3 py-2.5 rounded-xl hover:bg-surf2 transition-colors group"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <span className="text-[13px] font-medium text-text truncate flex-1">
+                    {conv.title || 'שיחה'}
+                  </span>
+                  <span className="text-[10px] text-muted flex-shrink-0 mt-0.5">{formatDate(conv.updated_at)}</span>
+                </div>
+                {conv.preview && (
+                  <p className="text-[11px] text-muted mt-0.5 truncate">{conv.preview}</p>
+                )}
+                <span className="text-[10px] text-muted/60">{conv.message_count} הודעות</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((msg) => (
