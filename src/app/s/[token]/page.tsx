@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 
 interface SubmissionBlock {
@@ -42,6 +42,52 @@ export default function SharedSubmissionPage() {
   const [commentName, setCommentName] = useState('');
   const [addingComment, setAddingComment] = useState(false);
   const lockInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // AI assist per block
+  const [aiPrompt, setAiPrompt] = useState<Record<string, string>>({});
+  const [aiLoading, setAiLoading] = useState<Record<string, boolean>>({});
+  const [aiOpen, setAiOpen] = useState<Record<string, boolean>>({});
+
+  const improveWithAI = useCallback(async (blockId: string, blockIndex: number) => {
+    const prompt = aiPrompt[blockId] || '';
+    const block = editContent[blockIndex];
+    if (!block) return;
+    setAiLoading(prev => ({ ...prev, [blockId]: true }));
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [{
+            role: 'user',
+            content: `אני עורך טיוטת הגשה לקרן.\n\nהשאלה: ${block.question}\n\nהתשובה הנוכחית:\n${block.answer}\n\n${prompt || 'שפר את התשובה — הפוך אותה ממוקדת, משכנעת ומקצועית יותר.'}\n\nהחזר רק את התשובה המשופרת, ללא הסברים.`,
+          }],
+          org_id: 'shared',
+          skip_context: true,
+        }),
+      });
+      if (!res.ok || !res.body) throw new Error('failed');
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let result = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        result += decoder.decode(value, { stream: true });
+      }
+      // strip SSE format if needed
+      const clean = result.replace(/^data: /gm, '').replace(/\[DONE\]/g, '').trim();
+      const updated = [...editContent];
+      updated[blockIndex] = { ...updated[blockIndex], answer: clean };
+      setEditContent(updated);
+      setAiOpen(prev => ({ ...prev, [blockId]: false }));
+      setAiPrompt(prev => ({ ...prev, [blockId]: '' }));
+    } catch {
+      // ignore
+    } finally {
+      setAiLoading(prev => ({ ...prev, [blockId]: false }));
+    }
+  }, [editContent, aiPrompt]);
 
   useEffect(() => {
     load();
@@ -248,9 +294,37 @@ export default function SharedSubmissionPage() {
                     rows={6}
                     className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-blue-400 resize-none"
                   />
-                  {block.max_chars && (
-                    <div className="text-xs text-gray-400 mt-1 text-left">
-                      {editContent[i]?.answer?.length || 0} / {block.max_chars}
+                  <div className="flex items-center justify-between mt-1">
+                    {block.max_chars ? (
+                      <div className="text-xs text-gray-400">
+                        {editContent[i]?.answer?.length || 0} / {block.max_chars}
+                      </div>
+                    ) : <div />}
+                    <button
+                      onClick={() => setAiOpen(prev => ({ ...prev, [block.id]: !prev[block.id] }))}
+                      className="text-xs text-orange-500 hover:text-orange-700 flex items-center gap-1"
+                    >
+                      ✨ שפר עם גולדפיש
+                    </button>
+                  </div>
+                  {aiOpen[block.id] && (
+                    <div className="mt-2 bg-orange-50 rounded-xl border border-orange-200 p-3 space-y-2">
+                      <div className="text-xs text-orange-700 font-medium">מה לשפר?</div>
+                      <input
+                        type="text"
+                        value={aiPrompt[block.id] || ''}
+                        onChange={e => setAiPrompt(prev => ({ ...prev, [block.id]: e.target.value }))}
+                        placeholder="למשל: קצר ל-300 תווים, הדגש את האימפקט, הוסף נתונים..."
+                        className="w-full px-3 py-2 rounded-lg border border-orange-200 text-sm focus:outline-none focus:border-orange-400 bg-white"
+                        onKeyDown={e => e.key === 'Enter' && !aiLoading[block.id] && improveWithAI(block.id, i)}
+                      />
+                      <button
+                        onClick={() => improveWithAI(block.id, i)}
+                        disabled={!!aiLoading[block.id]}
+                        className="w-full py-1.5 bg-orange-500 text-white text-sm rounded-lg hover:bg-orange-600 disabled:opacity-50"
+                      >
+                        {aiLoading[block.id] ? 'מעבד...' : 'שפר'}
+                      </button>
                     </div>
                   )}
                 </div>
