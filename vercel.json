@@ -7,8 +7,20 @@
       "schedule": "0 6 * * *"
     },
     {
-      "path": "/api/cron/notify-matches",
+      "path": "/api/cron/scan-sources",
+      "schedule": "0 18 * * *"
+    },
+    {
+      "path": "/api/cron/scan-federations",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/scan-federations",
+      "schedule": "0 19 * * *"
+    },
+    {
+      "path": "/api/cron/notify-matches",
+      "schedule": "0 8 * * *"
     }
   ]
 }
