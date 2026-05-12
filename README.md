@@ -85,4 +85,16 @@ src/
 
 ## Developer Docs
 
-See [GRANTS_SYSTEM.md](GRANTS_SYSTEM.md) for detailed grant scanning architecture.
+See [`docs/`](docs/) for the full knowledge base:
+
+| File | What's Inside |
+|------|---------------|
+| [docs/README.md](docs/README.md) | Index of all documentation |
+| [docs/PRODUCT_BRIEF.md](docs/PRODUCT_BRIEF.md) | What is Goldfish, who uses it, current state |
+| [docs/DAY_ONE.md](docs/DAY_ONE.md) | Getting started — hour by hour |
+| [docs/ENV_SETUP.md](docs/ENV_SETUP.md) | All env vars + where to get them |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | What to build next (P0→P3) |
+| [docs/01-architecture.md](docs/01-architecture.md) | Tech stack, file map, system prompt |
+| [docs/03-database.md](docs/03-database.md) | Full Supabase schema |
+| [docs/04-search-matching.md](docs/04-search-matching.md) | DNA matching engine |
+| [docs/raw-knowledge/](docs/raw-knowledge/) | Deep reference files — all knowledge |
