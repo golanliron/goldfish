@@ -36,8 +36,9 @@ export async function updateSession(request: NextRequest) {
   const isAuthRoute = request.nextUrl.pathname.startsWith('/login') ||
                       request.nextUrl.pathname.startsWith('/signup');
 
-  // Admin can go anywhere — no forced redirects whatsoever
-  if (isAdmin) {
+  // Admin or preview mode — no redirects ever
+  const isPreview = request.nextUrl.searchParams.has('preview');
+  if (isAdmin || isPreview) {
     return supabaseResponse;
   }
 
