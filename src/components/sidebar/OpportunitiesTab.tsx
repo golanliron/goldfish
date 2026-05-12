@@ -340,7 +340,7 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
             <p className="text-xs text-muted2 mt-1">נסו לשנות את החיפוש או הסינון</p>
           </div>
         ) : (
-          filtered.map(opp => <OpportunityCard key={opp.id} opp={opp} match={matchScores.get(opp.id)} />)
+          filtered.map(opp => <OpportunityCard key={opp.id} opp={opp} match={matchScores.get(opp.id)} orgId={orgId} />)
         )}
       </div>
     </div>
@@ -361,9 +361,52 @@ function buildShareText(opp: Opportunity): string {
   return parts.join('\n');
 }
 
-function OpportunityCard({ opp, match }: { opp: Opportunity; match?: MatchScore }) {
+function OpportunityCard({ opp, match, orgId }: { opp: Opportunity; match?: MatchScore; orgId?: string | null }) {
   const [expanded, setExpanded] = useState(false);
   const [showShare, setShowShare] = useState(false);
+  const [draftState, setDraftState] = useState<'idle' | 'parsing' | 'generating' | 'done' | 'error'>('idle');
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [draftError, setDraftError] = useState<string | null>(null);
+
+  const handlePrepareDraft = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!orgId) return;
+    setDraftState('parsing');
+    setDraftError(null);
+    setShareUrl(null);
+
+    try {
+      // Step 1: Parse the RFP
+      const rfpRes = await fetch('/api/rfp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          org_id: orgId,
+          url: opp.url || null,
+          text: !opp.url ? [opp.title, opp.description, opp.eligibility, opp.how_to_apply].filter(Boolean).join('\n') : null,
+          opportunity_id: opp.id,
+        }),
+      });
+      const rfpData = await rfpRes.json();
+      if (!rfpRes.ok || !rfpData.rfp_id) throw new Error(rfpData.error || 'שגיאה בניתוח קול הקורא');
+
+      // Step 2: Generate draft submission
+      setDraftState('generating');
+      const subRes = await fetch('/api/submissions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ org_id: orgId, rfp_id: rfpData.rfp_id, opportunity_id: opp.id }),
+      });
+      const subData = await subRes.json();
+      if (!subRes.ok || !subData.share_url) throw new Error(subData.error || 'שגיאה ביצירת הטיוטה');
+
+      setShareUrl(subData.share_url);
+      setDraftState('done');
+    } catch (err) {
+      setDraftError(err instanceof Error ? err.message : 'שגיאה לא צפויה');
+      setDraftState('error');
+    }
+  };
 
   const daysLeft = opp.deadline
     ? Math.ceil((new Date(opp.deadline).getTime() - Date.now()) / 86400000)
@@ -540,6 +583,78 @@ function OpportunityCard({ opp, match }: { opp: Opportunity; match?: MatchScore 
               {opp.url ? 'פתח הגשה' : 'חפש הגשה בגוגל'}
             </a>
           </div>
+
+          {/* Prepare draft submission button */}
+          {orgId && (
+            <div className="pt-1">
+              {draftState === 'idle' && (
+                <button
+                  onClick={handlePrepareDraft}
+                  className="w-full py-2 text-[10px] font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
+                  </svg>
+                  הכן טיוטת הגשה אוטומטית
+                </button>
+              )}
+              {(draftState === 'parsing' || draftState === 'generating') && (
+                <div className="w-full py-2 text-[10px] font-medium bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center gap-1.5">
+                  <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                  {draftState === 'parsing' ? 'קורא את קול הקורא...' : 'כותב טיוטת הגשה...'}
+                </div>
+              )}
+              {draftState === 'done' && shareUrl && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-2.5 space-y-1.5">
+                  <div className="text-[10px] font-semibold text-green-700">הטיוטה מוכנה!</div>
+                  <a
+                    href={shareUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={e => e.stopPropagation()}
+                    className="flex items-center gap-1 text-[10px] text-blue-600 hover:underline font-medium"
+                  >
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+                      <polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" />
+                    </svg>
+                    פתח דף עריכה שיתופי
+                  </a>
+                  <button
+                    onClick={e => {
+                      e.stopPropagation();
+                      const url = window.location.origin + shareUrl.replace(window.location.origin, '');
+                      navigator.clipboard.writeText(url);
+                    }}
+                    className="flex items-center gap-1 text-[10px] text-muted hover:text-text"
+                  >
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                      <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+                    </svg>
+                    העתק לינק
+                  </button>
+                  <button
+                    onClick={e => { e.stopPropagation(); setDraftState('idle'); setShareUrl(null); }}
+                    className="text-[9px] text-muted hover:underline"
+                  >
+                    הכן טיוטה חדשה
+                  </button>
+                </div>
+              )}
+              {draftState === 'error' && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-2 space-y-1">
+                  <div className="text-[10px] text-red-600">{draftError}</div>
+                  <button
+                    onClick={e => { e.stopPropagation(); setDraftState('idle'); }}
+                    className="text-[9px] text-accent hover:underline"
+                  >
+                    נסה שוב
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Share row */}
           <div className="flex gap-1.5 pt-1">
