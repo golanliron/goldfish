@@ -24,6 +24,11 @@ export interface OrgDNA {
   // Anti-match: populations/domains the org does NOT serve
   excludePopulations: string[];
   excludeDomains: string[];
+  // Primary vs secondary — core mission gets 2x weight in matching
+  primaryDomains?: string[];
+  primaryPopulations?: string[];
+  // Profile completeness (0-100) — affects match confidence
+  profileCompleteness?: number;
 }
 
 // ===== Population Detection =====
@@ -319,6 +324,18 @@ export function extractOrgDNA(
     }
   }
 
+  // Profile completeness score
+  let completeness = 0;
+  if (profile?.name) completeness += 10;
+  if (profile?.mission && String(profile.mission).length > 30) completeness += 15;
+  if (populations.length > 0) completeness += 15;
+  if (domains.length > 0) completeness += 15;
+  if (geography.length > 0) completeness += 10;
+  if (ageGroups.length > 0) completeness += 5;
+  if (interventionTypes.length > 0) completeness += 10;
+  if (docTexts && docTexts.length > 0) completeness += 15;
+  if (budget > 0) completeness += 5;
+
   return {
     populations,
     domains,
@@ -330,6 +347,7 @@ export function extractOrgDNA(
     themes,
     excludePopulations,
     excludeDomains,
+    profileCompleteness: Math.min(100, completeness),
   };
 }
 
@@ -340,7 +358,8 @@ export function scoreDNAMatch(
   oppCategories: string[],
   oppPopulations: string[],
   oppTitle: string,
-  oppDescription?: string
+  oppDescription?: string,
+  oppAlsoRelevantFor?: string[]
 ): { score: number; reasoning: string; isNegativeMatch: boolean } {
   const oppText = `${oppTitle} ${oppDescription || ''}`.toLowerCase();
 
@@ -372,15 +391,19 @@ export function scoreDNAMatch(
     return { score: Math.min(score, 15), reasoning: reasons.join('. '), isNegativeMatch: true };
   }
 
-  // 2. Population match (30 points max)
+  // 2. Population match (35 points max — primary gets bonus)
   const oppDetectedPops = POPULATION_PATTERNS.filter(p => p.patterns.test(oppText)).map(p => p.key);
   const popOverlap = oppDetectedPops.filter(p => orgDna.populations.includes(p));
   if (popOverlap.length > 0) {
-    score += Math.min(30, popOverlap.length * 15);
+    const primaryPops = orgDna.primaryPopulations || [];
+    const primaryHits = popOverlap.filter(p => primaryPops.includes(p));
+    const secondaryHits = popOverlap.filter(p => !primaryPops.includes(p));
+    // Primary population match = 20pts each, secondary = 10pts
+    const popPoints = Math.min(35, primaryHits.length * 20 + secondaryHits.length * 10);
+    score += popPoints;
     const popLabels = popOverlap.map(k => POPULATION_PATTERNS.find(p => p.key === k)?.label || k);
-    reasons.push(`אוכלוסייה: ${popLabels.join(', ')}`);
+    reasons.push(`אוכלוסייה: ${popLabels.join(', ')}${primaryHits.length > 0 ? ' (ליבה)' : ''}`);
   } else if (oppDetectedPops.length > 0 && orgDna.populations.length > 0) {
-    // Opportunity targets specific populations that don't match org
     score -= 10;
   }
 
@@ -395,13 +418,17 @@ export function scoreDNAMatch(
   const hasExcludedDomains = allOppDomains.some(d => orgDna.excludeDomains.includes(d));
 
   if (uniqueCatOverlap.length > 0) {
-    // Reduce points if excluded domains are also present (mixed relevance)
+    const primaryDoms = orgDna.primaryDomains || [];
+    const primaryDomHits = uniqueCatOverlap.filter(d => primaryDoms.includes(d));
+    const secondaryDomHits = uniqueCatOverlap.filter(d => !primaryDoms.includes(d));
+    // Primary domain = 18pts, secondary = 8pts. Half if excluded domains present
+    const rawPoints = primaryDomHits.length * 18 + secondaryDomHits.length * 8;
     const domainPoints = hasExcludedDomains
-      ? Math.min(15, uniqueCatOverlap.length * 6)  // Half points for mixed-domain opps
-      : Math.min(30, uniqueCatOverlap.length * 12);
+      ? Math.min(18, Math.floor(rawPoints / 2))
+      : Math.min(35, rawPoints);
     score += domainPoints;
     const domainLabels = uniqueCatOverlap.map(k => DOMAIN_PATTERNS.find(d => d.key === k)?.label || k);
-    reasons.push(`תחום: ${domainLabels.join(', ')}${hasExcludedDomains ? ' (חפיפה חלקית)' : ''}`);
+    reasons.push(`תחום: ${domainLabels.join(', ')}${primaryDomHits.length > 0 ? ' (ליבה)' : ''}${hasExcludedDomains ? ' (חפיפה חלקית)' : ''}`);
   }
 
   // 4. Geography match (20 points max)
@@ -448,6 +475,21 @@ export function scoreDNAMatch(
   for (const theme of orgDna.themes) {
     if (oppText.includes(theme.replace(/_/g, ' ')) || oppText.includes(theme)) {
       score += 3;
+    }
+  }
+
+  // 9. "Also relevant for" — creative matching (15 points max)
+  // These are AI-generated tags that indicate the grant is relevant beyond its direct category
+  if (oppAlsoRelevantFor && oppAlsoRelevantFor.length > 0) {
+    const orgAllTags = [...orgDna.domains, ...orgDna.populations, ...orgDna.subDomains];
+    const relevantOverlap = oppAlsoRelevantFor.filter(tag => orgAllTags.includes(tag));
+    if (relevantOverlap.length > 0 && popOverlap.length === 0 && uniqueCatOverlap.length === 0) {
+      // No direct match but creative match — this is the "seeing beyond" magic
+      score += Math.min(15, relevantOverlap.length * 5);
+      reasons.push(`רלוונטי גם עבור: ${relevantOverlap.join(', ')}`);
+    } else if (relevantOverlap.length > 0) {
+      // Has both direct and creative match — small bonus
+      score += Math.min(8, relevantOverlap.length * 3);
     }
   }
 
@@ -525,6 +567,8 @@ ${orgText.slice(0, 12000)}
 {
   "populations": [/* מתוך: ${populationKeys} */],
   "domains": [/* מתוך: ${domainKeys} */],
+  "primaryDomains": [/* 1-2 תחומים שהם הליבה/המשימה המרכזית של הארגון */],
+  "primaryPopulations": [/* 1-2 אוכלוסיות שהן עיקר העבודה */],
   "subDomains": [/* מתוך: ${subDomainKeys} */],
   "interventionTypes": [/* מתוך: ${interventionKeys} */],
   "geography": [/* מתוך: ${geoKeys} */],
@@ -536,6 +580,7 @@ ${orgText.slice(0, 12000)}
 - השתמש רק בערכים שמופיעים ברשימות. אל תמציא ערכים חדשים (חוץ מ-themes שהוא חופשי).
 - אם תחום לא מוזכר — אל תכלול אותו.
 - subDomains רק אם ה-parentDomain שלהם נמצא ב-domains.
+- primaryDomains ו-primaryPopulations: בחר 1-2 בלבד שהם הליבה האמיתית של הארגון (מה שמופיע הכי הרבה, מוזכר ראשון, או מתואר כמשימה המרכזית).
 - החזר JSON תקני בלבד, ללא markdown, ללא \`\`\`.`;
 
   try {
@@ -566,6 +611,8 @@ ${orgText.slice(0, 12000)}
     return {
       populations: (parsed.populations || []).filter((k: string) => allPopKeys.includes(k)),
       domains: (parsed.domains || []).filter((k: string) => allDomainKeys.includes(k)),
+      primaryDomains: (parsed.primaryDomains || []).filter((k: string) => allDomainKeys.includes(k)).slice(0, 2),
+      primaryPopulations: (parsed.primaryPopulations || []).filter((k: string) => allPopKeys.includes(k)).slice(0, 2),
       subDomains: (parsed.subDomains || []).filter((k: string) => allSubKeys.includes(k)),
       interventionTypes: (parsed.interventionTypes || []).filter((k: string) => allIntKeys.includes(k)),
       geography: (parsed.geography || []).filter((k: string) => allGeoKeys.includes(k)),

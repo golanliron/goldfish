@@ -233,36 +233,58 @@ const VALID_CATEGORIES = DOMAIN_PATTERNS.map(([k]) => k);
 const VALID_POPULATIONS = POPULATION_PATTERNS.map(([k]) => k);
 const VALID_REGIONS = GEO_PATTERNS.map(([k]) => k);
 
+interface GrantClassification {
+  categories: string[];
+  target_populations: string[];
+  regions: string[];
+  also_relevant_for: string[];
+  relevance_reasoning: string;
+}
+
 async function classifyGrantWithAI(
   title: string,
   description: string,
   pageText: string
-): Promise<{ categories: string[]; target_populations: string[]; regions: string[] } | null> {
+): Promise<GrantClassification | null> {
   const text = `${title}\n${description}\n${pageText}`.slice(0, 4000);
   try {
     const res = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      system: `אתה מסווג קולות קוראים ומענקים לקטגוריות קבועות. החזר JSON בלבד.
+      system: `אתה יועץ גיוס משאבים מומחה שמסווג קולות קוראים. יש לך שני תפקידים:
+1. סיווג ישיר — מה הקול הקורא מבקש במפורש
+2. ראייה מעבר — אילו ארגונים נוספים יכולים להגיש גם אם הם לא בתחום הישיר
 
-הקטגוריות האפשריות (categories — תחומים):
+הקטגוריות (categories):
 ${VALID_CATEGORIES.join(', ')}
 
-אוכלוסיות יעד אפשריות (target_populations):
+אוכלוסיות (target_populations):
 ${VALID_POPULATIONS.join(', ')}
 
-אזורים אפשריים (regions):
+אזורים (regions):
 ${VALID_REGIONS.join(', ')}
 
-חוקים:
-- השתמש רק בערכים מהרשימות. אל תמציא ערכים חדשים.
-- בחר 1-3 קטגוריות הכי רלוונטיות, לא יותר.
-- אם אין אוכלוסיית יעד ברורה — השאר מערך ריק.
-- אם אין אזור גאוגרפי — השאר מערך ריק.
+כללי "ראייה מעבר" — חשוב כמו יועץ גיוס משאבים:
+- "חוסן קהילתי" = גם חינוך, נוער, בריאות נפש, תעסוקה, ספורט, תרבות
+- "מניעת פשיעה" = גם נוער בסיכון, חינוך, תעסוקה, ליווי אישי
+- "שוויון הזדמנויות" = גם נשים, ערבים, מוגבלויות, פריפריה, עולים
+- "חירום ותקומה" = כמעט כל ארגון חברתי שפועל באזורי עימות
+- "פיתוח הנגב/הגליל" = כל ארגון שיכול להוכיח פעילות באזור
+- "חדשנות חברתית" = כל שיטת עבודה חדשה, לא רק טכנולוגיה
+- קרנות ממשלתיות (משרד חינוך, רווחה, בריאות) = מחפשות שותפויות עם רשויות ומדידה
+- קרנות פרטיות = מחפשות חדשנות, בידול, סיפור אישי
+- קרנות בינלאומיות = רוצות Theory of Change, SDGs, SROI
+- CSR = רוצות חשיפה, מעורבות עובדים, אימפקט מדיד
 
-החזר:
-{"categories": [...], "target_populations": [...], "regions": [...]}`,
+החזר JSON בלבד:
+{
+  "categories": [1-3 קטגוריות ישירות],
+  "target_populations": [אוכלוסיות יעד מפורשות],
+  "regions": [אזורים גאוגרפיים],
+  "also_relevant_for": [קטגוריות ואוכלוסיות נוספות שיכולים להגיש — חשוב מעבר למילים],
+  "relevance_reasoning": "הסבר קצר למה גם ארגונים אחרים רלוונטיים"
+}`,
       messages: [{ role: 'user', content: text }],
-      max_tokens: 200,
+      max_tokens: 400,
     });
 
     const aiText = res.content[0].type === 'text' ? res.content[0].text : '{}';
@@ -270,10 +292,13 @@ ${VALID_REGIONS.join(', ')}
     if (!jsonMatch) return null;
 
     const parsed = JSON.parse(jsonMatch[0]);
+    const allValidTags = [...VALID_CATEGORIES, ...VALID_POPULATIONS, ...VALID_REGIONS];
     return {
       categories: (parsed.categories || []).filter((k: string) => VALID_CATEGORIES.includes(k)),
       target_populations: (parsed.target_populations || []).filter((k: string) => VALID_POPULATIONS.includes(k)),
       regions: (parsed.regions || []).filter((k: string) => VALID_REGIONS.includes(k)),
+      also_relevant_for: (parsed.also_relevant_for || []).filter((k: string) => allValidTags.includes(k)),
+      relevance_reasoning: parsed.relevance_reasoning || '',
     };
   } catch {
     return null;
@@ -470,6 +495,7 @@ async function scanAllSources() {
         const finalRegions = aiTags?.regions?.length
           ? [...new Set([...aiTags.regions, ...regexTags.regions])]
           : regexTags.regions.length > 0 ? regexTags.regions : (item.regions || []);
+        const alsoRelevantFor = aiTags?.also_relevant_for || [];
 
         const { error: insertErr } = await supabase.from('opportunities').insert({
           title: item.title.slice(0, 300),
@@ -480,6 +506,7 @@ async function scanAllSources() {
           categories: finalCategories,
           target_populations: finalPopulations,
           regions: finalRegions,
+          also_relevant_for: alsoRelevantFor,
           active: true,
           source: source.name,
           type: 'grant',

@@ -51,6 +51,7 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
   const [minMatchScore, setMinMatchScore] = useState<'' | '60' | '70' | '80' | '90'>('');
   const [showTimeline, setShowTimeline] = useState(false);
   const [selectedRegion, setSelectedRegion] = useState('');
+  const [profileCompleteness, setProfileCompleteness] = useState<number | null>(null);
 
   const categories = useMemo(() => taxonomy.filter(t => t.type === 'category'), [taxonomy]);
   const populations = useMemo(() => taxonomy.filter(t => t.type === 'population'), [taxonomy]);
@@ -69,7 +70,7 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
   useEffect(() => {
     fetch(`/api/opportunities${orgId ? `?org_id=${orgId}` : ''}`)
       .then(r => r.json())
-      .then(({ taxonomy: tax, opportunities: opps, matches: m }) => {
+      .then(({ taxonomy: tax, opportunities: opps, matches: m, profileCompleteness: pc }) => {
         if (tax) setTaxonomy(tax as TaxItem[]);
         if (opps) setOpportunities(opps as Opportunity[]);
         if (m && m.length > 0) {
@@ -77,6 +78,7 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
           m.forEach((ms: MatchScore) => map.set(ms.opportunity_id, ms));
           setMatchScores(map);
         }
+        if (typeof pc === 'number') setProfileCompleteness(pc);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -221,6 +223,23 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
             </>
           )}
         </div>
+
+        {/* Profile completeness hint */}
+        {profileCompleteness !== null && profileCompleteness < 60 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-start gap-2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#D97706" strokeWidth="2" className="flex-shrink-0 mt-0.5">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <div>
+              <div className="text-[11px] font-medium text-amber-800">
+                הפרופיל שלכם {profileCompleteness}% שלם
+              </div>
+              <div className="text-[10px] text-amber-600 mt-0.5">
+                העלו עוד מסמכים בלשונית הארגון כדי לקבל התאמות מדויקות יותר
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Search + Calendar toggle */}
         <div className="flex gap-1.5">

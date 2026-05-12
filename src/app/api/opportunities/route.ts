@@ -57,7 +57,8 @@ export async function GET(req: NextRequest) {
             (opp.categories as string[]) || [],
             (opp.target_populations as string[]) || [],
             String(opp.title || ''),
-            String(opp.description || '')
+            String(opp.description || ''),
+            (opp.also_relevant_for as string[]) || []
           );
           return { opportunity_id: String(opp.id), score, reasoning, isNegativeMatch };
         })
@@ -68,9 +69,26 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Calculate profile completeness for the UI hint
+  let profileCompleteness: number | undefined;
+  if (profileRes.data && orgId) {
+    const profileData = (profileRes.data as { data: Record<string, unknown> }).data || {};
+    if (profileData._dna && typeof profileData._dna === 'object') {
+      profileCompleteness = (profileData._dna as { profileCompleteness?: number }).profileCompleteness;
+    }
+    if (profileCompleteness === undefined) {
+      const docTexts = (docsRes.data || [])
+        .map((d: { summary?: string; content?: string }) => d.summary || d.content || '')
+        .filter(Boolean);
+      const dna = extractOrgDNA(profileData, docTexts);
+      profileCompleteness = dna.profileCompleteness;
+    }
+  }
+
   return NextResponse.json({
     taxonomy: taxRes.data || [],
     opportunities,
     matches,
+    profileCompleteness,
   });
 }
