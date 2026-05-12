@@ -391,8 +391,11 @@ async function scanAllSources() {
   let deactivated = 0;
   const errors: string[] = [];
 
-  // === Step 1: Cleanup expired ===
+  // === Step 1: Cleanup expired & stale ===
   const today = new Date().toISOString().split('T')[0];
+  const currentYear = new Date().getFullYear();
+
+  // 1a. Deadline passed
   const { data: expired } = await supabase
     .from('opportunities')
     .update({ active: false })
@@ -401,6 +404,49 @@ async function scanAllSources() {
     .not('deadline', 'is', null)
     .select('id');
   deactivated = expired?.length || 0;
+
+  // 1b. No deadline + older than 60 days = stale
+  const staleDate = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
+  const { data: stale } = await supabase
+    .from('opportunities')
+    .update({ active: false })
+    .eq('active', true)
+    .is('deadline', null)
+    .lt('scraped_at', staleDate)
+    .select('id');
+  deactivated += stale?.length || 0;
+
+  // 1c. Old years in title (2 years ago or more)
+  const oldYears = Array.from({ length: 5 }, (_, i) => String(currentYear - 2 - i));
+  // Also deactivate last year's grants (they're almost certainly expired)
+  const lastYear = String(currentYear - 1);
+  for (const year of [lastYear, ...oldYears]) {
+    const { data: old } = await supabase
+      .from('opportunities')
+      .update({ active: false })
+      .eq('active', true)
+      .ilike('title', `%${year}%`)
+      // Don't deactivate multi-year titles like "2025-26"
+      .not('title', 'ilike', `%${year}-${String(Number(year) + 1).slice(2)}%`)
+      .select('id');
+    deactivated += old?.length || 0;
+  }
+
+  // 1d. title = funder (fund profiles, not actual grants)
+  const { data: fundProfiles } = await supabase
+    .from('opportunities')
+    .select('id, title, funder')
+    .eq('active', true);
+  if (fundProfiles) {
+    const toDeactivate = fundProfiles.filter(o =>
+      o.title === o.funder ||
+      (o.title && o.title.toLowerCase().startsWith('funding in '))
+    ).map(o => o.id);
+    if (toDeactivate.length > 0) {
+      await supabase.from('opportunities').update({ active: false }).in('id', toDeactivate);
+      deactivated += toDeactivate.length;
+    }
+  }
 
   // === Step 2: Get existing titles for dedup ===
   const { data: existingData } = await supabase
@@ -443,6 +489,30 @@ async function scanAllSources() {
         // Set funder from source if AI didn't extract one
         if (!item.funder && source.funder) {
           item.funder = source.funder;
+        }
+
+        // Skip irrelevant: international grants not related to Israel/Jewish
+        if (item.url?.includes('fundsforngos.org')) {
+          const combined = `${item.title} ${item.description || ''}`.toLowerCase();
+          if (!combined.includes('israel') && !combined.includes('jewish') && !combined.includes('hebrew')) {
+            totalSkipped++;
+            continue;
+          }
+        }
+
+        // Skip fund profiles (title = funder name, no actual grant)
+        if (item.title === item.funder || item.title.toLowerCase().startsWith('funding in ')) {
+          totalSkipped++;
+          continue;
+        }
+
+        // Skip old years in title
+        const titleLower = item.title.toLowerCase();
+        const oldYearInTitle = Array.from({ length: 5 }, (_, i) => String(currentYear - 1 - i))
+          .some(y => titleLower.includes(y) && !titleLower.includes(`${y}-${String(Number(y) + 1).slice(2)}`));
+        if (oldYearInTitle) {
+          totalSkipped++;
+          continue;
         }
 
         // Dedup: check URL (only specific URLs, not homepages) and title prefix
