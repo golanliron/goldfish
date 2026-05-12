@@ -154,9 +154,9 @@ const AGE_PATTERNS: { key: string; label: string; patterns: RegExp }[] = [
   { key: '65+', label: 'גיל שלישי (65+)', patterns: /קשישים|זקנים|65\+|גיל שלישי/ },
 ];
 
-// ===== Atlas Grants Taxonomy Mapping =====
-// Maps Atlas Hebrew tags (46 tags) to Goldfish domain/population keys for better matching
-export const ATLAS_TAG_TO_DOMAIN: Record<string, string> = {
+// ===== Hebrew Tag Taxonomy Mapping =====
+// Maps Hebrew interest tags to Goldfish domain/population keys for better matching
+export const HEBREW_TAG_TO_DOMAIN: Record<string, string> = {
   'חינוך, השכלה והכשרה מקצועית': 'education',
   'השכלה גבוהה': 'education',
   'חינוך משלים': 'education',
@@ -195,7 +195,7 @@ export const ATLAS_TAG_TO_DOMAIN: Record<string, string> = {
   'הצטיידות': 'infrastructure',
 };
 
-export const ATLAS_TAG_TO_POPULATION: Record<string, string> = {
+export const HEBREW_TAG_TO_POPULATION: Record<string, string> = {
   'ילדים ונוער': 'youth',
   'כללי (ילדים ונוער)': 'youth',
   'ילדים ונוער בסיכון': 'youth_at_risk',
@@ -203,13 +203,13 @@ export const ATLAS_TAG_TO_POPULATION: Record<string, string> = {
   'צרכים מיוחדים ומוגבלויות': 'disabilities',
 };
 
-// Resolve Atlas tags from company interests array to Goldfish domain/population keys
-export function resolveAtlasTags(interests: string[]): { domains: string[]; populations: string[] } {
+// Resolve Hebrew tags from company interests array to Goldfish domain/population keys
+export function resolveInterestTags(interests: string[]): { domains: string[]; populations: string[] } {
   const domains = new Set<string>();
   const populations = new Set<string>();
   for (const tag of interests) {
-    if (ATLAS_TAG_TO_DOMAIN[tag]) domains.add(ATLAS_TAG_TO_DOMAIN[tag]);
-    if (ATLAS_TAG_TO_POPULATION[tag]) populations.add(ATLAS_TAG_TO_POPULATION[tag]);
+    if (HEBREW_TAG_TO_DOMAIN[tag]) domains.add(HEBREW_TAG_TO_DOMAIN[tag]);
+    if (HEBREW_TAG_TO_POPULATION[tag]) populations.add(HEBREW_TAG_TO_POPULATION[tag]);
     // Also treat Goldfish-native keys directly
     if (DOMAIN_PATTERNS.some(d => d.key === tag)) domains.add(tag);
     if (POPULATION_PATTERNS.some(p => p.key === tag)) populations.add(tag);
