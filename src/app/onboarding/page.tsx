@@ -116,7 +116,12 @@ export default function OnboardingPage() {
       ...prev,
       ...newFiles.map(f => ({ name: f.name, category: '', summary: '', status: 'uploading' as const })),
     ]);
-    newFiles.forEach((f, i) => uploadFile(f, startIndex + i));
+    // Upload sequentially to avoid Gemini rate limiting
+    (async () => {
+      for (let i = 0; i < newFiles.length; i++) {
+        await uploadFile(newFiles[i], startIndex + i);
+      }
+    })();
   };
 
   const learnUrl = async (url: string, label: string) => {

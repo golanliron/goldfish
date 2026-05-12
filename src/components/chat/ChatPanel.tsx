@@ -324,9 +324,10 @@ export default function ChatPanel({ orgId, userId, onStageChange }: ChatPanelPro
     };
     setMessages(prev => [...prev, uploadMsg]);
 
-    // Upload all files in parallel
-    const results = await Promise.allSettled(
-      fileArr.map(async (file) => {
+    // Upload files sequentially to avoid Gemini rate limiting (429)
+    const results: PromiseSettledResult<{ name: string; category: string; summary: string; extracted_fields: Record<string, unknown> }>[] = [];
+    for (const file of fileArr) {
+      const result = await (async () => {
         const formData = new FormData();
         formData.append('file', file);
         formData.append('org_id', orgId);
@@ -334,8 +335,12 @@ export default function ChatPanel({ orgId, userId, onStageChange }: ChatPanelPro
         const data = await res.json();
         if (!res.ok || data.error) throw new Error(data.error || 'שגיאה');
         return { name: file.name, ...data };
-      })
-    );
+      })().then(
+        value => ({ status: 'fulfilled' as const, value }),
+        reason => ({ status: 'rejected' as const, reason })
+      );
+      results.push(result);
+    }
 
     const succeeded = results
       .filter((r): r is PromiseFulfilledResult<{ name: string; category: string; summary: string; extracted_fields: Record<string, unknown> }> => r.status === 'fulfilled')
