@@ -627,59 +627,40 @@ function CompanyCard({
             </button>
           )}
 
-          {/* Action buttons */}
-          <div className="flex gap-1.5 pt-1">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onAskGoldfish(company);
-              }}
-              className="flex-1 py-1.5 text-[10px] font-medium bg-accent text-white rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-1"
-            >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
-              </svg>
-              שאל את Goldfish
-            </button>
+          {/* Primary action — draft email for business, already covered by scan for funds */}
+          {company.company_type === 'business' && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 onDraftEmail(company);
               }}
-              className="flex-1 py-1.5 text-[10px] font-medium border border-border rounded-lg hover:bg-surf2 transition-colors flex items-center justify-center gap-1"
+              className="w-full py-2 text-[11px] font-bold bg-accent text-white rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5"
             >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
                 <polyline points="22,6 12,13 2,6" />
               </svg>
-              נסח מייל
+              כתוב מייל פנייה
             </button>
-          </div>
+          )}
 
           {/* Direct contact buttons */}
           {(company.contact_email || company.contact_phone) && (
             <div className="flex gap-1.5">
               {company.contact_email && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDraftEmail(company);
-                  }}
+                <a
+                  href={`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(company.contact_email)}&su=${encodeURIComponent(`פנייה מ${company.name}`)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
                   className="flex-1 py-1.5 text-[10px] font-medium text-center border border-border rounded-lg hover:bg-surf2 transition-colors flex items-center justify-center gap-1"
                 >
-                  <svg
-                    width="11"
-                    height="11"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
                     <polyline points="22,6 12,13 2,6" />
                   </svg>
-                  שלח מייל
-                </button>
+                  שלח דרך Gmail
+                </a>
               )}
               {company.contact_phone && /^0?5\d/.test(company.contact_phone.replace(/[^0-9]/g, '')) && (
                 <a
