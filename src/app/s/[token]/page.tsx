@@ -46,7 +46,9 @@ export default function SharedSubmissionPage() {
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState<SubmissionBlock[]>([]);
   const [saving, setSaving] = useState(false);
+  const [autoSaved, setAutoSaved] = useState<Date | null>(null);
   const [lockError, setLockError] = useState('');
+  const autoSaveRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [commentText, setCommentText] = useState('');
   const [commentName, setCommentName] = useState('');
   const [addingComment, setAddingComment] = useState(false);
@@ -130,15 +132,29 @@ export default function SharedSubmissionPage() {
       return;
     }
 
-    setEditContent(submission?.content ? JSON.parse(JSON.stringify(submission.content)) : []);
+    const initialContent = submission?.content ? JSON.parse(JSON.stringify(submission.content)) : [];
+    setEditContent(initialContent);
     setEditing(true);
+    setAutoSaved(null);
 
-    // Renew lock every 30 seconds
+    // Renew lock every 30 seconds + autosave
     lockInterval.current = setInterval(async () => {
       await fetch(`/api/submissions/${token}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'lock', editor_name: editorName }),
+      });
+    }, 30000);
+
+    // Autosave every 30 seconds
+    autoSaveRef.current = setInterval(async () => {
+      setEditContent(current => {
+        fetch(`/api/submissions/${token}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: current, editor_name: editorName, version: submission?.version }),
+        }).then(() => setAutoSaved(new Date()));
+        return current;
       });
     }, 30000);
   };
@@ -151,8 +167,10 @@ export default function SharedSubmissionPage() {
       body: JSON.stringify({ content: editContent, editor_name: editorName, version: submission?.version }),
     });
     if (lockInterval.current) clearInterval(lockInterval.current);
+    if (autoSaveRef.current) clearInterval(autoSaveRef.current);
     setEditing(false);
     setSaving(false);
+    setAutoSaved(null);
     await load();
   };
 
@@ -163,7 +181,9 @@ export default function SharedSubmissionPage() {
       body: JSON.stringify({ action: 'unlock' }),
     });
     if (lockInterval.current) clearInterval(lockInterval.current);
+    if (autoSaveRef.current) clearInterval(autoSaveRef.current);
     setEditing(false);
+    setAutoSaved(null);
   };
 
   const addComment = async () => {
@@ -311,7 +331,14 @@ export default function SharedSubmissionPage() {
 
         {editing && (
           <div className="flex items-center justify-between bg-blue-50 rounded-xl px-4 py-3 border border-blue-200">
-            <div className="text-sm text-blue-700 font-medium">מצב עריכה פעיל</div>
+            <div className="flex flex-col">
+              <div className="text-sm text-blue-700 font-medium">מצב עריכה פעיל</div>
+              {autoSaved && (
+                <div className="text-[10px] text-blue-400 mt-0.5">
+                  נשמר אוטומטית · {autoSaved.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
+                </div>
+              )}
+            </div>
             <div className="flex gap-2">
               <button onClick={cancelEditing} className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">
                 ביטול
@@ -321,7 +348,7 @@ export default function SharedSubmissionPage() {
                 disabled={saving}
                 className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50"
               >
-                {saving ? 'שומר...' : 'שמור שינויים'}
+                {saving ? 'שומר...' : 'שמור וסיים'}
               </button>
             </div>
           </div>
