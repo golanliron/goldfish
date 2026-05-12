@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { extractOrgDNA } from '@/lib/ai/org-dna';
+import { extractOrgDNA, resolveInterestTags } from '@/lib/ai/org-dna';
 
 interface OrgProfile {
   focus_areas?: string[];
@@ -74,6 +74,7 @@ const INTEREST_TRANSLATIONS: Record<string, string[]> = {
 };
 
 // DNA + keyword relevance scoring for companies
+// Uses resolved domain/population slugs for language-agnostic matching
 function scoreCompany(
   company: { description: string | null; interests: string[] | null; company_type: string },
   orgKeywords: string[],
@@ -83,14 +84,19 @@ function scoreCompany(
   orgGeoRegions: string[],
   negativeMatches: string[]
 ): number {
-  // Build searchable text: original interests + translated equivalents
   const interests = company.interests || [];
+
+  // Resolve company's Hebrew interest tags → domain + population slugs
+  const resolved = resolveInterestTags(interests);
+  const companyDomains = new Set(resolved.domains);
+  const companyPopulations = new Set(resolved.populations);
+
+  // Also build plain-text fallback for legacy English slugs and description
   const translatedInterests: string[] = [];
   for (const interest of interests) {
     const translations = INTEREST_TRANSLATIONS[interest];
     if (translations) translatedInterests.push(...translations);
   }
-
   const companyText = [
     ...interests,
     ...translatedInterests,
@@ -104,66 +110,52 @@ function scoreCompany(
 
   let score = 0;
 
-  // DNA population overlap (strongest signal)
+  // ===== Layer 1: Resolved slug matching (strongest, language-agnostic) =====
   for (const pop of orgPopulations) {
-    if (companyText.includes(pop)) score += 20;
+    if (companyPopulations.has(pop)) score += 25;
+    else if (companyText.includes(pop)) score += 15; // fallback plain text
   }
-
-  // DNA domain overlap
   for (const domain of orgDomains) {
-    if (companyText.includes(domain)) score += 18;
+    if (companyDomains.has(domain)) score += 22;
+    else if (companyText.includes(domain)) score += 12; // fallback
   }
 
-  // Geographic region overlap
+  // ===== Layer 2: Geographic overlap =====
   for (const region of orgGeoRegions) {
-    if (companyText.includes(region)) score += 12;
+    if (companyText.includes(region)) score += 10;
   }
 
-  // Keyword overlap with org focus areas
+  // ===== Layer 3: Keyword overlap (auto-extracted from mission) =====
   for (const kw of orgKeywords) {
-    if (companyText.includes(kw)) score += 10;
+    if (companyText.includes(kw)) score += 6;
   }
 
-  // Mission phrase overlap — look for meaningful phrases, not single words
+  // ===== Layer 4: Mission phrase detection (works for any org language) =====
   if (orgMission) {
-    const missionLower = orgMission.toLowerCase();
-    // Key phrases that indicate real alignment (more than single word noise)
-    const keyPhrases = [
-      'נוער בסיכון', 'צעירים בסיכון', 'צמצום עוני', 'מוביליות חברתית',
-      'שוויון הזדמנויות', 'חינוך', 'ליווי אישי', 'העצמה', 'שיקום',
-      'תעסוקה', 'הכשרה מקצועית', 'נשירה', 'פריפריה', 'נגב', 'גליל',
-      'בריאות הנפש', 'אוכלוסיות חלשות', 'פער דיגיטלי', 'עולים', 'אתיופיה',
-      'חד הורי', 'מוגבלות', 'דו קיום', 'חברה ערבית', 'חרדים',
-    ];
-    for (const phrase of keyPhrases) {
-      if (missionLower.includes(phrase) && companyText.includes(phrase)) {
-        score += 12; // Strong signal: both org and company mention same social topic
+    // Use INTEREST_TRANSLATIONS keys to find matching phrases dynamically
+    for (const [hebrewPhrase, englishSlugs] of Object.entries(INTEREST_TRANSLATIONS)) {
+      if (orgMission.includes(hebrewPhrase)) {
+        // Check if company mentions this topic in any form
+        const companyMentionsIt = companyText.includes(hebrewPhrase)
+          || englishSlugs.some(slug => companyText.includes(slug))
+          || englishSlugs.some(slug => companyDomains.has(slug) || companyPopulations.has(slug));
+        if (companyMentionsIt) score += 10;
       }
     }
-    // Fallback: single word overlap for remaining words
-    const missionWords = missionLower.split(/\s+/).filter(w => w.length > 4);
-    let wordHits = 0;
-    for (const w of missionWords) {
-      if (companyText.includes(w)) wordHits++;
-    }
-    score += Math.min(15, wordHits * 2); // Cap at 15 to avoid noise domination
   }
 
-  // Israel grants boost — only if the org also has real keyword match
-  // (prevents all federations from getting same flat score)
+  // ===== Layer 5: Special signals =====
+  // Israel grants: meaningful only when there's underlying alignment
   if (company.interests?.includes('israel_grants')) {
-    const hasOtherSignal = score > 10;
-    score += hasOtherSignal ? 20 : 5; // Flat base for all, bigger boost only if there's real alignment
+    score += score > 15 ? 18 : 4;
   }
+  // Federation with Israel focus
+  if (company.interests?.includes('federation') && orgGeoRegions.length > 0) score += 8;
+  // Fund type — small structural bonus only when aligned
+  if (company.company_type === 'fund' && score > 10) score += 6;
 
-  // Federation with Israeli focus areas — strong signal
-  if (company.interests?.includes('federation') && orgGeoRegions.length > 0) score += 10;
-
-  // Fund type bonus — only if there's underlying alignment
-  if (company.company_type === 'fund' && score > 5) score += 8;
-
-  // Penalize if no data
-  if (!company.description && (!company.interests || company.interests.length === 0)) {
+  // Penalize empty entries
+  if (!company.description && interests.length === 0) {
     score = Math.max(0, score - 20);
   }
 
@@ -244,8 +236,14 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const orgPopulations = dna.populations || profileData.populations || [];
-    const orgDomains = dna.domains || profileData.domains || [];
+    // If DNA is still empty after auto-extract, derive directly from mission via patterns
+    let orgPopulations = dna.populations || profileData.populations || [];
+    let orgDomains = dna.domains || profileData.domains || [];
+    if ((orgPopulations.length === 0 || orgDomains.length === 0) && mission) {
+      const missionDna = extractOrgDNA({}, [mission]);
+      if (orgPopulations.length === 0) orgPopulations = missionDna.populations;
+      if (orgDomains.length === 0) orgDomains = missionDna.domains;
+    }
     const orgGeoRegions = [...new Set([...geoRegions, ...(dna.regions || [])])];
     const negativeMatches = dna.negative_matches || [];
 
