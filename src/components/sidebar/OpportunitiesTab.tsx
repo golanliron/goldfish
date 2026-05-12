@@ -361,12 +361,86 @@ function buildShareText(opp: Opportunity): string {
   return parts.join('\n');
 }
 
+interface FitAnalysis {
+  score: number;
+  verdict: string;
+  verdict_reason: string;
+  strengths: string[];
+  gaps: string[];
+  tips: string[];
+}
+
+function FitAnalysisCard({ analysis, onProceed, onCancel }: { analysis: FitAnalysis; onProceed: () => void; onCancel: () => void }) {
+  const scoreColor = analysis.score >= 8 ? 'text-green-600' : analysis.score >= 5 ? 'text-amber-600' : 'text-red-500';
+  const scoreBg = analysis.score >= 8 ? 'bg-green-50 border-green-200' : analysis.score >= 5 ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200';
+
+  return (
+    <div className={`rounded-xl border p-4 mt-3 text-sm space-y-3 ${scoreBg}`}>
+      <div className="flex items-center justify-between">
+        <div className="font-semibold text-gray-700">ניתוח התאמה לקול הקורא</div>
+        <div className={`text-2xl font-bold ${scoreColor}`}>{analysis.score}/10</div>
+      </div>
+      <div className={`font-medium ${scoreColor}`}>{analysis.verdict} — {analysis.verdict_reason}</div>
+
+      {analysis.strengths.length > 0 && (
+        <div>
+          <div className="text-xs font-semibold text-gray-500 mb-1">חוזקות</div>
+          <ul className="space-y-0.5">
+            {analysis.strengths.map((s, i) => (
+              <li key={i} className="flex gap-1.5 text-gray-700"><span className="text-green-500 mt-0.5">✓</span>{s}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {analysis.gaps.length > 0 && (
+        <div>
+          <div className="text-xs font-semibold text-gray-500 mb-1">פערים</div>
+          <ul className="space-y-0.5">
+            {analysis.gaps.map((g, i) => (
+              <li key={i} className="flex gap-1.5 text-gray-700"><span className="text-amber-500 mt-0.5">!</span>{g}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {analysis.tips.length > 0 && (
+        <div>
+          <div className="text-xs font-semibold text-gray-500 mb-1">טיפים לכתיבה</div>
+          <ul className="space-y-0.5">
+            {analysis.tips.map((t, i) => (
+              <li key={i} className="flex gap-1.5 text-gray-700"><span className="text-blue-400 mt-0.5">→</span>{t}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="flex gap-2 pt-1">
+        <button
+          onClick={onProceed}
+          className="flex-1 bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold py-2 rounded-lg transition-colors"
+        >
+          כתוב טיוטה
+        </button>
+        <button
+          onClick={onCancel}
+          className="px-3 py-2 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg transition-colors"
+        >
+          ביטול
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function OpportunityCard({ opp, match, orgId }: { opp: Opportunity; match?: MatchScore; orgId?: string | null }) {
   const [expanded, setExpanded] = useState(false);
   const [showShare, setShowShare] = useState(false);
-  const [draftState, setDraftState] = useState<'idle' | 'parsing' | 'generating' | 'done' | 'error'>('idle');
+  const [draftState, setDraftState] = useState<'idle' | 'parsing' | 'analyzing' | 'fit_review' | 'generating' | 'done' | 'error'>('idle');
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
+  const [fitAnalysis, setFitAnalysis] = useState<FitAnalysis | null>(null);
+  const [pendingRfpId, setPendingRfpId] = useState<string | null>(null);
 
   const handlePrepareDraft = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -374,6 +448,7 @@ function OpportunityCard({ opp, match, orgId }: { opp: Opportunity; match?: Matc
     setDraftState('parsing');
     setDraftError(null);
     setShareUrl(null);
+    setFitAnalysis(null);
 
     try {
       // Step 1: Parse the RFP
@@ -390,22 +465,58 @@ function OpportunityCard({ opp, match, orgId }: { opp: Opportunity; match?: Matc
       const rfpData = await rfpRes.json();
       if (!rfpRes.ok || !rfpData.rfp_id) throw new Error(rfpData.error || 'שגיאה בניתוח קול הקורא');
 
-      // Step 2: Generate draft submission
-      setDraftState('generating');
+      // Step 2: Analyze fit
+      setDraftState('analyzing');
+      const analyzeRes = await fetch('/api/submissions/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ org_id: orgId, rfp_id: rfpData.rfp_id }),
+      });
+      const analyzeData = await analyzeRes.json();
+
+      if (analyzeRes.ok && analyzeData.analysis) {
+        setPendingRfpId(rfpData.rfp_id);
+        setFitAnalysis(analyzeData.analysis);
+        setDraftState('fit_review');
+        return; // Wait for user confirmation
+      }
+
+      // If analysis fails, proceed directly
+      await generateDraft(orgId, rfpData.rfp_id);
+    } catch (err) {
+      setDraftError(err instanceof Error ? err.message : 'שגיאה לא צפויה');
+      setDraftState('error');
+    }
+  };
+
+  const generateDraft = async (orgIdParam: string, rfpIdParam: string) => {
+    setDraftState('generating');
+    try {
       const subRes = await fetch('/api/submissions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ org_id: orgId, rfp_id: rfpData.rfp_id, opportunity_id: opp.id }),
+        body: JSON.stringify({ org_id: orgIdParam, rfp_id: rfpIdParam, opportunity_id: opp.id }),
       });
       const subData = await subRes.json();
       if (!subRes.ok || !subData.share_url) throw new Error(subData.error || 'שגיאה ביצירת הטיוטה');
-
       setShareUrl(subData.share_url);
       setDraftState('done');
     } catch (err) {
       setDraftError(err instanceof Error ? err.message : 'שגיאה לא צפויה');
       setDraftState('error');
     }
+  };
+
+  const handleProceedFromAnalysis = () => {
+    if (!orgId || !pendingRfpId) return;
+    setFitAnalysis(null);
+    generateDraft(orgId, pendingRfpId);
+  };
+
+  const handleCancelAnalysis = () => {
+    setFitAnalysis(null);
+    setPendingRfpId(null);
+    setDraftState('idle');
   };
 
   const daysLeft = opp.deadline
@@ -598,11 +709,18 @@ function OpportunityCard({ opp, match, orgId }: { opp: Opportunity; match?: Matc
                   הכן טיוטת הגשה אוטומטית
                 </button>
               )}
-              {(draftState === 'parsing' || draftState === 'generating') && (
+              {(draftState === 'parsing' || draftState === 'analyzing' || draftState === 'generating') && (
                 <div className="w-full py-2 text-[10px] font-medium bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center gap-1.5">
                   <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                  {draftState === 'parsing' ? 'קורא את קול הקורא...' : 'כותב טיוטת הגשה...'}
+                  {draftState === 'parsing' ? 'קורא את קול הקורא...' : draftState === 'analyzing' ? 'מנתח התאמה...' : 'כותב טיוטת הגשה...'}
                 </div>
+              )}
+              {draftState === 'fit_review' && fitAnalysis && (
+                <FitAnalysisCard
+                  analysis={fitAnalysis}
+                  onProceed={handleProceedFromAnalysis}
+                  onCancel={handleCancelAnalysis}
+                />
               )}
               {draftState === 'done' && shareUrl && (
                 <div className="bg-green-50 border border-green-200 rounded-lg p-2.5 space-y-1.5">
