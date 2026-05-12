@@ -2093,7 +2093,12 @@ ${blockSummary}
         try {
           for await (const event of stream) {
             if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-              const text = event.delta.text;
+              // Strip all markdown formatting: ** bold, * italic, # headers, - bullets
+              const text = event.delta.text
+                .replace(/\*\*/g, '')
+                .replace(/\*/g, '')
+                .replace(/^#{1,4}\s/gm, '')
+                .replace(/^- /gm, '');
               fullResponse += text;
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text })}\n\n`));
             }
