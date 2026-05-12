@@ -5,6 +5,10 @@ const MODEL = 'gemini-2.5-flash';
 const BASE = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}`;
 
 export async function geminiCall(prompt: string, maxTokens: number = 500, temp: number = 0): Promise<string> {
+  if (!GEMINI_KEY) {
+    console.error('[gemini] GEMINI_API_KEY is not set!');
+    throw new Error('GEMINI_API_KEY missing');
+  }
   const res = await fetch(`${BASE}:generateContent?key=${GEMINI_KEY}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -16,11 +20,14 @@ export async function geminiCall(prompt: string, maxTokens: number = 500, temp: 
 
   if (!res.ok) {
     const err = await res.text().catch(() => '');
+    console.error(`[gemini] API error ${res.status}:`, err.slice(0, 500));
     throw new Error(`Gemini ${res.status}: ${err.slice(0, 200)}`);
   }
 
   const data = await res.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  if (!text) console.error('[gemini] empty response:', JSON.stringify(data).slice(0, 300));
+  return text;
 }
 
 async function geminiCallMultimodal(parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }>, maxTokens: number = 16000): Promise<string> {
