@@ -1501,6 +1501,44 @@ export function buildContext(chunks: { content: string; metadata: Record<string,
   return `\n\nהקשר מהמסמכים הארגוניים:\n${contextParts.join('\n\n')}`;
 }
 
+// Known orgs database — pre-recognition when a new org registers
+const KNOWN_ORGS_DB: Record<string, { description: string; domain: string; population: string; size?: string; website?: string }> = {
+  'עלם': { description: 'נוער במצוקה, 80 פרויקטים, 42 ערים, ניידות לילה, מרכזי נוער', domain: 'נוער בסיכון', population: 'נוער 12 עד 26', size: '57M ש"ח', website: 'elem.org.il' },
+  'אור שלום': { description: '800 ילדים, 600 משפחות אומנות, 400 בוגרים בתוכנית 18 עד 26', domain: 'ילדים ונוער בסיכון', population: 'ילדים ונוער', website: 'orr-shalom.org.il' },
+  'ילדים בסיכוי': { description: 'ליווי בוגרי פנימיות 18 עד 26, גשר לעצמאות, 500 צעירים, תוכנית אמא קדימה', domain: 'בוגרי פנימיות', population: 'צעירים 18 עד 26', website: 'yeladim.org.il' },
+  'יתד': { description: 'ליווי נערות ונשים במצבי סיכון, סניפים בית שאן, ירושלים, אשקלון', domain: 'נשים בסיכון', population: 'נערות ונשים', website: 'yated.org.il' },
+  'אחד משלנו': { description: 'מכינה קדם-צבאית לנוער מפנימיות, 770 בוגרים, שני מסלולים', domain: 'מכינות', population: 'נוער 17 עד 18 מפנימיות', website: 'one-of-us.org.il' },
+  'רוח נכונה': { description: 'חיילים בודדים, 6 דירות קהילתיות, 22,573 נגיעות, 3,700 מתנדבים', domain: 'חיילים בודדים', population: 'חיילים בודדים', website: 'ruachnechona.org.il' },
+  'עושי חייל': { description: 'ליווי חיילים משוחררים מרקע מוחלש', domain: 'חיילים משוחררים', population: 'חיילים משוחררים' },
+  'עמית לדרך': { description: 'ליווי משוחררים, 3 צירים: תעסוקה, השכלה, מיומנויות, הוקמה 2013', domain: 'חיילים משוחררים', population: 'משוחררים מרקע מוחלש', website: 'amitladerech.org' },
+  'מצמצמים רווחים': { description: 'מנטורינג לצעירים מהפריפריה אחרי שחרור, הוקמה 2015', domain: 'צמצום פערים', population: 'משוחררים מהפריפריה', website: 'closing-ranks.org' },
+  'דואליס': { description: 'שילוב צעירים חסרי עורף בתעסוקה, 300 צעירים לשנה, 80% הצלחה', domain: 'תעסוקה', population: 'צעירים 18 עד 26', website: 'dualis.org.il' },
+  'dualis': { description: 'שילוב צעירים חסרי עורף בתעסוקה, 300 צעירים לשנה, 80% הצלחה', domain: 'תעסוקה', population: 'צעירים 18 עד 26', website: 'dualis.org.il' },
+  'הלל': { description: 'דיור, טיפול, לימודים, תעסוקה ליוצאים מהחברה החרדית 18 עד 35', domain: 'חרדים יוצאים בשאלה', population: 'יוצאים חרדים 18 עד 35', website: 'hillel.org.il' },
+  'התשתית': { description: 'בניית תשתית ניהולית וגיוס משאבים לעמותות, מנכ"לית ענבל פרוינד', domain: 'פיתוח ארגוני', population: 'עמותות', website: 'hatashtit.co.il' },
+  'אלומות': { description: 'האצת סטארטאפים חברתיים, קידום יזמות חברתית', domain: 'יזמות חברתית', population: 'יזמים חברתיים', website: 'alumot.org' },
+  'אלומה': { description: 'מובייליות חברתית לצעירים, נשים דתיות לפני גיוס, שותפות עם דואליס', domain: 'נוער וצעירים', population: 'צעירים מהפריפריה', website: 'aluma.org.il' },
+  'בן שמן': { description: 'כפר נוער פנימייתי, 400 תלמידים, בית בוגרים לחיילים בודדים', domain: 'כפרי נוער', population: 'נוער ובוגרים', website: 'ben-shemen.org.il' },
+  'רמת הדסה': { description: 'פנימייה בצפון, כיתות ז עד יב, מוסד הסוכנות היהודית', domain: 'כפרי נוער', population: 'נוער', website: 'ramat-hadassah.org.il' },
+  'עתידים': { description: 'מלגות והכשרה לפריפריה, 22 שנות פעילות', domain: 'חינוך ותעסוקה', population: 'נוער מהפריפריה', website: 'atidim.org' },
+  'atidim': { description: 'מלגות והכשרה לפריפריה', domain: 'חינוך ותעסוקה', population: 'נוער מהפריפריה', website: 'atidim.org' },
+  'מחשבה טובה': { description: 'תוכניות STEM לילדים, ירושלים, 20,000 משתתפים', domain: 'חינוך טכנולוגי', population: 'ילדים', website: 'mtova.org.il' },
+  'פרח': { description: 'חונכות סטודנטים-ילדים, 12,000 חונכים', domain: 'חינוך', population: 'ילדים ונוער', website: 'perach.org.il' },
+  'המועצה הישראלית להתנדבות': { description: 'גוף הגג של ההתנדבות בישראל, הוקמה 1972', domain: 'התנדבות', population: 'כלל המגזר', website: 'ivolunteer.org.il' },
+};
+
+// Match org name against known orgs — fuzzy, case-insensitive
+export function matchKnownOrg(name: string): { description: string; domain: string; population: string; size?: string; website?: string } | null {
+  if (!name) return null;
+  const lower = name.toLowerCase().trim();
+  for (const [key, val] of Object.entries(KNOWN_ORGS_DB)) {
+    if (lower.includes(key.toLowerCase()) || key.toLowerCase().includes(lower)) {
+      return val;
+    }
+  }
+  return null;
+}
+
 // Build org profile context for the AI
 export function buildOrgContext(profile: Record<string, unknown> | null, orgName?: string | null, orgMemories?: { key: string; value: string }[]): string {
   const parts: string[] = ['\n\n===== כרטיס ארגון ====='];
@@ -1508,6 +1546,19 @@ export function buildOrgContext(profile: Record<string, unknown> | null, orgName
   if (orgName) parts.push(`שם: ${orgName}`);
 
   if (!profile || Object.keys(profile).length === 0) {
+    // Try to match against known orgs before asking generic questions
+    const known = orgName ? matchKnownOrg(orgName) : null;
+    if (known) {
+      parts.push(`(פרופיל ריק — אך הדג מכיר את הארגון מהמאגר שלו)`);
+      parts.push(`\n===== מה הדג כבר יודע =====`);
+      parts.push(`תחום: ${known.domain}`);
+      parts.push(`קהל: ${known.population}`);
+      if (known.size) parts.push(`היקף: ${known.size}`);
+      if (known.website) parts.push(`אתר: ${known.website}`);
+      parts.push(`פרטים: ${known.description}`);
+      parts.push(`\nהנחיה: פתח את השיחה הראשונה בכך שאתה אומר ללקוח מה אתה כבר יודע עליו ומבקש לאשר ולעדכן. לא לשאול "ספרי עליך" — כבר יודע. תגיד: "אני מכיר את [שם]. [פרטים מוכרים]. נכון? מה השתנה? ומה אתם מחפשים לגייס השנה?"`);
+      return parts.join('\n');
+    }
     if (orgName) {
       parts.push('(הפרופיל עדיין ריק — צריך מסמכים או לינק כדי לבנות אותו)');
       return parts.join('\n');
