@@ -20,6 +20,58 @@ interface OrgMemoryFact {
   value: string;
 }
 
+// Hebrew ↔ English mapping for interest/domain matching
+const INTEREST_TRANSLATIONS: Record<string, string[]> = {
+  // Populations
+  'נוער בסיכון': ['youth_at_risk', 'youth at risk'],
+  'נוער': ['youth'],
+  'צעירים': ['young_adults', 'young adults'],
+  'ילדים': ['children'],
+  'מוגבלויות': ['disabilities'],
+  'קשישים': ['elderly'],
+  'עולים': ['immigrants'],
+  'ערבים': ['arab'],
+  'חרדים': ['haredi'],
+  'נשים': ['women'],
+  'חיילים': ['soldiers'],
+  'סטודנטים': ['students'],
+  'אתיופים': ['immigrants', 'ethiopian'],
+  'פליטים': ['refugees'],
+  'אסירים': ['prisoners'],
+  'להטב': ['lgbtq'],
+  'חסרי בית': ['homeless'],
+  'התמכרות': ['addiction'],
+  // Domains
+  'חינוך': ['education'],
+  'רווחה': ['welfare'],
+  'בריאות': ['health'],
+  'בריאות הנפש': ['mental_health', 'mental health'],
+  'תעסוקה': ['employment'],
+  'תרבות': ['culture'],
+  'סביבה': ['environment'],
+  'טכנולוגיה': ['technology'],
+  'קהילה': ['community'],
+  'ספורט': ['sport', 'sports'],
+  'משפטי': ['legal'],
+  'דיור': ['housing'],
+  'דו-קיום': ['coexistence'],
+  'חדשנות חברתית': ['social_innovation', 'social innovation'],
+  'מצוקה חברתית': ['welfare', 'social_distress', 'youth_at_risk'],
+  'פיתוח מנהיגות': ['education', 'leadership'],
+  'פיתוח קהילתי': ['community'],
+  'הוראה': ['education'],
+  'מנהיגות': ['education', 'leadership'],
+  'מלגות': ['education', 'fellowships'],
+  'מחקר': ['science', 'research'],
+  'זכויות אדם': ['legal', 'human_rights'],
+  // Regions
+  'נגב': ['negev'],
+  'גליל': ['galilee'],
+  'פריפריה': ['periphery'],
+  'ירושלים': ['jerusalem'],
+  'ארצי': ['national'],
+};
+
 // DNA + keyword relevance scoring for companies
 function scoreCompany(
   company: { description: string | null; interests: string[] | null; company_type: string },
@@ -30,8 +82,17 @@ function scoreCompany(
   orgGeoRegions: string[],
   negativeMatches: string[]
 ): number {
+  // Build searchable text: original interests + translated equivalents
+  const interests = company.interests || [];
+  const translatedInterests: string[] = [];
+  for (const interest of interests) {
+    const translations = INTEREST_TRANSLATIONS[interest];
+    if (translations) translatedInterests.push(...translations);
+  }
+
   const companyText = [
-    ...(company.interests || []),
+    ...interests,
+    ...translatedInterests,
     company.description || '',
   ].join(' ').toLowerCase();
 

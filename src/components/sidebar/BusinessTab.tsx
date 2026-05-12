@@ -224,7 +224,7 @@ export default function BusinessTab({ orgId, companyTypeFilter }: BusinessTabPro
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-green animate-pulse" />
               <span className="text-[12px] font-bold text-text">
-                {total} חברות וארגונים
+                {total} {companyTypeFilter === 'fund' ? 'קרנות ופדרציות' : 'חברות וארגונים'}
               </span>
             </div>
             {matchedCount > 0 && (
@@ -250,7 +250,7 @@ export default function BusinessTab({ orgId, companyTypeFilter }: BusinessTabPro
                   !matchedOnly ? 'bg-accent text-white' : 'bg-surf text-muted hover:text-text'
                 }`}
               >
-                כל החברות ({total})
+                {companyTypeFilter === 'fund' ? `כל הקרנות (${total})` : `כל החברות (${total})`}
               </button>
             </div>
           )}
