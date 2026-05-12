@@ -266,8 +266,8 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (docError || !doc) {
-      console.error('Doc insert error:', docError);
-      return Response.json({ error: 'Failed to save document' }, { status: 500 });
+      console.error('Doc insert error FULL:', JSON.stringify(docError), 'fileType:', fileType, 'category:', category, 'orgId:', orgId);
+      return Response.json({ error: `Failed to save: ${docError?.message || docError?.code || 'unknown'} | fileType:${fileType} category:${category}` }, { status: 500 });
     }
 
     // 5. Store chunks for RAG
