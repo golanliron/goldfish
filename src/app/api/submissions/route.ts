@@ -29,16 +29,21 @@ export async function POST(req: NextRequest) {
 
   const supabase = createAdminClient();
 
-  // Load RFP + org profile + documents in parallel
-  const [rfpRes, profileRes, docsRes] = await Promise.all([
+  // Load RFP + org profile + documents + org memory + past submissions in parallel
+  const [rfpRes, profileRes, docsRes, memoryRes, pastSubsRes] = await Promise.all([
     supabase.from('rfp_parsed').select('*').eq('id', rfp_id).single(),
     supabase.from('org_profiles').select('data').eq('org_id', org_id).single(),
     supabase.from('documents').select('filename, category, metadata, parsed_text').eq('org_id', org_id).limit(10),
+    supabase.from('org_memory').select('key, value').eq('org_id', org_id).limit(30),
+    supabase.from('submissions').select('outcome, funder_feedback, lessons_learned, funder_name')
+      .eq('org_id', org_id).not('outcome', 'is', null).limit(10),
   ]);
 
   const rfp = rfpRes.data;
   const profile = (profileRes.data?.data as Record<string, unknown>) || {};
   const docs = docsRes.data || [];
+  const orgMemory = memoryRes.data || [];
+  const pastSubs = pastSubsRes.data || [];
 
   if (!rfp) return NextResponse.json({ error: 'RFP not found' }, { status: 404 });
 
@@ -76,6 +81,51 @@ export async function POST(req: NextRequest) {
   };
   const funderStyle = funderStyleGuide[(rfp.funder_type as string)] || funderStyleGuide.other;
 
+  // Load funder intelligence for personalized writing
+  let funderIntel = '';
+  const funderName = rfp.funder_name as string;
+  if (funderName) {
+    const { data: fi } = await supabase
+      .from('funder_intelligence')
+      .select('preferred_domains, preferred_populations, typical_amount_min, typical_amount_max, writing_tips, funder_style, total_approved, total_submissions')
+      .eq('funder_name', funderName)
+      .single();
+
+    if (fi) {
+      const parts: string[] = [];
+      if (fi.preferred_domains?.length > 0) parts.push(`תחומים מועדפים: ${fi.preferred_domains.join(', ')}`);
+      if (fi.preferred_populations?.length > 0) parts.push(`אוכלוסיות מועדפות: ${fi.preferred_populations.join(', ')}`);
+      if (fi.typical_amount_min || fi.typical_amount_max) {
+        parts.push(`טווח מענקים טיפוסי: ${fi.typical_amount_min || '?'} - ${fi.typical_amount_max || '?'} ש"ח`);
+      }
+      if (fi.total_submissions > 0) {
+        parts.push(`אחוז אישור ידוע: ${Math.round((fi.total_approved / fi.total_submissions) * 100)}%`);
+      }
+      if (fi.writing_tips) parts.push(`טיפים: ${fi.writing_tips}`);
+      if (parts.length > 0) funderIntel = parts.join('\n');
+    }
+  }
+
+  // Build org memory context
+  const memoryContext = orgMemory.length > 0
+    ? orgMemory.map(m => `${(m as { key: string }).key}: ${(m as { value: string }).value}`).join('\n')
+    : '';
+
+  // Build past outcomes context (lessons learned)
+  const pastOutcomesContext = pastSubs.length > 0
+    ? pastSubs
+      .filter(s => (s as { lessons_learned?: string }).lessons_learned || (s as { funder_feedback?: string }).funder_feedback)
+      .map(s => {
+        const sub = s as { outcome?: string; funder_name?: string; funder_feedback?: string; lessons_learned?: string };
+        const parts = [`תוצאה: ${sub.outcome}`];
+        if (sub.funder_name) parts.push(`גוף: ${sub.funder_name}`);
+        if (sub.funder_feedback) parts.push(`משוב: ${sub.funder_feedback}`);
+        if (sub.lessons_learned) parts.push(`לקחים: ${sub.lessons_learned}`);
+        return parts.join(' | ');
+      })
+      .join('\n')
+    : '';
+
   // Generate answers for all questions
   const prompt = `אתה מומחה בכיר בכתיבת הגשות לקרנות ומענקים לארגונים חברתיים בישראל. אתה יודע מה קרנות באמת רוצות לראות — נתונים, אימפקט, ייחודיות, אמינות.
 
@@ -87,12 +137,15 @@ export async function POST(req: NextRequest) {
 סוג גוף: ${rfp.funder_type}
 שם קול הקורא: ${rfp.rfp_title}
 קריטריוני הערכה: ${(rfp.evaluation_criteria as string[])?.join(' | ') || 'לא צוינו'}
+${funderIntel ? `\n## מודיעין על הגוף המממן\n${funderIntel}` : ''}
 
 ## פרופיל הארגון
 ${orgContext}
+${memoryContext ? `\n## עובדות מאומתות על הארגון\n${memoryContext}` : ''}
 
 ## מסמכים ומידע נוסף
 ${docContext || 'אין מסמכים נוספים'}
+${pastOutcomesContext ? `\n## לקחים מהגשות קודמות\nהארגון הגיש בעבר ולמד מהניסיון:\n${pastOutcomesContext}\nהשתמש בלקחים האלה כדי לשפר את הכתיבה הפעם.` : ''}
 
 ## הנחיית כתיבה לסוג הגוף המממן
 ${funderStyle}

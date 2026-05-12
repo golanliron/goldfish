@@ -37,6 +37,29 @@ interface MatchScore {
   reasoning: string;
 }
 
+interface FunderInfoMap {
+  [funderName: string]: {
+    style?: string;
+    approval_rate?: number;
+    typical_amount_min?: number;
+    typical_amount_max?: number;
+    writing_tips?: string;
+  };
+}
+
+interface UpcomingRecurrence {
+  funder_name: string;
+  last_title: string;
+  expected_month: number;
+}
+
+interface ReadinessData {
+  score: number;
+  factors: { label: string; met: boolean; weight: number }[];
+  missingDocs: string[];
+  timeWarning?: string;
+}
+
 export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps) {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [taxonomy, setTaxonomy] = useState<TaxItem[]>([]);
@@ -52,6 +75,8 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
   const [showTimeline, setShowTimeline] = useState(false);
   const [selectedRegion, setSelectedRegion] = useState('');
   const [profileCompleteness, setProfileCompleteness] = useState<number | null>(null);
+  const [funderInfo, setFunderInfo] = useState<FunderInfoMap>({});
+  const [upcomingRecurrences, setUpcomingRecurrences] = useState<UpcomingRecurrence[]>([]);
 
   const categories = useMemo(() => taxonomy.filter(t => t.type === 'category'), [taxonomy]);
   const populations = useMemo(() => taxonomy.filter(t => t.type === 'population'), [taxonomy]);
@@ -70,7 +95,7 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
   useEffect(() => {
     fetch(`/api/opportunities${orgId ? `?org_id=${orgId}` : ''}`)
       .then(r => r.json())
-      .then(({ taxonomy: tax, opportunities: opps, matches: m, profileCompleteness: pc }) => {
+      .then(({ taxonomy: tax, opportunities: opps, matches: m, profileCompleteness: pc, funderInfo: fi, upcomingRecurrences: ur }) => {
         if (tax) setTaxonomy(tax as TaxItem[]);
         if (opps) setOpportunities(opps as Opportunity[]);
         if (m && m.length > 0) {
@@ -79,6 +104,8 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
           setMatchScores(map);
         }
         if (typeof pc === 'number') setProfileCompleteness(pc);
+        if (fi) setFunderInfo(fi as FunderInfoMap);
+        if (ur && Array.isArray(ur)) setUpcomingRecurrences(ur as UpcomingRecurrence[]);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -385,6 +412,20 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
         </div>
       )}
 
+      {/* Upcoming recurrences banner */}
+      {upcomingRecurrences.length > 0 && (
+        <div className="mx-3 mt-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+          <div className="text-[11px] font-medium text-blue-800 mb-1">צפי קולות קוראים קרובים</div>
+          {upcomingRecurrences.slice(0, 3).map((r, i) => (
+            <div key={i} className="text-[10px] text-blue-600 flex items-center gap-1.5">
+              <span>•</span>
+              <span className="font-medium">{r.funder_name}</span>
+              <span className="text-blue-400">— צפוי להיפתח בחודש {r.expected_month}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Opportunities list */}
       <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
         {filtered.length === 0 ? (
@@ -393,7 +434,7 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
             <p className="text-xs text-muted2 mt-1">נסו לשנות את החיפוש או הסינון</p>
           </div>
         ) : (
-          filtered.map(opp => <OpportunityCard key={opp.id} opp={opp} match={matchScores.get(opp.id)} orgId={orgId} />)
+          filtered.map(opp => <OpportunityCard key={opp.id} opp={opp} match={matchScores.get(opp.id)} orgId={orgId} funderMeta={opp.funder ? funderInfo[opp.funder] : undefined} />)
         )}
       </div>
     </div>
@@ -486,13 +527,15 @@ function FitAnalysisCard({ analysis, onProceed, onCancel }: { analysis: FitAnaly
   );
 }
 
-function OpportunityCard({ opp, match, orgId }: { opp: Opportunity; match?: MatchScore; orgId?: string | null }) {
+function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; match?: MatchScore; orgId?: string | null; funderMeta?: FunderInfoMap[string] }) {
   const [expanded, setExpanded] = useState(false);
   const [draftState, setDraftState] = useState<'idle' | 'parsing' | 'analyzing' | 'fit_review' | 'generating' | 'done' | 'error'>('idle');
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
   const [fitAnalysis, setFitAnalysis] = useState<FitAnalysis | null>(null);
   const [pendingRfpId, setPendingRfpId] = useState<string | null>(null);
+  const [readiness, setReadiness] = useState<ReadinessData | null>(null);
+  const [loadingReadiness, setLoadingReadiness] = useState(false);
 
   const handlePrepareDraft = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -636,9 +679,28 @@ function OpportunityCard({ opp, match, orgId }: { opp: Opportunity; match?: Matc
         )}
       </div>
 
-      {/* Funder */}
+      {/* Funder + intelligence */}
       {opp.funder && (
-        <p className="text-[11px] text-muted mb-1.5">{opp.funder}</p>
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <p className="text-[11px] text-muted">{opp.funder}</p>
+          {funderMeta?.style && (
+            <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-medium ${
+              funderMeta.style === 'government' ? 'bg-slate-100 text-slate-600' :
+              funderMeta.style === 'foundation' ? 'bg-purple-100 text-purple-600' :
+              funderMeta.style === 'federation' ? 'bg-blue-100 text-blue-600' :
+              funderMeta.style === 'corporate' ? 'bg-emerald-100 text-emerald-600' :
+              'bg-gray-100 text-gray-500'
+            }`}>
+              {funderMeta.style === 'government' ? 'ממשלתי' :
+               funderMeta.style === 'foundation' ? 'קרן' :
+               funderMeta.style === 'federation' ? 'פדרציה' :
+               funderMeta.style === 'corporate' ? 'עסקי' : ''}
+            </span>
+          )}
+          {funderMeta?.approval_rate != null && funderMeta.approval_rate > 0 && (
+            <span className="text-[8px] text-muted">{funderMeta.approval_rate}% אישור</span>
+          )}
+        </div>
       )}
 
       {/* Meta row: amount + deadline */}
@@ -717,6 +779,62 @@ function OpportunityCard({ opp, match, orgId }: { opp: Opportunity; match?: Matc
               <span className="text-text2">{opp.contact_info}</span>
             </div>
           )}
+          {/* Readiness check */}
+          {orgId && (
+            <div className="pt-1">
+              {!readiness && !loadingReadiness && (
+                <button
+                  onClick={e => {
+                    e.stopPropagation();
+                    setLoadingReadiness(true);
+                    fetch(`/api/opportunities/readiness?org_id=${orgId}&opportunity_id=${opp.id}`)
+                      .then(r => r.json())
+                      .then(data => { setReadiness(data as ReadinessData); setLoadingReadiness(false); })
+                      .catch(() => setLoadingReadiness(false));
+                  }}
+                  className="w-full py-1.5 text-[10px] font-medium border border-accent/30 text-accent rounded-lg hover:bg-accent/5 transition-colors"
+                >
+                  בדוק מוכנות להגשה
+                </button>
+              )}
+              {loadingReadiness && (
+                <div className="flex items-center justify-center gap-1.5 py-1.5 text-[10px] text-muted">
+                  <div className="w-3 h-3 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+                  בודק מוכנות...
+                </div>
+              )}
+              {readiness && (
+                <div className={`rounded-lg border p-2.5 space-y-1.5 ${
+                  readiness.score >= 70 ? 'bg-green-50 border-green-200' :
+                  readiness.score >= 40 ? 'bg-amber-50 border-amber-200' :
+                  'bg-red-50 border-red-200'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-semibold text-gray-700">ציון מוכנות</span>
+                    <span className={`text-lg font-bold ${
+                      readiness.score >= 70 ? 'text-green-600' :
+                      readiness.score >= 40 ? 'text-amber-600' :
+                      'text-red-500'
+                    }`}>{readiness.score}</span>
+                  </div>
+                  {readiness.timeWarning && (
+                    <div className="text-[9px] text-red-600 font-medium">{readiness.timeWarning}</div>
+                  )}
+                  {readiness.factors.filter(f => !f.met).map((f, i) => (
+                    <div key={i} className="flex items-center gap-1 text-[9px] text-gray-600">
+                      <span className="text-red-400">✗</span> {f.label}
+                    </div>
+                  ))}
+                  {readiness.missingDocs.length > 0 && (
+                    <div className="text-[9px] text-amber-700">
+                      חסרים: {readiness.missingDocs.join(', ')}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {opp.target_populations && opp.target_populations.length > 0 && (
             <div className="flex flex-wrap gap-1">
               <span className="font-medium text-text ml-1">אוכלוסיות:</span>

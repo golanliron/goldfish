@@ -2036,7 +2036,37 @@ ${blockSummary}
       }
     }
 
-    let systemPrompt = FISHGOLD_SYSTEM_PROMPT + FISHGOLD_BEHAVIOR_RULES + FISHGOLD_GRANT_EXPERTISE + FISHGOLD_GRANT_MASTERY + FISHGOLD_BUDGET_INTELLIGENCE + FISHGOLD_FUNDER_WRITING_DNA + FISHGOLD_FUNDER_QUESTIONS + FISHGOLD_FUNDER_INTEL + FISHGOLD_PROPOSAL_GUIDE + FISHGOLD_SUBMISSION_ENGINE + FISHGOLD_COMPETITIVE_INTEL + FISHGOLD_FUNDRAISING_INTEL + FISHGOLD_EMAIL_MASTERY + FISHGOLD_NONPROFITS_REFERENCE + FISHGOLD_NONPROFITS_PART2 + FISHGOLD_GRANTS_INTELLIGENCE + FISHGOLD_ENGLISH_GRANTS + FISHGOLD_SECTOR_KNOWLEDGE + FEDERATION_INTELLIGENCE + ISRAELI_FUNDERS_INTELLIGENCE + tabFocus + orgContext + orgMemory + submissionHistory + docSummary + knowledge + rag + grantWritingContext + submissionEngineContext + opportunityContext + companyContext + companiesIndex + grantsIndex + fundersIndex + sectorContext + webSearchContext + guidestarContext;
+    // Funder intelligence context: load relevant funder profiles for the conversation
+    let funderIntelligenceContext = '';
+    if (active_tab === 'opportunities' || active_tab === 'foundations' || /קול קורא|מענק|קרן|גוף מממן|הגשה|grant|funder/i.test(message)) {
+      try {
+        // Find funder names mentioned in the message
+        const { data: matchedFunders } = await supabase
+          .from('funder_intelligence')
+          .select('funder_name, funder_style, preferred_domains, preferred_populations, typical_amount_min, typical_amount_max, total_submissions, total_approved, writing_tips, recurring_months, cycle_notes')
+          .or(`funder_name.ilike.%${message.split(/\s+/).filter((w: string) => w.length > 3).slice(0, 3).join('%,funder_name.ilike.%')}%`)
+          .limit(5);
+
+        if (matchedFunders && matchedFunders.length > 0) {
+          const funderLines = matchedFunders.map(f => {
+            const parts = [`גוף: ${f.funder_name} (${f.funder_style})`];
+            if (f.preferred_domains?.length > 0) parts.push(`  תחומים: ${f.preferred_domains.join(', ')}`);
+            if (f.preferred_populations?.length > 0) parts.push(`  אוכלוסיות: ${f.preferred_populations.join(', ')}`);
+            if (f.typical_amount_min || f.typical_amount_max) parts.push(`  סכום טיפוסי: ${f.typical_amount_min || '?'}-${f.typical_amount_max || '?'} ש"ח`);
+            if (f.total_submissions > 0) parts.push(`  אחוז אישור: ${Math.round((f.total_approved / f.total_submissions) * 100)}% (מתוך ${f.total_submissions} הגשות)`);
+            if (f.writing_tips) parts.push(`  טיפים: ${f.writing_tips}`);
+            if (f.recurring_months?.length > 0) parts.push(`  מחזוריות: חודשים ${f.recurring_months.join(', ')}`);
+            if (f.cycle_notes) parts.push(`  הערת מחזוריות: ${f.cycle_notes}`);
+            return parts.join('\n');
+          });
+          funderIntelligenceContext = `\n\n===== מודיעין גופים מממנים =====\n${funderLines.join('\n\n')}\n\nהשתמש במידע הזה כשאתה ממליץ על קולות קוראים, כותב הגשות, או עונה על שאלות על גופים מממנים. זה מידע שנלמד מכל ההגשות במערכת.`;
+        }
+      } catch {
+        // Non-critical
+      }
+    }
+
+    let systemPrompt = FISHGOLD_SYSTEM_PROMPT + FISHGOLD_BEHAVIOR_RULES + FISHGOLD_GRANT_EXPERTISE + FISHGOLD_GRANT_MASTERY + FISHGOLD_BUDGET_INTELLIGENCE + FISHGOLD_FUNDER_WRITING_DNA + FISHGOLD_FUNDER_QUESTIONS + FISHGOLD_FUNDER_INTEL + FISHGOLD_PROPOSAL_GUIDE + FISHGOLD_SUBMISSION_ENGINE + FISHGOLD_COMPETITIVE_INTEL + FISHGOLD_FUNDRAISING_INTEL + FISHGOLD_EMAIL_MASTERY + FISHGOLD_NONPROFITS_REFERENCE + FISHGOLD_NONPROFITS_PART2 + FISHGOLD_GRANTS_INTELLIGENCE + FISHGOLD_ENGLISH_GRANTS + FISHGOLD_SECTOR_KNOWLEDGE + FEDERATION_INTELLIGENCE + ISRAELI_FUNDERS_INTELLIGENCE + tabFocus + orgContext + orgMemory + submissionHistory + docSummary + knowledge + rag + grantWritingContext + submissionEngineContext + opportunityContext + companyContext + companiesIndex + grantsIndex + fundersIndex + sectorContext + webSearchContext + guidestarContext + funderIntelligenceContext;
 
     // Safety: truncate system prompt if too large (Claude Sonnet context = 200K tokens ~ 600K chars)
     // Leave room for conversation history + response

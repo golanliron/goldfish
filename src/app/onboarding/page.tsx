@@ -74,8 +74,9 @@ export default function OnboardingPage() {
       .then(({ data: profile }) => {
         const d = profile?.data as Record<string, unknown> | null;
         const isEditMode = window.location.search.includes('edit=1');
-        if (d?.onboarding_complete && !isEditMode) {
-          window.location.href = '/dashboard';
+        const isPreview = window.location.search.includes('preview=1');
+        if (d?.onboarding_complete && !isEditMode && !isPreview) {
+          window.location.href = '/';
         } else {
           if (d?.name) setOrgName(d.name as string);
           if (d?.summary) setOrgDesc(d.summary as string);

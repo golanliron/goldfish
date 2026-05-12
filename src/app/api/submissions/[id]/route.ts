@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { recordOutcome } from '@/lib/ai/funder-learning';
 
 // GET /api/submissions/[id] — get submission by id or share_token
 export async function GET(
@@ -88,6 +89,12 @@ export async function PATCH(
   if (editor_name) { updates.locked_by = null; updates.locked_until = null; } // Release lock on save
 
   await supabase.from('submissions').update(updates).eq('id', sub.id);
+
+  // When outcome is reported, trigger learning system (fire-and-forget)
+  if (outcome && (outcome === 'approved' || outcome === 'rejected' || outcome === 'partial')) {
+    recordOutcome(sub.id, outcome, approved_amount).catch(() => {});
+  }
+
   return NextResponse.json({ ok: true });
 }
 
