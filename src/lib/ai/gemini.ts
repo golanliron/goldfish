@@ -1,7 +1,7 @@
 // Direct Gemini REST API calls — bypasses SDK v1beta issues
 
 const GEMINI_KEY = process.env.GEMINI_API_KEY || '';
-const MODEL = 'gemini-2.5-flash';
+const MODEL = 'gemini-1.5-flash';
 const BASE = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}`;
 
 export async function geminiCall(prompt: string, maxTokens: number = 500, temp: number = 0): Promise<string> {
