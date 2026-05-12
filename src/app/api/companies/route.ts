@@ -149,14 +149,18 @@ function scoreCompany(
     score += Math.min(15, wordHits * 2); // Cap at 15 to avoid noise domination
   }
 
-  // Israel grants boost (for federations that fund Israel)
-  if (company.interests?.includes('israel_grants')) score += 25;
+  // Israel grants boost — only if the org also has real keyword match
+  // (prevents all federations from getting same flat score)
+  if (company.interests?.includes('israel_grants')) {
+    const hasOtherSignal = score > 10;
+    score += hasOtherSignal ? 20 : 5; // Flat base for all, bigger boost only if there's real alignment
+  }
 
   // Federation with Israeli focus areas — strong signal
   if (company.interests?.includes('federation') && orgGeoRegions.length > 0) score += 10;
 
-  // Fund type bonus
-  if (company.company_type === 'fund') score += 8;
+  // Fund type bonus — only if there's underlying alignment
+  if (company.company_type === 'fund' && score > 5) score += 8;
 
   // Penalize if no data
   if (!company.description && (!company.interests || company.interests.length === 0)) {
@@ -228,9 +232,9 @@ export async function GET(req: NextRequest) {
     // DNA from profile — auto-generate if missing
     let dna = profileData._dna || {};
     if (!dna.populations?.length && !dna.domains?.length) {
-      // Auto-extract DNA from profile data (works for any org)
+      // Auto-extract DNA from profile data + mission text
       const autoDna = extractOrgDNA(profileData as Record<string, unknown>, [mission]);
-      dna = { populations: autoDna.populations, domains: autoDna.domains, regions: autoDna.geography };
+      dna = { populations: autoDna.populations, domains: autoDna.domains, regions: autoDna.geography, negative_matches: autoDna.excludePopulations };
       // Save for next time (fire-and-forget)
       if (autoDna.populations.length > 0 || autoDna.domains.length > 0) {
         supabase.from('org_profiles')
@@ -251,6 +255,16 @@ export async function GET(req: NextRequest) {
       .map(f => f.value.toLowerCase())
       .filter(v => v.length > 2);
 
+    // Auto-extract keywords from mission text using INTEREST_TRANSLATIONS keys
+    const missionAutoKeywords: string[] = [];
+    if (mission) {
+      for (const [hebrewKey, englishSlugs] of Object.entries(INTEREST_TRANSLATIONS)) {
+        if (mission.includes(hebrewKey)) {
+          missionAutoKeywords.push(hebrewKey, ...englishSlugs);
+        }
+      }
+    }
+
     // Translate Hebrew focus_areas to English slugs for matching
     const translatedOrgKeywords: string[] = [];
     for (const fa of focusAreas) {
@@ -262,7 +276,7 @@ export async function GET(req: NextRequest) {
       if (translations) translatedOrgKeywords.push(...translations);
     }
 
-    const orgKeywords = [...focusAreas, ...memoryKeywords, ...translatedOrgKeywords]
+    const orgKeywords = [...focusAreas, ...memoryKeywords, ...missionAutoKeywords, ...translatedOrgKeywords]
       .map(s => s.toLowerCase())
       .filter(s => s.length > 2);
 
