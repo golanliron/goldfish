@@ -58,11 +58,58 @@ const REQUIRED_DOCS: { label: string; pattern: RegExp; hint?: string }[] = [
   { label: 'אישור חברי ועד', pattern: /חברי ועד|ועד מנהל/i, hint: 'official' },
 ];
 
+// Populations + Domains + Geo options — mirrors onboarding chips
+const POPULATION_OPTIONS = [
+  { slug: 'youth_at_risk', label: 'נוער בסיכון' },
+  { slug: 'youth', label: 'נוער' },
+  { slug: 'young_adults', label: 'צעירים 18–26' },
+  { slug: 'children', label: 'ילדים' },
+  { slug: 'elderly', label: 'קשישים' },
+  { slug: 'disabilities', label: 'נכויות' },
+  { slug: 'immigrants', label: 'עולים ומהגרים' },
+  { slug: 'ethiopian', label: 'קהילה אתיופית' },
+  { slug: 'haredi', label: 'חרדים' },
+  { slug: 'arab', label: 'ערבים' },
+  { slug: 'women', label: 'נשים' },
+  { slug: 'soldiers', label: 'חיילים' },
+  { slug: 'lgbtq', label: 'להט"ב' },
+  { slug: 'homeless', label: 'חסרי בית' },
+];
+const DOMAIN_OPTIONS = [
+  { slug: 'education', label: 'חינוך' },
+  { slug: 'employment', label: 'תעסוקה' },
+  { slug: 'welfare', label: 'רווחה' },
+  { slug: 'health', label: 'בריאות' },
+  { slug: 'mental_health', label: 'בריאות נפש' },
+  { slug: 'community', label: 'קהילה' },
+  { slug: 'housing', label: 'דיור' },
+  { slug: 'legal', label: 'זכויות ומשפטי' },
+  { slug: 'culture', label: 'תרבות' },
+  { slug: 'sport', label: 'ספורט' },
+  { slug: 'environment', label: 'סביבה' },
+  { slug: 'technology', label: 'טכנולוגיה' },
+  { slug: 'leadership', label: 'מנהיגות' },
+  { slug: 'coexistence', label: 'דו-קיום' },
+];
+const GEO_OPTIONS = [
+  { slug: 'national', label: 'ארצי' },
+  { slug: 'periphery', label: 'פריפריה' },
+  { slug: 'negev', label: 'נגב' },
+  { slug: 'galilee', label: 'גליל' },
+  { slug: 'jerusalem', label: 'ירושלים' },
+  { slug: 'center', label: 'מרכז' },
+  { slug: 'north', label: 'צפון' },
+  { slug: 'south', label: 'דרום' },
+];
+
 export default function OrgTab({ stage, orgId }: OrgTabProps) {
   const [profile, setProfile] = useState<OrgProfileData | null>(null);
   const [documents, setDocuments] = useState<FgDoc[]>([]);
   const [editing, setEditing] = useState(false);
   const [editData, setEditData] = useState<Partial<OrgProfileData>>({});
+  const [editPopulations, setEditPopulations] = useState<string[]>([]);
+  const [editDomains, setEditDomains] = useState<string[]>([]);
+  const [editRegions, setEditRegions] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [freeText, setFreeText] = useState('');
   const [savingText, setSavingText] = useState(false);
@@ -252,7 +299,13 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
   // ===== Profile save =====
   const saveProfile = async () => {
     if (!orgId) return;
-    const merged = { ...profile, ...editData };
+    const merged = {
+      ...profile,
+      ...editData,
+      populations: editPopulations,
+      domains: editDomains,
+      regions: editRegions,
+    };
     await fetch('/api/org', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -413,7 +466,14 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
             ) : profile.name}</h3>
             <button
               onClick={() => {
-                if (editing) { saveProfile(); } else { setEditing(true); setEditData({}); }
+                if (editing) { saveProfile(); } else {
+                  setEditing(true);
+                  setEditData({});
+                  const p = profile as Record<string, unknown>;
+                  setEditPopulations((p.populations as string[]) || []);
+                  setEditDomains((p.domains as string[]) || []);
+                  setEditRegions((p.regions as string[]) || []);
+                }
               }}
               className="text-[10px] text-accent hover:underline flex-shrink-0"
             >
@@ -446,6 +506,79 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
                 <label className="text-muted text-[10px]">ע.ר.</label>
                 <input type="text" defaultValue={profile.registration_number || ''} onChange={e => setEditData(d => ({ ...d, registration_number: e.target.value }))} className="w-full px-2 py-1 border border-border rounded-md bg-surf2 focus:border-accent focus:outline-none text-xs" />
               </div>
+
+              {/* Populations chips */}
+              <div className="pt-1 border-t border-border/30">
+                <label className="text-muted text-[10px] font-semibold block mb-1.5">אוכלוסיות יעד</label>
+                <div className="flex flex-wrap gap-1">
+                  {POPULATION_OPTIONS.map(opt => {
+                    const active = editPopulations.includes(opt.slug);
+                    return (
+                      <button
+                        key={opt.slug}
+                        type="button"
+                        onClick={() => setEditPopulations(prev =>
+                          active ? prev.filter(s => s !== opt.slug) : [...prev, opt.slug]
+                        )}
+                        className={`px-2 py-0.5 text-[10px] rounded-full border transition-colors ${
+                          active
+                            ? 'bg-accent text-white border-accent'
+                            : 'bg-surf2 text-muted border-border hover:border-accent/50'
+                        }`}
+                      >{opt.label}</button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Domains chips */}
+              <div>
+                <label className="text-muted text-[10px] font-semibold block mb-1.5">תחומי פעילות</label>
+                <div className="flex flex-wrap gap-1">
+                  {DOMAIN_OPTIONS.map(opt => {
+                    const active = editDomains.includes(opt.slug);
+                    return (
+                      <button
+                        key={opt.slug}
+                        type="button"
+                        onClick={() => setEditDomains(prev =>
+                          active ? prev.filter(s => s !== opt.slug) : [...prev, opt.slug]
+                        )}
+                        className={`px-2 py-0.5 text-[10px] rounded-full border transition-colors ${
+                          active
+                            ? 'bg-accent text-white border-accent'
+                            : 'bg-surf2 text-muted border-border hover:border-accent/50'
+                        }`}
+                      >{opt.label}</button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Geo chips */}
+              <div>
+                <label className="text-muted text-[10px] font-semibold block mb-1.5">אזור גיאוגרפי</label>
+                <div className="flex flex-wrap gap-1">
+                  {GEO_OPTIONS.map(opt => {
+                    const active = editRegions.includes(opt.slug);
+                    return (
+                      <button
+                        key={opt.slug}
+                        type="button"
+                        onClick={() => setEditRegions(prev =>
+                          active ? prev.filter(s => s !== opt.slug) : [...prev, opt.slug]
+                        )}
+                        className={`px-2 py-0.5 text-[10px] rounded-full border transition-colors ${
+                          active
+                            ? 'bg-accent text-white border-accent'
+                            : 'bg-surf2 text-muted border-border hover:border-accent/50'
+                        }`}
+                      >{opt.label}</button>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div className="pt-1 border-t border-border/30">
                 <p className="text-[10px] text-muted font-semibold mb-1">איש קשר</p>
                 <div className="space-y-1.5">
@@ -512,6 +645,27 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
                   ))}
                 </div>
               )}
+
+              {/* Populations + Domains + Geo — read view */}
+              {(() => {
+                const p = profile as Record<string, unknown>;
+                const pops = (p.populations as string[]) || [];
+                const doms = (p.domains as string[]) || [];
+                const regs = (p.regions as string[]) || [];
+                const allTags = [
+                  ...pops.map(s => POPULATION_OPTIONS.find(o => o.slug === s)?.label || s),
+                  ...doms.map(s => DOMAIN_OPTIONS.find(o => o.slug === s)?.label || s),
+                  ...regs.map(s => GEO_OPTIONS.find(o => o.slug === s)?.label || s),
+                ];
+                if (allTags.length === 0) return null;
+                return (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {allTags.map((tag, i) => (
+                      <span key={i} className="px-2 py-0.5 bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300 text-[10px] rounded-full">{tag}</span>
+                    ))}
+                  </div>
+                );
+              })()}
             </>
           )}
         </div>
