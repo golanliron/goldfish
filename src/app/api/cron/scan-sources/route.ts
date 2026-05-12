@@ -228,6 +228,58 @@ function autoTagGrant(title: string, description: string, pageText = ''): { cate
   return { categories, target_populations, regions };
 }
 
+// AI-powered classification — uses same taxonomy as org-dna.ts
+const VALID_CATEGORIES = DOMAIN_PATTERNS.map(([k]) => k);
+const VALID_POPULATIONS = POPULATION_PATTERNS.map(([k]) => k);
+const VALID_REGIONS = GEO_PATTERNS.map(([k]) => k);
+
+async function classifyGrantWithAI(
+  title: string,
+  description: string,
+  pageText: string
+): Promise<{ categories: string[]; target_populations: string[]; regions: string[] } | null> {
+  const text = `${title}\n${description}\n${pageText}`.slice(0, 4000);
+  try {
+    const res = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      system: `אתה מסווג קולות קוראים ומענקים לקטגוריות קבועות. החזר JSON בלבד.
+
+הקטגוריות האפשריות (categories — תחומים):
+${VALID_CATEGORIES.join(', ')}
+
+אוכלוסיות יעד אפשריות (target_populations):
+${VALID_POPULATIONS.join(', ')}
+
+אזורים אפשריים (regions):
+${VALID_REGIONS.join(', ')}
+
+חוקים:
+- השתמש רק בערכים מהרשימות. אל תמציא ערכים חדשים.
+- בחר 1-3 קטגוריות הכי רלוונטיות, לא יותר.
+- אם אין אוכלוסיית יעד ברורה — השאר מערך ריק.
+- אם אין אזור גאוגרפי — השאר מערך ריק.
+
+החזר:
+{"categories": [...], "target_populations": [...], "regions": [...]}`,
+      messages: [{ role: 'user', content: text }],
+      max_tokens: 200,
+    });
+
+    const aiText = res.content[0].type === 'text' ? res.content[0].text : '{}';
+    const jsonMatch = aiText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return null;
+
+    const parsed = JSON.parse(jsonMatch[0]);
+    return {
+      categories: (parsed.categories || []).filter((k: string) => VALID_CATEGORIES.includes(k)),
+      target_populations: (parsed.target_populations || []).filter((k: string) => VALID_POPULATIONS.includes(k)),
+      regions: (parsed.regions || []).filter((k: string) => VALID_REGIONS.includes(k)),
+    };
+  } catch {
+    return null;
+  }
+}
+
 // ============================================================
 // TITLE VALIDATION — reject garbage
 // ============================================================
@@ -404,8 +456,20 @@ async function scanAllSources() {
           } catch { /* page fetch failed, that's ok */ }
         }
 
-        // Auto-tag with regex (same patterns as org-dna.ts) — include page text for better region/pop detection
-        const tags = autoTagGrant(item.title, item.description || '', pageText);
+        // Classify: AI first (accurate), regex fallback (fast)
+        const regexTags = autoTagGrant(item.title, item.description || '', pageText);
+        const aiTags = await classifyGrantWithAI(item.title, item.description || '', pageText);
+
+        // Merge: AI takes priority, regex fills gaps
+        const finalCategories = aiTags?.categories?.length
+          ? [...new Set([...aiTags.categories, ...regexTags.categories])]
+          : regexTags.categories.length > 0 ? regexTags.categories : (item.categories || []);
+        const finalPopulations = aiTags?.target_populations?.length
+          ? [...new Set([...aiTags.target_populations, ...regexTags.target_populations])]
+          : regexTags.target_populations.length > 0 ? regexTags.target_populations : (item.target_populations || []);
+        const finalRegions = aiTags?.regions?.length
+          ? [...new Set([...aiTags.regions, ...regexTags.regions])]
+          : regexTags.regions.length > 0 ? regexTags.regions : (item.regions || []);
 
         const { error: insertErr } = await supabase.from('opportunities').insert({
           title: item.title.slice(0, 300),
@@ -413,9 +477,9 @@ async function scanAllSources() {
           funder: item.funder || null,
           deadline: item.deadline || null,
           url: item.url || null,
-          categories: tags.categories.length > 0 ? tags.categories : (item.categories || []),
-          target_populations: tags.target_populations.length > 0 ? tags.target_populations : (item.target_populations || []),
-          regions: tags.regions.length > 0 ? tags.regions : (item.regions || []),
+          categories: finalCategories,
+          target_populations: finalPopulations,
+          regions: finalRegions,
           active: true,
           source: source.name,
           type: 'grant',
