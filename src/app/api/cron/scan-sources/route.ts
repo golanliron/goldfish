@@ -243,7 +243,7 @@ function isValidTitle(title: string): boolean {
 // ============================================================
 function extractGovIlJson(html: string, defaultFunder: string): ScannedItem[] {
   const results: ScannedItem[] = [];
-  const jsonPattern = /<script[^>]*type="application\/json"[^>]*>(.*?)<\/script>/gs;
+  const jsonPattern = /<script[^>]*type="application\/json"[^>]*>([\s\S]*?)<\/script>/g;
   const matches = [...html.matchAll(jsonPattern)];
 
   for (const match of matches) {

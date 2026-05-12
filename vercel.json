@@ -19,6 +19,10 @@
       "schedule": "0 19 * * *"
     },
     {
+      "path": "/api/cron/enrich-companies",
+      "schedule": "0 5 * * *"
+    },
+    {
       "path": "/api/cron/notify-matches",
       "schedule": "0 8 * * *"
     }
