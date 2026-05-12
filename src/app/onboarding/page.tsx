@@ -17,7 +17,6 @@ export default function OnboardingPage() {
   const [ready, setReady] = useState(false);
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [websiteUrl, setWebsiteUrl] = useState('');
-  const [socialUrl, setSocialUrl] = useState('');
   const [driveUrl, setDriveUrl] = useState('');
   const [urlLoading, setUrlLoading] = useState<string | null>(null);
   const [urlDone, setUrlDone] = useState<string[]>([]);
@@ -156,7 +155,6 @@ export default function OnboardingPage() {
       // Auto-submit any URLs that were typed but not manually sent
       const pendingUrls: Array<[string, string]> = [];
       if (websiteUrl.trim() && !urlDone.includes('website')) pendingUrls.push([websiteUrl.trim(), 'website']);
-      if (socialUrl.trim() && !urlDone.includes('social')) pendingUrls.push([socialUrl.trim(), 'social']);
       if (driveUrl.trim() && !urlDone.includes('drive')) pendingUrls.push([driveUrl.trim(), 'drive']);
 
       if (pendingUrls.length > 0 && orgId) {
@@ -387,31 +385,6 @@ export default function OnboardingPage() {
               {urlResults.website && (
                 <p className={`text-[11px] mt-1 leading-relaxed ${urlDone.includes('website') ? 'text-green-600' : 'text-red-500'}`}>
                   {urlResults.website}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <div className="flex gap-2">
-                <input
-                  type="url"
-                  value={socialUrl}
-                  onChange={e => setSocialUrl(e.target.value)}
-                  className="flex-1 px-3 py-2 rounded-xl border border-border bg-surf text-sm focus:outline-none focus:border-accent"
-                  placeholder="פייסבוק / אינסטגרם / לינקדאין"
-                  dir="ltr"
-                />
-                <button
-                  onClick={() => learnUrl(socialUrl, 'social')}
-                  disabled={!socialUrl.trim() || urlLoading === 'social' || urlDone.includes('social')}
-                  className="px-3 py-2 bg-accent text-white text-sm rounded-xl hover:bg-accent-hover disabled:opacity-50 transition-all flex-shrink-0"
-                >
-                  {urlLoading === 'social' ? 'קורא...' : urlDone.includes('social') ? '✓' : 'שלח'}
-                </button>
-              </div>
-              {urlResults.social && (
-                <p className={`text-[11px] mt-1 leading-relaxed ${urlDone.includes('social') ? 'text-green-600' : 'text-red-500'}`}>
-                  {urlResults.social}
                 </p>
               )}
             </div>
