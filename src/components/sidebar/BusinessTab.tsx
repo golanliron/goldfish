@@ -102,8 +102,13 @@ export default function BusinessTab({ orgId, companyTypeFilter }: BusinessTabPro
       result = result.filter(c => c.interests?.includes(regionFilter));
     }
     if (minRelevance) {
-      const min = Number(minRelevance);
-      result = result.filter(c => (c.relevance_score || 0) >= min);
+      if (minRelevance === '70') {
+        result = result.filter(c => (c.relevance_score || 0) >= 70);
+      } else if (minRelevance === '40') {
+        result = result.filter(c => (c.relevance_score || 0) >= 40 && (c.relevance_score || 0) < 70);
+      } else if (minRelevance === '20') {
+        result = result.filter(c => (c.relevance_score || 0) >= 20 && (c.relevance_score || 0) < 40);
+      }
     }
     if (search) {
       const q = search.toLowerCase();
