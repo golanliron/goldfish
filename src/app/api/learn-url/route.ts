@@ -390,12 +390,26 @@ export async function POST(request: NextRequest) {
     // Truncate
     text = text.slice(0, 50000);
 
+    // Get org name to check content ownership
+    const { data: orgData } = await supabase.from('organizations').select('name').eq('id', org_id).single();
+    const orgName = orgData?.name || '';
+
     // Classify, extract, and summarize in parallel using Gemini
     const [finalCategory, metadata, summary] = await Promise.all([
       geminiClassify(text),
-      geminiExtract(text),
+      geminiExtract(text, undefined, orgName),
       geminiSummarize(text),
     ]);
+
+    // ===== Content ownership check =====
+    // If this URL is about a different organization (funder/partner), save as 'grant'
+    // and don't pollute the org profile with their data
+    const isOwnContent = urlType === 'facebook' || urlType === 'instagram' || urlType === 'linkedin' ||
+      (orgName && text.toLowerCase().includes(orgName.toLowerCase())) ||
+      (metadata.name && typeof metadata.name === 'string' && orgName &&
+        metadata.name.toLowerCase().includes(orgName.toLowerCase().split(' ')[0]));
+
+    const effectiveCategory = isOwnContent ? finalCategory : 'grant';
 
     // Save as document
     const { data: doc } = await supabase
@@ -405,9 +419,9 @@ export async function POST(request: NextRequest) {
         filename: title || new URL(url).hostname,
         file_type: 'url',
         storage_path: url,
-        category: finalCategory,
+        category: effectiveCategory,
         parsed_text: text.slice(0, 50000),
-        metadata: { ...metadata, summary, source_url: url, url_type: urlType },
+        metadata: { ...metadata, summary, source_url: url, url_type: urlType, is_own_content: isOwnContent },
         status: 'ready',
       })
       .select('id')
@@ -420,13 +434,13 @@ export async function POST(request: NextRequest) {
           document_id: doc.id,
           org_id,
           content: chunk,
-          metadata: { category: finalCategory, source_url: url },
+          metadata: { category: effectiveCategory, source_url: url },
         });
       }
     }
 
-    // Update org profile with extracted data
-    if (Object.keys(metadata).length > 0) {
+    // Update org profile ONLY if this is the org's own content
+    if (isOwnContent && Object.keys(metadata).length > 0) {
       const { data: existing } = await supabase
         .from('org_profiles')
         .select('data')
