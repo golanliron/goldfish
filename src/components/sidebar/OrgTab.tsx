@@ -46,14 +46,16 @@ const FILTER_TABS = [
   { key: 'grant', label: 'גיוס' },
 ];
 
-// Required official documents checklist
-const REQUIRED_DOCS = [
-  { pattern: /ניהול תקין/i, label: 'ניהול תקין' },
-  { pattern: /סעיף 46|saif.?46|אישור 46/i, label: 'סעיף 46' },
-  { pattern: /ניכוי מס/i, label: 'ניכוי מס' },
-  { pattern: /רישום עמותה|תעודת רישום/i, label: 'תעודת רישום' },
-  { pattern: /דוח כספי|כספי.*מבוקר/i, label: 'דוח כספי מבוקר' },
-  { pattern: /ניהול ספרים/i, label: 'ניהול ספרים' },
+// Required official documents — detected by content/filename patterns
+// Each entry has a label, a pattern to search in filename+text, and a category hint
+const REQUIRED_DOCS: { label: string; pattern: RegExp; hint?: string }[] = [
+  { label: 'ניהול תקין', pattern: /ניהול תקין/i, hint: 'official' },
+  { label: 'סעיף 46', pattern: /סעיף 46|אישור 46|section.?46/i, hint: 'official' },
+  { label: 'ניכוי מס', pattern: /ניכוי מס/i, hint: 'official' },
+  { label: 'תעודת רישום', pattern: /תעודת רישום|רישום עמותה/i, hint: 'official' },
+  { label: 'דוח כספי', pattern: /דוח כספי|דוחות כספיים|כספי.*מבוקר|financial.*report/i, hint: 'budget' },
+  { label: 'ניהול ספרים', pattern: /ניהול ספרים/i, hint: 'official' },
+  { label: 'אישור חברי ועד', pattern: /חברי ועד|ועד מנהל/i, hint: 'official' },
 ];
 
 export default function OrgTab({ stage, orgId }: OrgTabProps) {
@@ -281,12 +283,24 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
     return cat === docFilter;
   });
 
-  // Missing required docs
-  const docTexts = documents.map(d => {
+  // Build a searchable string per document: filename + doc_type + first 1000 chars of text
+  // Also check by category hint — if a category exists, count as found for that type
+  const buildDocSearchStr = (d: FgDoc) => {
     const meta = (d.metadata || {}) as Record<string, unknown>;
-    return `${d.filename} ${(meta.doc_type as string) || ''} ${d.parsed_text?.slice(0, 500) || ''}`;
+    return `${d.filename || ''} ${(meta.doc_type as string) || ''} ${d.category || ''} ${d.parsed_text?.slice(0, 1000) || ''}`;
+  };
+  const docSearchStrings = documents.map(buildDocSearchStr);
+
+  // A required doc is "found" if:
+  //   (a) its pattern matches any doc's search string, OR
+  //   (b) its category hint matches an existing doc category
+  const missingDocs = REQUIRED_DOCS.filter(req => {
+    const byPattern = docSearchStrings.some(t => req.pattern.test(t));
+    const byCategory = req.hint
+      ? documents.some(d => d.category === req.hint || (d.category === 'identity' && req.hint === 'official'))
+      : false;
+    return !byPattern && !byCategory;
   });
-  const missingDocs = REQUIRED_DOCS.filter(req => !docTexts.some(t => req.pattern.test(t)));
 
   // Knowledge completeness
   const docsByCategory = documents.reduce<Record<string, FgDoc[]>>((acc, doc) => {
@@ -623,8 +637,11 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
           </div>
           <div className="grid grid-cols-2 gap-1.5">
             {REQUIRED_DOCS.map((req) => {
-              const docTexts = documents.map(d => `${d.filename} ${(d.metadata as Record<string,unknown>)?.doc_type || ''} ${d.parsed_text?.slice(0, 300) || ''}`);
-              const exists = docTexts.some(t => req.pattern.test(t));
+              const byPattern = docSearchStrings.some(t => req.pattern.test(t));
+              const byCategory = req.hint
+                ? documents.some(d => d.category === req.hint || (d.category === 'identity' && req.hint === 'official'))
+                : false;
+              const exists = byPattern || byCategory;
               return (
                 <div key={req.label} className={`flex items-center gap-1.5 text-[11px] px-2 py-1.5 rounded-lg ${
                   exists ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'
