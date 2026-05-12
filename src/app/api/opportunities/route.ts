@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
       ? supabase.from('org_profiles').select('data').eq('org_id', orgId).single()
       : Promise.resolve({ data: null }),
     orgId
-      ? supabase.from('documents').select('summary, content').eq('org_id', orgId)
+      ? supabase.from('documents').select('parsed_text').eq('org_id', orgId)
       : Promise.resolve({ data: [] }),
   ]);
 
@@ -107,7 +107,7 @@ export async function GET(req: NextRequest) {
       orgDna = profileData._dna as import('@/lib/ai/org-dna').OrgDNA;
     } else {
       const docTexts = (docsRes.data || [])
-        .map((d: { summary?: string; content?: string }) => d.summary || d.content || '')
+        .map((d: { parsed_text?: string }) => d.parsed_text || '')
         .filter(Boolean);
       orgDna = extractOrgDNA(profileData, docTexts);
     }
@@ -177,7 +177,7 @@ export async function GET(req: NextRequest) {
     }
     if (profileCompleteness === undefined) {
       const docTexts = (docsRes.data || [])
-        .map((d: { summary?: string; content?: string }) => d.summary || d.content || '')
+        .map((d: { parsed_text?: string }) => d.parsed_text || '')
         .filter(Boolean);
       const dna = extractOrgDNA(profileData, docTexts);
       profileCompleteness = dna.profileCompleteness;
