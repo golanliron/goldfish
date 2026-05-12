@@ -37,8 +37,8 @@ const SOURCES = [
     funder: 'ג׳וינט',
   },
   {
-    name: 'רשות החדשנות',
-    url: 'https://innovationisrael.org.il/kol-kore/',
+    name: 'רשות החדשנות — gov.il',
+    url: 'https://www.gov.il/he/departments/topics/innovation-authority-programs/govil-landing-page',
     funder: 'רשות החדשנות',
   },
   {
@@ -57,8 +57,8 @@ const SOURCES = [
     funder: 'קק"ל',
   },
   {
-    name: 'משרד החינוך מו"פ',
-    url: 'https://mop.education/open-call/',
+    name: 'משרד החינוך — gov.il',
+    url: 'https://www.gov.il/he/departments/topics/education-tenders/govil-landing-page',
     funder: 'משרד החינוך',
   },
   {
@@ -67,45 +67,15 @@ const SOURCES = [
     funder: 'רשות תקומה',
   },
   {
-    name: 'מפעל הפיס — ספורט',
-    url: 'https://www.pais.co.il/sport/calls-for-proposals.aspx',
+    name: 'מפעל הפיס — מלגות',
+    url: 'https://kolkore-milga.pais.co.il/',
     funder: 'מפעל הפיס',
   },
-  {
-    name: 'קרן עזריאלי',
-    url: 'https://azrielifoundation.org/our-programs/',
-    funder: 'קרן עזריאלי',
-  },
-  // Federation grant portals — קולות קוראים של פדרציות
-  {
-    name: 'JUF Chicago - Federation Grants',
-    url: 'https://juf.smapply.org/prog/lst/',
-    funder: 'JUF Chicago',
-  },
-  {
-    name: 'UJA New York - Grants',
-    url: 'https://www.ujafedny.org/resources/grants',
-    funder: 'UJA-Federation New York',
-  },
+  // International foundations — verified working URLs
   {
     name: 'Jewish Federation Bay Area - Grants',
     url: 'https://jewishfed.org/get-involved/nonprofits/apply-for-a-grant/',
     funder: 'Jewish Federation Bay Area',
-  },
-  {
-    name: 'CJP Boston - Grants',
-    url: 'https://www.cjp.org/get-involved/apply-for-a-grant/',
-    funder: 'CJP Boston',
-  },
-  {
-    name: 'Jewish Federation Pittsburgh - Grants Portal',
-    url: 'https://grantmakingportal.smapply.org/prog/lst/',
-    funder: 'Jewish Federation Greater Pittsburgh',
-  },
-  {
-    name: 'UJIA UK - Grants',
-    url: 'https://ujia.org/grants/',
-    funder: 'UJIA',
   },
   {
     name: 'Rothschild Foundation Europe - Grants',
