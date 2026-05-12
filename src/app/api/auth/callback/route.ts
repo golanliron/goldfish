@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
   let redirectTo = '/onboarding';
 
   if (existingUser) {
-    // Check if onboarding was already completed
+    // User exists — verify org_id is valid and org_profiles exists
     const { data: profile } = await admin
       .from('org_profiles')
       .select('data')
@@ -53,6 +53,15 @@ export async function GET(request: NextRequest) {
       .single();
 
     const profileData = profile?.data as Record<string, unknown> | null;
+
+    // If org_profile is missing, create it (can happen on partial signup failures)
+    if (!profile) {
+      await admin.from('org_profiles').upsert({
+        org_id: existingUser.org_id,
+        data: { name: existingUser.full_name || user.email?.split('@')[0] || 'הארגון שלי' },
+      }, { onConflict: 'org_id' });
+    }
+
     if (profileData?.onboarding_complete) {
       redirectTo = '/dashboard';
     }
@@ -77,7 +86,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (!orgId) {
-      const displayName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'הארגון שלי';
+      const displayName = user.user_metadata?.full_name || user.user_metadata?.org_name || user.email?.split('@')[0] || 'הארגון שלי';
 
       const { data: newOrg } = await admin
         .from('organizations')
@@ -96,13 +105,21 @@ export async function GET(request: NextRequest) {
     }
 
     if (orgId) {
-      await admin.from('users').insert({
+      // Use upsert to avoid duplicate key errors on retry
+      await admin.from('users').upsert({
         id: user.id,
         org_id: orgId,
         email: user.email,
         full_name: user.user_metadata?.full_name || null,
         role,
-      });
+      }, { onConflict: 'id' });
+    } else {
+      // Critical failure — redirect to signup with error
+      const response = NextResponse.redirect(`${origin}/signup?error=org_creation_failed`);
+      for (const { name, value, options } of pendingCookies) {
+        response.cookies.set(name, value, options);
+      }
+      return response;
     }
 
     redirectTo = '/onboarding';

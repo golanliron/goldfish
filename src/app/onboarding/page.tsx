@@ -188,6 +188,29 @@ export default function OnboardingPage() {
     );
   }
 
+  // No org_id after all retries — something went wrong in signup
+  if (ready && !orgId && !authLoading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-bg gap-4 p-4">
+        <FishLogo size={48} />
+        <h2 className="text-lg font-semibold">משהו השתבש בהרשמה</h2>
+        <p className="text-sm text-muted text-center max-w-xs">
+          לא הצלחתי לאתחל את הארגון שלך. נסי להתנתק ולהירשם מחדש.
+        </p>
+        <button
+          onClick={async () => {
+            const supabase = createClient();
+            await supabase.auth.signOut();
+            window.location.href = '/signup';
+          }}
+          className="px-6 py-2.5 rounded-xl bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors"
+        >
+          חזרה להרשמה
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-bg">
       <div className="max-w-lg mx-auto px-4 py-8">

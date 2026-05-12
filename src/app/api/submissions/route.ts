@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   const supabase = createAdminClient();
   const { data } = await supabase
     .from('submissions')
-    .select('id, status, version, created_at, requested_amount, share_token, opportunity_id')
+    .select('id, status, version, created_at, requested_amount, share_token, opportunity_id, outcome, approved_amount, funder_feedback, lessons_learned, opportunity:opportunities(title, funder)')
     .eq('org_id', orgId)
     .order('created_at', { ascending: false });
 
