@@ -9,25 +9,40 @@ export async function geminiCall(prompt: string, maxTokens: number = 500, temp: 
     console.error('[gemini] GEMINI_API_KEY is not set!');
     throw new Error('GEMINI_API_KEY missing');
   }
-  const res = await fetch(`${BASE}:generateContent?key=${GEMINI_KEY}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { maxOutputTokens: maxTokens, temperature: temp },
-    }),
-  });
 
-  if (!res.ok) {
-    const err = await res.text().catch(() => '');
-    console.error(`[gemini] API error ${res.status}:`, err.slice(0, 500));
-    throw new Error(`Gemini ${res.status}: ${err.slice(0, 200)}`);
+  const delays = [3000, 8000, 15000]; // retry after 3s, 8s, 15s on 429
+  let lastError = '';
+
+  for (let attempt = 0; attempt <= delays.length; attempt++) {
+    const res = await fetch(`${BASE}:generateContent?key=${GEMINI_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { maxOutputTokens: maxTokens, temperature: temp },
+      }),
+    });
+
+    if (res.status === 429 && attempt < delays.length) {
+      console.warn(`[gemini] 429 rate limit, retrying in ${delays[attempt]}ms (attempt ${attempt + 1})`);
+      await new Promise(r => setTimeout(r, delays[attempt]));
+      continue;
+    }
+
+    if (!res.ok) {
+      const err = await res.text().catch(() => '');
+      console.error(`[gemini] API error ${res.status}:`, err.slice(0, 500));
+      lastError = `Gemini ${res.status}: ${err.slice(0, 200)}`;
+      break;
+    }
+
+    const data = await res.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    if (!text) console.error('[gemini] empty response:', JSON.stringify(data).slice(0, 300));
+    return text;
   }
 
-  const data = await res.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  if (!text) console.error('[gemini] empty response:', JSON.stringify(data).slice(0, 300));
-  return text;
+  throw new Error(lastError || 'Gemini failed after retries');
 }
 
 async function geminiCallMultimodal(parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }>, maxTokens: number = 16000): Promise<string> {
