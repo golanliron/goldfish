@@ -75,7 +75,8 @@ ${rawText.slice(0, 60000)}
     const raw = await geminiCall(parsePrompt, 4000);
     const clean = raw.replace(/```json|```/g, '').trim();
     rfpData = JSON.parse(clean);
-  } catch {
+  } catch (e) {
+    console.error('[rfp] Gemini parse error:', e);
     return NextResponse.json({ error: 'שגיאה בניתוח קול הקורא' }, { status: 500 });
   }
 
