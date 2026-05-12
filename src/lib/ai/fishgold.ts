@@ -1049,7 +1049,7 @@ export const FISHGOLD_NONPROFITS_PART2 = `
 export const FISHGOLD_GRANTS_INTELLIGENCE = `
 ===== מודיעין קולות קוראים וגופים מממנים =====
 
-תמונת כמות: 411+ קולות קוראים פעילים במערכת, 49 פתוחים עכשיו (מאי 2026), 957 חברות וארגונים, 182 קרנות ופדרציות.
+תמונת כמות: 411+ קולות קוראים פעילים במערכת, 49 פתוחים עכשיו (מאי 2026), 957 חברות וארגונים, 247 קרנות ופדרציות.
 
 קטגוריות קולות קוראים לפי נפח: קהילה (23 פתוחים), חינוך (22), רווחה (20), תרבות (12), פריפריה (11), מדע וטכנולוגיה (10), תעסוקה (9).
 
@@ -1418,6 +1418,45 @@ export const FISHGOLD_FUNDER_INTEL = `
 
 פדרציות יהודיות (ארה"ב):
 150+ פדרציות יהודיות. מימון Israel programs. TOP: UJA-NY, JFNA, Jewish Fed Philadelphia, Boston, Chicago, LA. מה אוהבים: חיבור לתפוצות, מנהיגות, חינוך יהודי, אוכלוסיות שוליים בישראל. שפה: באנגלית, impact metrics, ROI, SDGs. צריך: Form 990, financial statements, IRS letter, organization profile.
+
+קרנות בינלאומיות גדולות שעובדות עם ישראל (נוספו למאגר):
+Jim Joseph Foundation — חינוך יהודי, נוער, Birthright. מענקים של 500K-מיליונים. Al Levitt, President.
+Klarman Family Foundation — מאבק באנטישמיות, חיבור לישראל, ערביי ישראל. Seth Klarman, Founder.
+Marcus Foundation — רפואה, חינוך, ישראל. 25M$ למד"א. Bernie Marcus, Founder. תקציב מאות מיליונים.
+Crown Family Philanthropies — חינוך, סביבה, ישראל. IsraAid, Israel Education. צ'יקגו.
+Adelson Family Foundation — Birthright, רפואה, חינוך. Miriam Adelson. מאות מיליוני דולרים.
+Schusterman Family Philanthropies — חינוך יהודי, מנהיגות צעירה, ROI Community, REALITY. Stacy Schusterman.
+Hadassah Foundation — נשים וניקיונות בישראל. 80K$ למענק. 5 ארגונים בשנה. Ellen Hershkin.
+Youth Renewal Fund — שותף פילנתרופי של דרכא. 53 בתי ספר בפריפריה. מאז 1989.
+Pears Foundation — בריטית. פיתוח בינלאומי, IsraAid, שוויון יהודי-ערבי. Trevor Pears.
+Russell Berrie Foundation — צפון ישראל, שילוב חרדים, רשויות. Angelica Berrie, President.
+Leichtag Foundation — סן דייגו. 140M$ מאז 2007. חינוך, ישראל, חדשנות. התמזגה עם JCF San Diego.
+Ted Arison Family Foundation — חינוך, ילדים, מוגבלויות, בריאות. Shari Arison.
+ISEF Foundation — מלגות לצעירים מהפריפריה. אדמונד ספרא. תואר ראשון עד פוסט-דוק.
+Azrieli Foundation — 70,000 ילדים. נוער בסיכון, מחקר, ספורט. Danna Azrieli. תחרותי מאוד.
+Genesis Prize Foundation — 100M$ הקדש. "פרס נובל היהודי". מיזמים חברתיים.
+Jewish Agency — עלייה, קליטה, זהות יהודית, הלוואות חירום לעמותות. Doron Almog.
+P.E.F. Israel Endowment Funds — גשר בין תורמים אמריקאים לעמותות ישראליות. 70M$ מגוטסמן.
+Bernard van Leer Foundation — גיל הרך 0-6 בישראל. טיפת חלב, Urban95. הולנדית.
+Mandel Foundation Israel — הכשרת מנהיגים בחינוך. תוכניות רב-שנתיות עמוקות. Moshe Vigdor.
+Jewish Communal Fund — 74,000 מענקים, 471M$ ב-2025. Donor-advised funds. ניו יורק.
+
+קרנות ישראליות נוספות במאגר:
+קרן קרב — חינוך העשרה, 260,000 ילדים. מ-2014 ממשלתי. שותפויות עם מתנ"סים.
+קרן ניצן — ילדים עם לקויות למידה והפרעות קשב. מרכזי ניצן ברחבי הארץ.
+קרן תקווה — חינוך יהודי, תרבות, מחקר, מדיניות ציבורית. מ-1979.
+AICF — תרבות אמריקה-ישראל. מלגות לאמנים ומוזיקאים. מ-1939.
+מיתן — גוף תיווך מרכזי בין תורמים לעמותות. אורנה בן-דור, מנכ"לית.
+קרן לתת — מלגות, מזון, רפואה, חינוך. אחד הארגונים החברתיים הגדולים.
+
+גופים אירופיים:
+EU NDICI — 7.2M אירו ב-2024 לחברה אזרחית בישראל. 500K-750K לפרויקט.
+קרן פרידריך אברט — גרמנית. דמוקרטיה, שוויון, זכויות עובדים. סניף בישראל.
+קרן קונרד אדנאואר — גרמנית. דיאלוג, מנהיגות, חברה אזרחית. סניף בישראל.
+קרן רוזה לוקסמבורג — גרמנית. צדק חברתי, זכויות. סניף בישראל.
+Horizon Europe — ישראל חברה מלאה. מיליארדי אירו. גם לארגונים חברתיים בקונסורציומים.
+
+סה"כ 247 קרנות ופדרציות במאגר עם אנשי קשר, תיאורים ותחומי מימון.
 
 75 מקורות סריקה יומית:
 ממשלתי (21): tmichot.mof.gov.il, grants.gov.il, pob.education.gov.il, btl.gov.il, innovationisrael.org.il
