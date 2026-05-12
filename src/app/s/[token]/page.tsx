@@ -17,6 +17,14 @@ interface Comment {
   created_at: string;
 }
 
+interface RfpInfo {
+  rfp_title?: string;
+  funder_name?: string;
+  deadline?: string;
+  required_documents?: string[];
+  rfp_url?: string;
+}
+
 interface Submission {
   id: string;
   status: string;
@@ -30,6 +38,7 @@ interface Submission {
 export default function SharedSubmissionPage() {
   const { token } = useParams<{ token: string }>();
   const [submission, setSubmission] = useState<Submission | null>(null);
+  const [rfp, setRfp] = useState<RfpInfo | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
   const [editorName, setEditorName] = useState('');
@@ -98,6 +107,7 @@ export default function SharedSubmissionPage() {
       if (data.submission) {
         setSubmission(data.submission);
         setComments(data.comments || []);
+        setRfp(data.rfp || null);
       }
     } finally {
       setLoading(false);
@@ -210,6 +220,53 @@ export default function SharedSubmissionPage() {
       </div>
 
       <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+
+        {/* RFP Info */}
+        {rfp && (
+          <div className="bg-white rounded-2xl border border-gray-200 p-6 space-y-4">
+            <div>
+              <div className="text-xs text-gray-400 mb-1">קול קורא</div>
+              <div className="text-lg font-bold text-gray-900">{rfp.rfp_title || 'ללא שם'}</div>
+              {rfp.funder_name && (
+                <div className="text-sm text-gray-500 mt-0.5">{rfp.funder_name}</div>
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-4">
+              {rfp.deadline && (
+                <div className="flex items-center gap-2 bg-red-50 rounded-xl px-4 py-2 border border-red-100">
+                  <span className="text-base">📅</span>
+                  <div>
+                    <div className="text-xs text-red-500 font-medium">דדליין להגשה</div>
+                    <div className="text-sm font-bold text-red-700">
+                      {new Date(rfp.deadline).toLocaleDateString('he-IL', { day: '2-digit', month: 'long', year: 'numeric' })}
+                    </div>
+                  </div>
+                </div>
+              )}
+              {rfp.rfp_url && (
+                <a href={rfp.rfp_url} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-2 bg-blue-50 rounded-xl px-4 py-2 border border-blue-100 text-blue-600 hover:text-blue-800 text-sm">
+                  🔗 לינק לקול הקורא המקורי
+                </a>
+              )}
+            </div>
+
+            {rfp.required_documents && (rfp.required_documents as string[]).length > 0 && (
+              <div>
+                <div className="text-xs font-semibold text-gray-500 mb-2">📎 מסמכים שצריך להכין מבעוד מועד</div>
+                <ul className="space-y-1">
+                  {(rfp.required_documents as string[]).map((doc, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
+                      <span className="text-gray-400 mt-0.5">•</span>
+                      {doc}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Editor name prompt */}
         {!editorName && (

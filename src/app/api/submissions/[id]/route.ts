@@ -22,14 +22,19 @@ export async function GET(
   const { data: sub } = await query.single();
   if (!sub) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  // Load comments
-  const { data: comments } = await supabase
-    .from('submission_comments')
-    .select('id, author_name, content, created_at')
-    .eq('submission_id', sub.id)
-    .order('created_at', { ascending: true });
+  // Load comments + rfp data in parallel
+  const [commentsRes, rfpRes] = await Promise.all([
+    supabase
+      .from('submission_comments')
+      .select('id, author_name, content, created_at')
+      .eq('submission_id', sub.id)
+      .order('created_at', { ascending: true }),
+    sub.rfp_id
+      ? supabase.from('rfp_parsed').select('rfp_title, funder_name, deadline, required_documents, rfp_url').eq('id', sub.rfp_id).single()
+      : Promise.resolve({ data: null }),
+  ]);
 
-  return NextResponse.json({ submission: sub, comments: comments || [] });
+  return NextResponse.json({ submission: sub, comments: commentsRes.data || [], rfp: rfpRes.data || null });
 }
 
 // PATCH /api/submissions/[id] — update content or acquire/release lock
@@ -39,7 +44,7 @@ export async function PATCH(
 ) {
   const { id } = await params;
   const body = await req.json();
-  const { content, status, editor_name, action } = body;
+  const { content, status, editor_name, action, outcome, approved_amount, funder_feedback, lessons_learned } = body;
   const supabase = createAdminClient();
 
   // Find by id or share_token
@@ -72,10 +77,14 @@ export async function PATCH(
     return NextResponse.json({ ok: true });
   }
 
-  // Save content
+  // Save content + outcome fields
   const updates: Record<string, unknown> = { version: body.version ? body.version + 1 : undefined };
   if (content !== undefined) updates.content = content;
   if (status !== undefined) updates.status = status;
+  if (outcome !== undefined) updates.outcome = outcome;
+  if (approved_amount !== undefined) updates.approved_amount = approved_amount;
+  if (funder_feedback !== undefined) updates.funder_feedback = funder_feedback;
+  if (lessons_learned !== undefined) updates.lessons_learned = lessons_learned;
   if (editor_name) { updates.locked_by = null; updates.locked_until = null; } // Release lock on save
 
   await supabase.from('submissions').update(updates).eq('id', sub.id);
