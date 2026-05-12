@@ -1,7 +1,6 @@
 import { NextRequest } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { createGrantsClient } from '@/lib/supabase/grants-db';
 import { buildOrgContext } from '@/lib/ai/fishgold';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -53,13 +52,12 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 2. Load active grants from the shared grants database (updated daily by scanner)
-    const grantsDb = createGrantsClient();
+    // 2. Load active grants from opportunities table (updated daily by scanner)
     const today = new Date().toISOString().split('T')[0];
-    const { data: opportunities } = await grantsDb
-      .from('grants')
+    const { data: opportunities } = await supabase
+      .from('opportunities')
       .select('id, title, description, deadline, categories, target_populations, funder, url, type')
-      .eq('is_database', true)
+      .eq('active', true)
       .or(`deadline.is.null,deadline.gte.${today}`)
       .order('deadline', { ascending: true, nullsFirst: false })
       .limit(60);

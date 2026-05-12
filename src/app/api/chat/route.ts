@@ -3,7 +3,6 @@ import Anthropic from '@anthropic-ai/sdk';
 
 export const maxDuration = 120;
 import { createAdminClient } from '@/lib/supabase/admin';
-import { createGrantsClient } from '@/lib/supabase/grants-db';
 import { FISHGOLD_SYSTEM_PROMPT, FISHGOLD_GRANT_EXPERTISE, FISHGOLD_FUNDER_WRITING_DNA, FISHGOLD_FUNDER_QUESTIONS, FISHGOLD_NONPROFITS_REFERENCE, FISHGOLD_NONPROFITS_PART2, FISHGOLD_GRANTS_INTELLIGENCE, FISHGOLD_ENGLISH_GRANTS, FISHGOLD_GRANT_MASTERY, FISHGOLD_BUDGET_INTELLIGENCE, FISHGOLD_SECTOR_KNOWLEDGE, FISHGOLD_BEHAVIOR_RULES, FISHGOLD_FUNDER_INTEL, FISHGOLD_PROPOSAL_GUIDE, FISHGOLD_SUBMISSION_ENGINE, FISHGOLD_COMPETITIVE_INTEL, FISHGOLD_FUNDRAISING_INTEL, FISHGOLD_EMAIL_MASTERY, buildContext, buildOrgContext } from '@/lib/ai/fishgold';
 import { FEDERATION_INTELLIGENCE } from '@/lib/ai/federation-intelligence';
 import { ISRAELI_FUNDERS_INTELLIGENCE } from '@/lib/ai/israeli-funders';
@@ -37,10 +36,10 @@ function stripHtml(html: string): string {
 
 async function lookupGrantByUrl(url: string): Promise<string | null> {
   try {
-    const grantsDb = createGrantsClient();
-    const { data: grant } = await grantsDb
-      .from('grants')
-      .select('title, description, funder, deadline, amount, categories, target_populations, regions, eligibility, url')
+    const oppDb = createAdminClient();
+    const { data: grant } = await oppDb
+      .from('opportunities')
+      .select('title, description, funder, deadline, amount_max, categories, target_populations, regions, eligibility, url')
       .eq('url', url)
       .single();
 
@@ -50,7 +49,7 @@ async function lookupGrantByUrl(url: string): Promise<string | null> {
         `כותרת: ${grant.title}`,
         grant.funder ? `גוף מממן: ${grant.funder}` : '',
         grant.deadline ? `דדליין: ${grant.deadline}` : '',
-        grant.amount ? `סכום: עד ${(grant.amount / 1000).toFixed(0)}K ש"ח` : '',
+        grant.amount_max ? `סכום: עד ${(grant.amount_max / 1000).toFixed(0)}K ש"ח` : '',
         grant.categories?.length ? `קטגוריות: ${grant.categories.join(', ')}` : '',
         grant.target_populations?.length ? `אוכלוסיות: ${grant.target_populations.join(', ')}` : '',
         grant.regions?.length ? `אזורים: ${grant.regions.join(', ')}` : '',
@@ -61,9 +60,9 @@ async function lookupGrantByUrl(url: string): Promise<string | null> {
 
     // Try partial URL match (some URLs have tracking params)
     const baseUrl = url.split('?')[0];
-    const { data: partialMatch } = await grantsDb
-      .from('grants')
-      .select('title, description, funder, deadline, amount, categories, target_populations, regions, eligibility, url')
+    const { data: partialMatch } = await oppDb
+      .from('opportunities')
+      .select('title, description, funder, deadline, amount_max, categories, target_populations, regions, eligibility, url')
       .ilike('url', `%${baseUrl.slice(-60)}%`)
       .limit(1)
       .single();
@@ -74,7 +73,7 @@ async function lookupGrantByUrl(url: string): Promise<string | null> {
         `כותרת: ${partialMatch.title}`,
         partialMatch.funder ? `גוף מממן: ${partialMatch.funder}` : '',
         partialMatch.deadline ? `דדליין: ${partialMatch.deadline}` : '',
-        partialMatch.amount ? `סכום: עד ${(partialMatch.amount / 1000).toFixed(0)}K ש"ח` : '',
+        partialMatch.amount_max ? `סכום: עד ${(partialMatch.amount_max / 1000).toFixed(0)}K ש"ח` : '',
         partialMatch.categories?.length ? `קטגוריות: ${partialMatch.categories.join(', ')}` : '',
         partialMatch.target_populations?.length ? `אוכלוסיות: ${partialMatch.target_populations.join(', ')}` : '',
         partialMatch.regions?.length ? `אזורים: ${partialMatch.regions.join(', ')}` : '',
@@ -813,12 +812,11 @@ async function scanOpportunities(
         .limit(5);
 
       if (matches && matches.length > 0) {
-        // Fetch grant details from the shared grants DB
-        const grantsDb = createGrantsClient();
+        // Fetch grant details from opportunities table
         const oppIds = matches.map(m => m.opportunity_id);
-        const { data: grants } = await grantsDb
-          .from('grants')
-          .select('id, title, deadline, funder, url, description, amount')
+        const { data: grants } = await supabase
+          .from('opportunities')
+          .select('id, title, deadline, funder, url, description, amount_max')
           .in('id', oppIds);
 
         const grantsMap = new Map((grants || []).map(g => [g.id, g]));
@@ -826,7 +824,7 @@ async function scanOpportunities(
         const lines = matches.map((m) => {
           const opp = grantsMap.get(m.opportunity_id);
           if (!opp) return null;
-          return `- **${opp.title}** (ציון: ${m.score}/100)${opp.deadline ? ` | דדליין: ${opp.deadline}` : ''}${opp.funder ? ` | ${opp.funder}` : ''}${opp.amount ? ` | עד ${(opp.amount / 1000).toFixed(0)}K ש"ח` : ''}${opp.url ? ` | לינק: ${opp.url}` : ''}\n  ${m.reasoning}${opp.description ? `\n  תיאור: ${opp.description.slice(0, 200)}` : ''}`;
+          return `- **${opp.title}** (ציון: ${m.score}/100)${opp.deadline ? ` | דדליין: ${opp.deadline}` : ''}${opp.funder ? ` | ${opp.funder}` : ''}${opp.amount_max ? ` | עד ${(opp.amount_max / 1000).toFixed(0)}K ש"ח` : ''}${opp.url ? ` | לינק: ${opp.url}` : ''}\n  ${m.reasoning}${opp.description ? `\n  תיאור: ${opp.description.slice(0, 200)}` : ''}`;
         }).filter(Boolean);
 
         if (lines.length > 0) {
@@ -837,14 +835,13 @@ async function scanOpportunities(
     }
   }
 
-  // Run a fresh scan — query the shared grants database (updated daily by scanner)
+  // Run a fresh scan — query the opportunities table (updated daily by scanner)
   try {
     const today = new Date().toISOString().split('T')[0];
-    const grantsDb = createGrantsClient();
-    const { data: opportunities, error: oppError } = await grantsDb
-      .from('grants')
+    const { data: opportunities, error: oppError } = await supabase
+      .from('opportunities')
       .select('id, title, description, deadline, categories, target_populations, funder, url')
-      .eq('is_database', true)
+      .eq('active', true)
       .or(`deadline.is.null,deadline.gte.${today}`)
       .order('deadline', { ascending: true, nullsFirst: false })
       .limit(60);
@@ -1260,13 +1257,12 @@ async function loadCompaniesIndex(
 
 async function loadGrantsIndex(): Promise<string> {
   try {
-    const grantsDb = createGrantsClient();
+    const oppDb = createAdminClient();
     const today = new Date().toISOString().split('T')[0];
 
-    const { data: grants } = await grantsDb
-      .from('grants')
-      .select('id, title, funder, deadline, description, categories, target_populations, url, amount, type, eligibility, how_to_apply, contact_info, tags')
-      .eq('is_database', true)
+    const { data: grants } = await oppDb
+      .from('opportunities')
+      .select('id, title, funder, deadline, description, categories, target_populations, url, amount_max, type, eligibility, how_to_apply, contact_info, tags')
       .order('deadline', { ascending: true, nullsFirst: false });
 
     if (!grants?.length) return '';
@@ -1291,7 +1287,7 @@ async function loadGrantsIndex(): Promise<string> {
       const parts = [`"${g.title}"`];
       if (g.funder) parts.push(`גוף: ${g.funder}`);
       if (g.deadline) parts.push(`דדליין: ${g.deadline}`);
-      if (g.amount) parts.push(`עד ${(g.amount / 1000).toFixed(0)}K₪`);
+      if (g.amount_max) parts.push(`עד ${(g.amount_max / 1000).toFixed(0)}K₪`);
       if (g.categories?.length) parts.push(`תחומים: ${g.categories.slice(0, 3).join(', ')}`);
       if (g.target_populations?.length) parts.push(`אוכלוסיות: ${g.target_populations.slice(0, 3).join(', ')}`);
       if (g.type) parts.push(`סוג: ${g.type}`);
@@ -1348,13 +1344,11 @@ async function loadFundersIndex(
   supabase: ReturnType<typeof createAdminClient>
 ): Promise<string> {
   try {
-    const grantsDb = createGrantsClient();
-
-    // Aggregate funder data from grants
-    const { data: grants } = await grantsDb
-      .from('grants')
-      .select('funder, categories, target_populations, amount, deadline, title, url')
-      .eq('is_database', true)
+    // Aggregate funder data from opportunities
+    const { data: grants } = await supabase
+      .from('opportunities')
+      .select('funder, categories, target_populations, amount_max, deadline, title, url')
+      .eq('active', true)
       .not('funder', 'is', null);
 
     if (!grants?.length) return '';
@@ -1387,9 +1381,9 @@ async function loadFundersIndex(
       f.grantCount++;
       if (g.categories) for (const c of g.categories) f.categories.add(c);
       if (g.target_populations) for (const p of g.target_populations) f.populations.add(p);
-      if (g.amount) {
-        if (!f.minAmount || g.amount < f.minAmount) f.minAmount = g.amount;
-        if (!f.maxAmount || g.amount > f.maxAmount) f.maxAmount = g.amount;
+      if (g.amount_max) {
+        if (!f.minAmount || g.amount_max < f.minAmount) f.minAmount = g.amount_max;
+        if (!f.maxAmount || g.amount_max > f.maxAmount) f.maxAmount = g.amount_max;
       }
       if (g.deadline && g.deadline >= today) f.openGrants++;
       if (f.sampleTitles.length < 3) f.sampleTitles.push(g.title);

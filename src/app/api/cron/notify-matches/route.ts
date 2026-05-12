@@ -1,6 +1,5 @@
 import { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { createGrantsClient } from '@/lib/supabase/grants-db';
 
 const META_API_VERSION = 'v21.0';
 const META_PHONE_NUMBER_ID = process.env.META_PHONE_NUMBER_ID || '';
@@ -26,8 +25,6 @@ export async function GET(request: NextRequest) {
 
 async function notifyNewMatches() {
   const supabase = createAdminClient();
-  const grantsDb = createGrantsClient();
-
   let notified = 0;
   let skipped = 0;
 
@@ -65,8 +62,8 @@ async function notifyNewMatches() {
 
     // Get opportunity details
     const oppIds = matches.map(m => m.opportunity_id);
-    const { data: opps } = await grantsDb
-      .from('grants')
+    const { data: opps } = await supabase
+      .from('opportunities')
       .select('id, title, funder, deadline, url, amount_max')
       .in('id', oppIds)
       .eq('active', true);
@@ -131,8 +128,6 @@ export async function POST(request: NextRequest) {
 
 async function sendDeadlineReminders() {
   const supabase = createAdminClient();
-  const grantsDb = createGrantsClient();
-
   let reminded = 0;
 
   // Find matches with deadlines in 7 days or 2 days
@@ -140,8 +135,8 @@ async function sendDeadlineReminders() {
   const in2days = new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
   const in7days = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-  const { data: urgentOpps } = await grantsDb
-    .from('grants')
+  const { data: urgentOpps } = await supabase
+    .from('opportunities')
     .select('id, title, funder, deadline, url')
     .eq('active', true)
     .or(`deadline.eq.${in2days},deadline.eq.${in7days}`);
