@@ -230,18 +230,15 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // 2. Classify + Extract + Summarize in parallel
-    const [category, metadata, summary] = await Promise.all([
-      classifyDocument(parsedText),
-      extractStructuredData(parsedText, 'identity', orgName),
-      summarizeDocument(parsedText),
-    ]);
+    // 2. Classify + Extract + Summarize — sequential to avoid Gemini 429
+    let category = 'other';
+    let metadata: Record<string, unknown> = {};
+    let summary = `קובץ: ${file.name}`;
+    try { category = await classifyDocument(parsedText); } catch { /* keep 'other' */ }
+    try { metadata = await extractStructuredData(parsedText, category, orgName); } catch { /* keep empty */ }
+    try { summary = await summarizeDocument(parsedText); } catch { /* keep filename */ }
 
-    // Re-extract with correct category if not identity
     let finalMetadata = metadata;
-    if (category !== 'identity') {
-      finalMetadata = await extractStructuredData(parsedText, category, orgName);
-    }
 
     // 3. Upload to storage (non-blocking)
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
