@@ -39,7 +39,7 @@ async function lookupGrantByUrl(url: string): Promise<string | null> {
     const oppDb = createAdminClient();
     const { data: grant } = await oppDb
       .from('opportunities')
-      .select('title, description, funder, deadline, amount_max, categories, target_populations, regions, eligibility, url')
+      .select('title, description, funder, deadline, amount_max, categories, target_populations, regions, eligibility, url, contact_info')
       .eq('url', url)
       .single();
 
@@ -54,6 +54,7 @@ async function lookupGrantByUrl(url: string): Promise<string | null> {
         grant.target_populations?.length ? `אוכלוסיות: ${grant.target_populations.join(', ')}` : '',
         grant.regions?.length ? `אזורים: ${grant.regions.join(', ')}` : '',
         grant.eligibility ? `תנאי זכאות: ${grant.eligibility}` : '',
+        grant.contact_info ? `פרטי קשר: ${grant.contact_info}` : '',
         grant.description ? `תיאור מלא: ${grant.description}` : '',
       ].filter(Boolean).join('\n');
     }
@@ -62,7 +63,7 @@ async function lookupGrantByUrl(url: string): Promise<string | null> {
     const baseUrl = url.split('?')[0];
     const { data: partialMatch } = await oppDb
       .from('opportunities')
-      .select('title, description, funder, deadline, amount_max, categories, target_populations, regions, eligibility, url')
+      .select('title, description, funder, deadline, amount_max, categories, target_populations, regions, eligibility, url, contact_info')
       .ilike('url', `%${baseUrl.slice(-60)}%`)
       .limit(1)
       .single();
@@ -78,6 +79,7 @@ async function lookupGrantByUrl(url: string): Promise<string | null> {
         partialMatch.target_populations?.length ? `אוכלוסיות: ${partialMatch.target_populations.join(', ')}` : '',
         partialMatch.regions?.length ? `אזורים: ${partialMatch.regions.join(', ')}` : '',
         partialMatch.eligibility ? `תנאי זכאות: ${partialMatch.eligibility}` : '',
+        partialMatch.contact_info ? `פרטי קשר: ${partialMatch.contact_info}` : '',
         partialMatch.description ? `תיאור מלא: ${partialMatch.description}` : '',
       ].filter(Boolean).join('\n');
     }
@@ -816,7 +818,7 @@ async function scanOpportunities(
         const oppIds = matches.map(m => m.opportunity_id);
         const { data: grants } = await supabase
           .from('opportunities')
-          .select('id, title, deadline, funder, url, description, amount_max')
+          .select('id, title, deadline, funder, url, description, amount_max, contact_info')
           .in('id', oppIds);
 
         const grantsMap = new Map((grants || []).map(g => [g.id, g]));
@@ -824,7 +826,7 @@ async function scanOpportunities(
         const lines = matches.map((m) => {
           const opp = grantsMap.get(m.opportunity_id);
           if (!opp) return null;
-          return `- **${opp.title}** (ציון: ${m.score}/100)${opp.deadline ? ` | דדליין: ${opp.deadline}` : ''}${opp.funder ? ` | ${opp.funder}` : ''}${opp.amount_max ? ` | עד ${(opp.amount_max / 1000).toFixed(0)}K ש"ח` : ''}${opp.url ? ` | לינק: ${opp.url}` : ''}\n  ${m.reasoning}${opp.description ? `\n  תיאור: ${opp.description.slice(0, 200)}` : ''}`;
+          return `- **${opp.title}** (ציון: ${m.score}/100)${opp.deadline ? ` | דדליין: ${opp.deadline}` : ''}${opp.funder ? ` | ${opp.funder}` : ''}${opp.amount_max ? ` | עד ${(opp.amount_max / 1000).toFixed(0)}K ש"ח` : ''}${opp.url ? ` | לינק: ${opp.url}` : ''}${opp.contact_info ? ` | ${opp.contact_info}` : ''}\n  ${m.reasoning}${opp.description ? `\n  תיאור: ${opp.description.slice(0, 200)}` : ''}`;
         }).filter(Boolean);
 
         if (lines.length > 0) {
@@ -840,7 +842,7 @@ async function scanOpportunities(
     const today = new Date().toISOString().split('T')[0];
     const { data: opportunities, error: oppError } = await supabase
       .from('opportunities')
-      .select('id, title, description, deadline, categories, target_populations, funder, url')
+      .select('id, title, description, deadline, categories, target_populations, funder, url, contact_info')
       .eq('active', true)
       .or(`deadline.is.null,deadline.gte.${today}`)
       .order('deadline', { ascending: true, nullsFirst: false })
@@ -929,7 +931,7 @@ async function scanOpportunities(
       const opp = filtered[item.index - 1];
       if (!opp) continue;
 
-      lines.push(`- **${opp.title}** (ציון: ${item.score}/10)${opp.deadline ? ` | דדליין: ${opp.deadline}` : ''}${opp.funder ? ` | ${opp.funder}` : ''}${opp.url ? ` | לינק: ${opp.url}` : ''}\n  ${item.reasoning}${opp.description ? `\n  תיאור: ${opp.description.slice(0, 200)}` : ''}`);
+      lines.push(`- **${opp.title}** (ציון: ${item.score}/10)${opp.deadline ? ` | דדליין: ${opp.deadline}` : ''}${opp.funder ? ` | ${opp.funder}` : ''}${opp.url ? ` | לינק: ${opp.url}` : ''}${opp.contact_info ? ` | ${opp.contact_info}` : ''}\n  ${item.reasoning}${opp.description ? `\n  תיאור: ${opp.description.slice(0, 200)}` : ''}`);
 
       // Save to DB
       const { error: matchErr } = await supabase.from('matches').upsert(
