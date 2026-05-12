@@ -542,7 +542,7 @@ ${docIds.length > 0 ? `\n[document_ids: ${docIds.join(',')}]` : ''}
               type="file"
               className="hidden"
               multiple
-              accept=".pdf,.docx,.doc,.xlsx,.xls,.txt,.md"
+              accept=".pdf,.docx,.doc,.xlsx,.xls,.csv,.txt,.md"
               onChange={handleFileUpload}
             />
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
