@@ -367,12 +367,26 @@ export function extractOrgDNA(
   if (/מיצוי זכויות|זכויות סוציאליות/.test(fullText)) themes.push('rights_advocacy');
   if (/בוגרי מערכת|בוגרים|יוצאי מערכת/.test(fullText)) themes.push('care_leavers');
 
-  // Build exclude lists — populations the org clearly doesn't serve
+  // Build exclude lists — only exclude populations that are clearly OPPOSITE to the org's mission
+  // e.g. an org for youth should NOT be excluded from grants that mention "women" as a secondary population
+  // Only exclude if the org has 3+ clear populations AND this population is not among them
   const allPopKeys = POPULATION_PATTERNS.map(p => p.key);
+  const HARD_EXCLUDES: Record<string, string[]> = {
+    // If org serves youth, exclude elderly-only grants (not mixed grants)
+    'youth': ['elderly'],
+    'youth_at_risk': ['elderly'],
+    'young_adults': ['elderly'],
+    // If org serves elderly, exclude youth-only grants
+    'elderly': ['youth', 'youth_at_risk', 'young_adults', 'children'],
+    // If org serves children, exclude elderly-only grants
+    'children': ['elderly'],
+  };
   const excludePopulations = allPopKeys.filter(pk => {
-    // Only exclude if the org has clear populations AND this one is not among them
-    if (populations.length < 2) return false; // Not enough info to exclude
-    return !populations.includes(pk);
+    if (populations.length < 3) return false; // Not enough info to exclude
+    if (populations.includes(pk)) return false; // Org serves this population
+    // Only hard-exclude if there's a clear semantic opposition
+    const hardExcludeFor = populations.flatMap(p => HARD_EXCLUDES[p] || []);
+    return hardExcludeFor.includes(pk);
   });
 
   // Only exclude domains we're confident about
@@ -700,10 +714,14 @@ export function mergeOrgDNA(regexDna: OrgDNA, aiDna: Partial<OrgDNA>): OrgDNA {
     excludeDomains: [],
   };
 
-  // Rebuild exclude lists from merged data
-  const allPopKeys = POPULATION_PATTERNS.map(p => p.key);
-  merged.excludePopulations = merged.populations.length >= 2
-    ? allPopKeys.filter(k => !merged.populations.includes(k))
+  // Rebuild exclude lists — only hard semantic opposites, not all non-matching populations
+  const HARD_EXCLUDES_MERGE: Record<string, string[]> = {
+    'youth': ['elderly'], 'youth_at_risk': ['elderly'], 'young_adults': ['elderly'],
+    'children': ['elderly'], 'elderly': ['youth', 'youth_at_risk', 'young_adults', 'children'],
+  };
+  merged.excludePopulations = merged.populations.length >= 3
+    ? merged.populations.flatMap(p => HARD_EXCLUDES_MERGE[p] || [])
+        .filter(k => !merged.populations.includes(k))
     : [];
 
   if (merged.domains.length >= 2) {
