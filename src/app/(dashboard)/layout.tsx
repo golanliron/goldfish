@@ -191,7 +191,7 @@ function DashboardInner({ children }: { children: React.ReactNode }) {
                     <p className="text-xs text-muted truncate">{user?.email}</p>
                   </div>
                   <button
-                    onClick={() => { setShowUserMenu(false); router.push('/onboarding'); }}
+                    onClick={() => { setShowUserMenu(false); router.push('/onboarding?edit=1'); }}
                     className="w-full text-right px-3 py-2 text-sm hover:bg-surf2 transition-colors"
                   >
                     ✏️ ערוך פרופיל ארגון

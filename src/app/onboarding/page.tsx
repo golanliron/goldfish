@@ -73,7 +73,7 @@ export default function OnboardingPage() {
       .single()
       .then(({ data: profile }) => {
         const d = profile?.data as Record<string, unknown> | null;
-        const isEditMode = window.location.search.includes('edit') || document.referrer.includes('/dashboard');
+        const isEditMode = window.location.search.includes('edit=1');
         if (d?.onboarding_complete && !isEditMode) {
           window.location.href = '/dashboard';
         } else {
