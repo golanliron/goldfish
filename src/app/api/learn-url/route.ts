@@ -346,6 +346,25 @@ export async function POST(request: NextRequest) {
     const urlType = detectUrlType(url);
     const supabase = createAdminClient();
 
+    // Skip if URL already learned
+    const { data: existingUrl } = await supabase
+      .from('documents')
+      .select('id, metadata')
+      .eq('org_id', org_id)
+      .eq('storage_path', url)
+      .single();
+    if (existingUrl) {
+      const meta = (existingUrl.metadata || {}) as Record<string, unknown>;
+      return NextResponse.json({
+        document_id: existingUrl.id,
+        title: url,
+        category: 'existing',
+        summary: 'הקישור כבר נלמד בעבר',
+        already_exists: true,
+        previous_summary: meta.summary || '',
+      });
+    }
+
     let text = '';
     let title = url;
     let driveFilesFound = 0;

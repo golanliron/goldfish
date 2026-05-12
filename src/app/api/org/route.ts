@@ -61,14 +61,14 @@ export async function POST(req: NextRequest) {
   // Also pull existing documents for richer AI context
   const { data: docs } = await supabase
     .from('documents')
-    .select('summary, content')
+    .select('summary, parsed_text')
     .eq('org_id', org_id)
     .limit(5);
 
   for (const doc of docs || []) {
     const d = doc as { summary?: string; content?: string };
     if (d.summary) orgTextParts.push(d.summary);
-    else if (d.content) orgTextParts.push((d.content as string).slice(0, 500));
+    else if (d.parsed_text) orgTextParts.push((d.parsed_text as string).slice(0, 500));
   }
 
   const orgText = orgTextParts.join('\n');
