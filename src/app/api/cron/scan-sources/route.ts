@@ -112,6 +112,32 @@ const SOURCES = [
     url: 'https://rothschildfoundation.eu/grants-page/',
     funder: 'Rothschild Foundation Hanadiv Europe',
   },
+  // Gov ministries — specific grant pages
+  {
+    name: 'משרד הרווחה — תמיכות',
+    url: 'https://www.gov.il/he/pages/support-tests-associations',
+    funder: 'משרד הרווחה',
+  },
+  {
+    name: 'משרד התרבות — תמיכות',
+    url: 'https://www.gov.il/he/pages/ministry_support',
+    funder: 'משרד התרבות',
+  },
+  {
+    name: 'משרד הספורט — תמיכות',
+    url: 'https://www.gov.il/he/departments/units/sport_support_unit',
+    funder: 'משרד התרבות — ספורט',
+  },
+  {
+    name: 'משרד העלייה והקליטה — תמיכות',
+    url: 'https://www.gov.il/he/pages/tmichot_mosdot_tzibur',
+    funder: 'משרד העלייה והקליטה',
+  },
+  {
+    name: 'ועדת העזבונות',
+    url: 'https://www.gov.il/he/departments/topics/allowance_from_the_estates_committee/govil-landing-page',
+    funder: 'ועדת העזבונות',
+  },
 ];
 
 // ============================================================
@@ -159,6 +185,11 @@ const POPULATION_PATTERNS: [string, RegExp][] = [
   ['soldiers', /חיילים|משוחררים|צבא|צה"ל|שירות.{0,5}(לאומי|צבאי)|גיוס/],
   ['students', /סטודנטים|אקדמיה|אוניברסיטה|מכללה|לימודים/],
   ['periphery_residents', /פריפריה|נגב|גליל|עוטף|קו עימות/],
+  ['homeless', /חסרי בית|דרי רחוב|מחוסרי דיור/],
+  ['addiction', /התמכרות|סמים|אלכוהול|גמילה/],
+  ['lgbtq', /להט"?ב|גאווה|טרנס|הומו|לסבי/],
+  ['refugees', /פליטים|מבקשי מקלט|מהגרים/],
+  ['prisoners', /אסירים|כלואים|משוחררי כלא/],
 ];
 
 const DOMAIN_PATTERNS: [string, RegExp][] = [
@@ -174,13 +205,27 @@ const DOMAIN_PATTERNS: [string, RegExp][] = [
   ['sport', /ספורט|כדורגל|כדורסל|פעילות גופנית|אתלטיקה/],
   ['legal', /משפטי|זכויות|ייצוג|פרקליט|סיוע משפטי/],
   ['housing', /דיור|שיכון|מגורים|דירה|שכירות/],
+  ['mental_health', /בריאות הנפש|נפשי|פסיכולוג|חרדה|דיכאון|טראומה/],
+  ['coexistence', /דו.?קיום|שותפות|ערבים.{0,5}יהודים|חברה משותפת/],
+  ['social_innovation', /חדשנות חברתית|שינוי חברתי|מוביליות חברתית|אימפקט/],
 ];
 
-function autoTagGrant(title: string, description: string): { categories: string[]; target_populations: string[] } {
-  const text = `${title} ${description}`.toLowerCase();
+const GEO_PATTERNS: [string, RegExp][] = [
+  ['negev', /נגב|באר שבע|ערד|דימונה|רהט|ירוחם|מצפה רמון/],
+  ['galilee', /גליל|צפת|כרמיאל|עכו|נהריה|מעלות|קריית שמונה/],
+  ['periphery', /פריפריה|שולי|מרוחק|עוטף|קו עימות|גבול/],
+  ['center', /מרכז הארץ|תל אביב|גוש דן|רמת גן|פתח תקווה/],
+  ['jerusalem', /ירושלים/],
+  ['haifa', /חיפה|קריות/],
+  ['national', /ארצי|ברחבי הארץ|כלל ארצי|פריסה ארצית/],
+];
+
+function autoTagGrant(title: string, description: string, pageText = ''): { categories: string[]; target_populations: string[]; regions: string[] } {
+  const text = `${title} ${description} ${pageText}`.toLowerCase();
   const categories = DOMAIN_PATTERNS.filter(([, re]) => re.test(text)).map(([k]) => k);
   const target_populations = POPULATION_PATTERNS.filter(([, re]) => re.test(text)).map(([k]) => k);
-  return { categories, target_populations };
+  const regions = GEO_PATTERNS.filter(([, re]) => re.test(text)).map(([k]) => k);
+  return { categories, target_populations, regions };
 }
 
 // ============================================================
@@ -194,6 +239,60 @@ function isValidTitle(title: string): boolean {
 }
 
 // ============================================================
+// GOV.IL JSON EXTRACTION — parses embedded JSON from gov.il pages
+// ============================================================
+function extractGovIlJson(html: string, defaultFunder: string): ScannedItem[] {
+  const results: ScannedItem[] = [];
+  const jsonPattern = /<script[^>]*type="application\/json"[^>]*>(.*?)<\/script>/gs;
+  const matches = [...html.matchAll(jsonPattern)];
+
+  for (const match of matches) {
+    try {
+      const data = JSON.parse(match[1]);
+      const items: unknown[] = [];
+
+      if (Array.isArray(data)) {
+        items.push(...data);
+      } else if (typeof data === 'object' && data !== null) {
+        for (const key of ['results', 'items', 'data', 'content']) {
+          if (Array.isArray((data as Record<string, unknown>)[key])) {
+            items.push(...((data as Record<string, unknown>)[key] as unknown[]));
+            break;
+          }
+        }
+      }
+
+      for (const item of items) {
+        if (typeof item !== 'object' || item === null) continue;
+        const obj = item as Record<string, unknown>;
+        const title = String(obj.Title || obj.title || obj.name || '').trim();
+        let url = String(obj.Url || obj.url || obj.link || '').trim();
+        if (!title || title.length < 8) continue;
+        if (url && !url.startsWith('http')) url = `https://www.gov.il${url}`;
+
+        results.push({
+          title: title.slice(0, 300),
+          description: String(obj.Description || obj.description || '').slice(0, 500) || undefined,
+          funder: String(obj.Ministry || obj.ministry || defaultFunder || ''),
+          deadline: extractDateStr(String(obj.EndDate || obj.deadline || '')),
+          url: url || undefined,
+        });
+      }
+    } catch { /* not valid JSON */ }
+  }
+
+  return results;
+}
+
+function extractDateStr(text: string): string | undefined {
+  if (!text) return undefined;
+  const m = text.match(/(\d{1,2})[./](\d{1,2})[./](20\d{2})/);
+  if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+  const iso = text.match(/(20\d{2}-\d{2}-\d{2})/);
+  return iso ? iso[1] : undefined;
+}
+
+// ============================================================
 // MAIN SCAN LOGIC
 // ============================================================
 interface ScannedItem {
@@ -204,6 +303,7 @@ interface ScannedItem {
   url?: string;
   categories?: string[];
   target_populations?: string[];
+  regions?: string[];
   contact_info?: string;
 }
 
@@ -250,7 +350,15 @@ async function scanAllSources() {
       }
 
       const html = await res.text();
-      const items = await extractOpportunities(html.slice(0, 30000), source.name, source.url);
+
+      // gov.il: try JSON extraction first (faster + more accurate than AI)
+      let items: ScannedItem[] = [];
+      if (source.url.includes('gov.il')) {
+        items = extractGovIlJson(html, source.funder);
+      }
+      if (items.length === 0) {
+        items = await extractOpportunities(html.slice(0, 30000), source.name, source.url);
+      }
 
       for (const item of items) {
         if (!isValidTitle(item.title)) continue;
@@ -271,11 +379,9 @@ async function scanAllSources() {
           continue;
         }
 
-        // Auto-tag with regex (same patterns as org-dna.ts)
-        const tags = autoTagGrant(item.title, item.description || '');
-
         // Try to extract contact info from the grant page
         let contactInfo: string | null = null;
+        let pageText = '';
         if (item.url) {
           try {
             const pageRes = await fetch(item.url, {
@@ -284,7 +390,7 @@ async function scanAllSources() {
             });
             if (pageRes.ok) {
               const pageHtml = await pageRes.text();
-              const pageText = pageHtml.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+              pageText = pageHtml.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
                 .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
                 .replace(/<[^>]+>/g, ' ')
                 .replace(/\s+/g, ' ')
@@ -294,6 +400,9 @@ async function scanAllSources() {
           } catch { /* page fetch failed, that's ok */ }
         }
 
+        // Auto-tag with regex (same patterns as org-dna.ts) — include page text for better region/pop detection
+        const tags = autoTagGrant(item.title, item.description || '', pageText);
+
         const { error: insertErr } = await supabase.from('opportunities').insert({
           title: item.title.slice(0, 300),
           description: item.description?.slice(0, 1000) || null,
@@ -302,6 +411,7 @@ async function scanAllSources() {
           url: item.url || null,
           categories: tags.categories.length > 0 ? tags.categories : (item.categories || []),
           target_populations: tags.target_populations.length > 0 ? tags.target_populations : (item.target_populations || []),
+          regions: tags.regions.length > 0 ? tags.regions : (item.regions || []),
           active: true,
           source: source.name,
           type: 'grant',
