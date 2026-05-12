@@ -4,7 +4,7 @@ const GEMINI_KEY = process.env.GEMINI_API_KEY || '';
 const MODEL = 'gemini-2.5-flash';
 const BASE = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}`;
 
-async function geminiCall(prompt: string, maxTokens: number = 500, temp: number = 0): Promise<string> {
+export async function geminiCall(prompt: string, maxTokens: number = 500, temp: number = 0): Promise<string> {
   const res = await fetch(`${BASE}:generateContent?key=${GEMINI_KEY}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -153,7 +153,7 @@ export async function geminiParseXlsx(buffer: Buffer): Promise<string> {
 /**
  * Deep document analysis — single call for long documents
  */
-export async function geminiDeepAnalysis(text: string, orgContext?: string): Promise<{
+export async function geminiDeepAnalysis(text: string, orgContext?: string, orgName?: string): Promise<{
   category: string;
   metadata: Record<string, unknown>;
   summary: string;
@@ -161,10 +161,13 @@ export async function geminiDeepAnalysis(text: string, orgContext?: string): Pro
   missing_info: string[];
 }> {
   const contextSection = orgContext ? `\n\nהקשר ארגוני קיים:\n${orgContext.slice(0, 10000)}` : '';
+  const orgFilter = orgName
+    ? `\n\nחשוב מאוד: המסמך שייך לארגון "${orgName}". חלץ רק נתונים שמתייחסים לארגון הזה בלבד. התעלם מנתונים של ארגונים אחרים המוזכרים במסמך.`
+    : '';
 
   const raw = await geminiCall(`אתה מומחה בכיר לניתוח מסמכים של ארגונים חברתיים וגיוס משאבים.
 נתח לעומק את המסמך הבא והחזר JSON תקין בלבד.
-${contextSection}
+${contextSection}${orgFilter}
 
 המסמך לניתוח:
 ${text.slice(0, 100000)}
@@ -199,7 +202,7 @@ ${text.slice(0, 100000)}
 /**
  * Run classify + extract + summarize in parallel
  */
-export async function geminiAnalyzeDocument(text: string): Promise<{
+export async function geminiAnalyzeDocument(text: string, orgName?: string): Promise<{
   category: string;
   metadata: Record<string, unknown>;
   summary: string;
@@ -207,12 +210,12 @@ export async function geminiAnalyzeDocument(text: string): Promise<{
   if (text.length < 15000) {
     const [category, metadata, summary] = await Promise.all([
       geminiClassify(text),
-      geminiExtract(text),
+      geminiExtract(text, undefined, orgName),
       geminiSummarize(text),
     ]);
     return { category, metadata, summary };
   }
 
-  const result = await geminiDeepAnalysis(text);
+  const result = await geminiDeepAnalysis(text, undefined, orgName);
   return { category: result.category, metadata: result.metadata, summary: result.summary };
 }
