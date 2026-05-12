@@ -97,13 +97,36 @@
 
 ---
 
+### סורק פדרציות
+**`src/app/api/cron/scan-federations/route.ts`**
+- רץ כל יום ב-07:00 + 19:00 UTC
+- סורק 5 מקורות: JFNA, European Jewish Association, ECAJ, WJC, JFC-UIA
+- משתמש ב-Claude Haiku לחילוץ פדרציות מ-HTML
+- מכניס ל-companies כ-type: 'fund' עם interests מתאימים
+- dedup לפי שם (ilike)
+
+### העשרת חברות
+**`src/app/api/cron/enrich-companies/route.ts`**
+- רץ כל יום ב-05:00 UTC
+- מעשיר 25 חברות ביום (15 עם אתר + 10 בלי)
+- לחברות בלי אתר: מנסה לנחש דומיין מהשם
+- שולף מיילים וטלפונים מהאתר (regex)
+- Claude Haiku מנתח CSR ונותן ציון 1-10 + תיאור + תחומי עניין
+- ממלא רק שדות חסרים — לא דורס מידע קיים
+
+---
+
 ## Cron Schedule (vercel.json)
 
 ```json
 {
   "crons": [
     { "path": "/api/cron/scan-sources", "schedule": "0 6 * * *" },
-    { "path": "/api/cron/notify-matches", "schedule": "0 7 * * *" }
+    { "path": "/api/cron/scan-sources", "schedule": "0 18 * * *" },
+    { "path": "/api/cron/scan-federations", "schedule": "0 7 * * *" },
+    { "path": "/api/cron/scan-federations", "schedule": "0 19 * * *" },
+    { "path": "/api/cron/enrich-companies", "schedule": "0 5 * * *" },
+    { "path": "/api/cron/notify-matches", "schedule": "0 8 * * *" }
   ]
 }
 ```
