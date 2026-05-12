@@ -452,7 +452,7 @@ export async function POST(request: NextRequest) {
 
     if (parsedText.length < 20) {
       return NextResponse.json({
-        error: 'לא הצלחתי לחלץ טקסט מהקובץ. נסי PDF, DOCX, XLSX או TXT.',
+        error: 'לא הצלחתי לחלץ טקסט מהקובץ. נסי PDF, Word, Excel, CSV או TXT.',
       }, { status: 400 });
     }
 

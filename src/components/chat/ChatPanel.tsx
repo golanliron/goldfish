@@ -433,7 +433,7 @@ ${docIds.length > 0 ? `\n[document_ids: ${docIds.join(',')}]` : ''}
       const errorMsg: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: `לא הצלחתי לקרוא את הקבצים. נסו פורמט אחר (PDF, DOCX, TXT).`,
+        content: `לא הצלחתי לקרוא את הקבצים. נסו פורמט אחר (PDF, DOCX, Excel, CSV, TXT).`,
         timestamp: new Date().toISOString(),
       };
       setMessages(prev => [...prev, errorMsg]);
