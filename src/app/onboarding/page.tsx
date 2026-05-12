@@ -148,6 +148,16 @@ export default function OnboardingPage() {
   const finish = async () => {
     setFinishing(true);
     try {
+      // Auto-submit any URLs that were typed but not manually sent
+      const pendingUrls: Array<[string, string]> = [];
+      if (websiteUrl.trim() && !urlDone.includes('website')) pendingUrls.push([websiteUrl.trim(), 'website']);
+      if (socialUrl.trim() && !urlDone.includes('social')) pendingUrls.push([socialUrl.trim(), 'social']);
+      if (driveUrl.trim() && !urlDone.includes('drive')) pendingUrls.push([driveUrl.trim(), 'drive']);
+
+      if (pendingUrls.length > 0 && orgId) {
+        await Promise.all(pendingUrls.map(([url, label]) => learnUrl(url, label)));
+      }
+
       if (orgId) {
         const supabase = createClient();
         const { data: profile } = await supabase
@@ -457,7 +467,9 @@ export default function OnboardingPage() {
           disabled={finishing}
           className="w-full py-3.5 bg-accent text-white font-semibold rounded-xl hover:bg-accent-hover disabled:opacity-50 transition-all hover:scale-[1.02] active:scale-[0.98] text-sm"
         >
-          {finishing ? 'שוחה לדשבורד...' : hasContent ? 'קחו אותי לדשבורד' : 'דלגו על זה עכשיו'}
+          {finishing
+            ? (urlLoading ? `קורא ${urlLoading === 'drive' ? 'Drive' : urlLoading === 'social' ? 'רשת חברתית' : 'אתר'}...` : 'שוחה לדשבורד...')
+            : hasContent ? 'קחו אותי לדשבורד' : 'דלגו על זה עכשיו'}
         </button>
 
         {!hasContent && (
