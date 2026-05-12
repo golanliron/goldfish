@@ -102,12 +102,12 @@ export default function BusinessTab({ orgId, companyTypeFilter }: BusinessTabPro
       result = result.filter(c => c.interests?.includes(regionFilter));
     }
     if (minRelevance) {
-      if (minRelevance === '70') {
-        result = result.filter(c => (c.relevance_score || 0) >= 70);
-      } else if (minRelevance === '40') {
-        result = result.filter(c => (c.relevance_score || 0) >= 40 && (c.relevance_score || 0) < 70);
-      } else if (minRelevance === '20') {
-        result = result.filter(c => (c.relevance_score || 0) >= 20 && (c.relevance_score || 0) < 40);
+      if (minRelevance === '50') {
+        result = result.filter(c => (c.relevance_score || 0) >= 50);
+      } else if (minRelevance === '30') {
+        result = result.filter(c => (c.relevance_score || 0) >= 30 && (c.relevance_score || 0) < 50);
+      } else if (minRelevance === '15') {
+        result = result.filter(c => (c.relevance_score || 0) >= 15 && (c.relevance_score || 0) < 30);
       }
     }
     if (search) {
@@ -125,9 +125,9 @@ export default function BusinessTab({ orgId, companyTypeFilter }: BusinessTabPro
 
   // Count companies by relevance level (matched = score >= 20 from API)
   const relevanceCounts = useMemo(() => {
-    const high = companies.filter(c => (c.relevance_score || 0) >= 70).length;
-    const medium = companies.filter(c => (c.relevance_score || 0) >= 40 && (c.relevance_score || 0) < 70).length;
-    const low = companies.filter(c => (c.relevance_score || 0) >= 20 && (c.relevance_score || 0) < 40).length;
+    const high = companies.filter(c => (c.relevance_score || 0) >= 50).length;
+    const medium = companies.filter(c => (c.relevance_score || 0) >= 30 && (c.relevance_score || 0) < 50).length;
+    const low = companies.filter(c => (c.relevance_score || 0) >= 15 && (c.relevance_score || 0) < 30).length;
     return { high, medium, low };
   }, [companies]);
 
@@ -335,25 +335,25 @@ export default function BusinessTab({ orgId, companyTypeFilter }: BusinessTabPro
             <div className="flex gap-1 pt-1">
               <span className="text-[9px] text-muted2 self-center ml-1">התאמה:</span>
               <button
-                onClick={() => setMinRelevance(minRelevance === '70' ? '' : '70')}
+                onClick={() => setMinRelevance(minRelevance === '50' ? '' : '50')}
                 className={`text-[10px] px-2 py-0.5 rounded-md font-medium transition-colors ${
-                  minRelevance === '70' ? 'bg-green-600 text-white' : 'bg-green-50 text-green-700 hover:bg-green-100'
+                  minRelevance === '50' ? 'bg-green-600 text-white' : 'bg-green-50 text-green-700 hover:bg-green-100'
                 }`}
               >
                 גבוהה ({relevanceCounts.high})
               </button>
               <button
-                onClick={() => setMinRelevance(minRelevance === '40' ? '' : '40')}
+                onClick={() => setMinRelevance(minRelevance === '30' ? '' : '30')}
                 className={`text-[10px] px-2 py-0.5 rounded-md font-medium transition-colors ${
-                  minRelevance === '40' ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                  minRelevance === '30' ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
                 }`}
               >
                 בינונית ({relevanceCounts.medium})
               </button>
               <button
-                onClick={() => setMinRelevance(minRelevance === '20' ? '' : '20')}
+                onClick={() => setMinRelevance(minRelevance === '15' ? '' : '15')}
                 className={`text-[10px] px-2 py-0.5 rounded-md font-medium transition-colors ${
-                  minRelevance === '20' ? 'bg-gray-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  minRelevance === '15' ? 'bg-gray-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
                 נמוכה ({relevanceCounts.low})
@@ -450,10 +450,10 @@ function CompanyCard({
           {company.name}
         </h4>
         <div className="flex items-center gap-1 flex-shrink-0">
-          {company.relevance_score != null && company.relevance_score >= 20 && (
+          {company.relevance_score != null && company.relevance_score >= 15 && (
             <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
-              company.relevance_score >= 80 ? 'bg-green-100 text-green-700' :
-              company.relevance_score >= 60 ? 'bg-amber-100 text-amber-700' :
+              company.relevance_score >= 50 ? 'bg-green-100 text-green-700' :
+              company.relevance_score >= 30 ? 'bg-amber-100 text-amber-700' :
               'bg-gray-100 text-gray-600'
             }`}>
               {company.relevance_score}%

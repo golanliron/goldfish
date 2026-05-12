@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { extractOrgDNA } from '@/lib/ai/org-dna';
 
 interface OrgProfile {
   focus_areas?: string[];
@@ -123,12 +124,29 @@ function scoreCompany(
     if (companyText.includes(kw)) score += 10;
   }
 
-  // Mission word overlap
+  // Mission phrase overlap — look for meaningful phrases, not single words
   if (orgMission) {
-    const missionWords = orgMission.toLowerCase().split(/\s+/).filter(w => w.length > 3);
-    for (const w of missionWords) {
-      if (companyText.includes(w)) score += 3;
+    const missionLower = orgMission.toLowerCase();
+    // Key phrases that indicate real alignment (more than single word noise)
+    const keyPhrases = [
+      'נוער בסיכון', 'צעירים בסיכון', 'צמצום עוני', 'מוביליות חברתית',
+      'שוויון הזדמנויות', 'חינוך', 'ליווי אישי', 'העצמה', 'שיקום',
+      'תעסוקה', 'הכשרה מקצועית', 'נשירה', 'פריפריה', 'נגב', 'גליל',
+      'בריאות הנפש', 'אוכלוסיות חלשות', 'פער דיגיטלי', 'עולים', 'אתיופיה',
+      'חד הורי', 'מוגבלות', 'דו קיום', 'חברה ערבית', 'חרדים',
+    ];
+    for (const phrase of keyPhrases) {
+      if (missionLower.includes(phrase) && companyText.includes(phrase)) {
+        score += 12; // Strong signal: both org and company mention same social topic
+      }
     }
+    // Fallback: single word overlap for remaining words
+    const missionWords = missionLower.split(/\s+/).filter(w => w.length > 4);
+    let wordHits = 0;
+    for (const w of missionWords) {
+      if (companyText.includes(w)) wordHits++;
+    }
+    score += Math.min(15, wordHits * 2); // Cap at 15 to avoid noise domination
   }
 
   // Israel grants boost (for federations that fund Israel)
@@ -207,8 +225,21 @@ export async function GET(req: NextRequest) {
     const mission = profileData.mission || '';
     const geoRegions = profileData.regions || [];
 
-    // DNA from profile (if AI extracted it)
-    const dna = profileData._dna || {};
+    // DNA from profile — auto-generate if missing
+    let dna = profileData._dna || {};
+    if (!dna.populations?.length && !dna.domains?.length) {
+      // Auto-extract DNA from profile data (works for any org)
+      const autoDna = extractOrgDNA(profileData as Record<string, unknown>, [mission]);
+      dna = { populations: autoDna.populations, domains: autoDna.domains, regions: autoDna.geography };
+      // Save for next time (fire-and-forget)
+      if (autoDna.populations.length > 0 || autoDna.domains.length > 0) {
+        supabase.from('org_profiles')
+          .update({ data: { ...(profileData as Record<string, unknown>), _dna: dna } })
+          .eq('org_id', orgId)
+          .then(() => {});
+      }
+    }
+
     const orgPopulations = dna.populations || profileData.populations || [];
     const orgDomains = dna.domains || profileData.domains || [];
     const orgGeoRegions = [...new Set([...geoRegions, ...(dna.regions || [])])];
@@ -220,7 +251,18 @@ export async function GET(req: NextRequest) {
       .map(f => f.value.toLowerCase())
       .filter(v => v.length > 2);
 
-    const orgKeywords = [...focusAreas, ...memoryKeywords]
+    // Translate Hebrew focus_areas to English slugs for matching
+    const translatedOrgKeywords: string[] = [];
+    for (const fa of focusAreas) {
+      const translations = INTEREST_TRANSLATIONS[fa];
+      if (translations) translatedOrgKeywords.push(...translations);
+    }
+    for (const mk of memoryKeywords) {
+      const translations = INTEREST_TRANSLATIONS[mk];
+      if (translations) translatedOrgKeywords.push(...translations);
+    }
+
+    const orgKeywords = [...focusAreas, ...memoryKeywords, ...translatedOrgKeywords]
       .map(s => s.toLowerCase())
       .filter(s => s.length > 2);
 
@@ -231,10 +273,10 @@ export async function GET(req: NextRequest) {
       }));
 
       withScores.sort((a, b) => b.relevance_score - a.relevance_score);
-      matchedCount = withScores.filter(c => c.relevance_score >= 20).length;
+      matchedCount = withScores.filter(c => c.relevance_score >= 15).length;
 
       if (matchedOnly) {
-        scored = withScores.filter(c => c.relevance_score >= 20).slice(0, 300);
+        scored = withScores.filter(c => c.relevance_score >= 15).slice(0, 300);
       } else {
         scored = withScores.slice(0, 300);
       }
