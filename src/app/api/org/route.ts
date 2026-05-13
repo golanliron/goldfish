@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { withAuth } from '@/lib/api-auth';
 import { fetchByRegistrationNumber, formatForProfile } from '@/lib/ai/guidestar';
 import { extractOrgDNA, extractOrgDNAWithAI, mergeOrgDNA } from '@/lib/ai/org-dna';
 
-export const GET = withAuth(async (req, auth) => {
-  const orgId = auth.orgId;
+export async function GET(req: NextRequest) {
+  const orgId = req.nextUrl.searchParams.get('org_id');
+  if (!orgId) return NextResponse.json({ error: 'missing org_id' }, { status: 400 });
 
   const supabase = createAdminClient();
 
@@ -20,11 +20,9 @@ export const GET = withAuth(async (req, auth) => {
   });
 }
 
-});
-
-export const POST = withAuth(async (req, auth) => {
-  const org_id = auth.orgId;
-  const { data } = await req.json();
+export async function POST(req: NextRequest) {
+  const { org_id, data } = await req.json();
+  if (!org_id) return NextResponse.json({ error: 'missing org_id' }, { status: 400 });
 
   const supabase = createAdminClient();
 
@@ -100,4 +98,4 @@ export const POST = withAuth(async (req, auth) => {
   }, { onConflict: 'org_id' });
 
   return NextResponse.json({ ok: true, dna_extracted: !!aiDna });
-});
+}
