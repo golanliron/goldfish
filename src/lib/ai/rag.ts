@@ -1,10 +1,10 @@
 // RAG module — embedding, search, and knowledge retrieval
-// Uses Gemini text-embedding-004 (768 dimensions) + Supabase pgvector
+// Uses Gemini gemini-embedding-001 (3072 dimensions) + Supabase pgvector
 
 import { createAdminClient } from '@/lib/supabase/admin';
 
 const GEMINI_KEY = process.env.GEMINI_API_KEY || '';
-const EMBED_MODEL = 'text-embedding-004';
+const EMBED_MODEL = 'gemini-embedding-001';
 const EMBED_BASE = `https://generativelanguage.googleapis.com/v1beta/models/${EMBED_MODEL}`;
 
 // ===== Embedding =====
@@ -18,6 +18,7 @@ export async function embed(text: string): Promise<number[]> {
     body: JSON.stringify({
       model: `models/${EMBED_MODEL}`,
       content: { parts: [{ text }] },
+      outputDimensionality: 768,
     }),
   });
 
@@ -40,6 +41,7 @@ export async function embedBatch(texts: string[]): Promise<number[][]> {
       requests: texts.map(text => ({
         model: `models/${EMBED_MODEL}`,
         content: { parts: [{ text }] },
+        outputDimensionality: 768,
       })),
     }),
   });
