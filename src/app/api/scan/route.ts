@@ -1,21 +1,10 @@
 import { NextRequest } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { withAuth } from '@/lib/api-auth';
 import { buildOrgContext } from '@/lib/ai/fishgold';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-interface Opportunity {
-  id: string;
-  title: string;
-  description: string | null;
-  deadline: string | null;
-  categories: string[];
-  target_populations: string[];
-  funder: string | null;
-  url: string | null;
-  type: string | null;
-}
 
 interface ScoredMatch {
   opportunity_id: string;
@@ -27,13 +16,9 @@ interface ScoredMatch {
   url: string | null;
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withAuth(async (request, auth) => {
   try {
-    const { org_id } = await request.json();
-
-    if (!org_id) {
-      return Response.json({ error: 'Missing org_id' }, { status: 400 });
-    }
+    const org_id = auth.orgId;
 
     const supabase = createAdminClient();
 
@@ -178,7 +163,7 @@ export async function POST(request: NextRequest) {
     console.error('Scan error:', error);
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
+});
 
 // ===== Helpers =====
 

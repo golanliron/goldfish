@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 
 export const maxDuration = 120;
 import { createAdminClient } from '@/lib/supabase/admin';
+import { withAuth } from '@/lib/api-auth';
 import { FISHGOLD_SYSTEM_PROMPT, FISHGOLD_GRANT_EXPERTISE, FISHGOLD_FUNDER_WRITING_DNA, FISHGOLD_FUNDER_QUESTIONS, FISHGOLD_GRANT_MASTERY, FISHGOLD_BEHAVIOR_RULES, FISHGOLD_PROPOSAL_GUIDE, FISHGOLD_SUBMISSION_ENGINE, FISHGOLD_COMPETITIVE_INTEL, FISHGOLD_FUNDRAISING_INTEL, FISHGOLD_EMAIL_MASTERY, buildContext, buildOrgContext } from '@/lib/ai/fishgold';
 import { buildRAGContext } from '@/lib/ai/rag';
 import { detectSearchIntent, detectFunderQuery, webSearch, searchCompany, searchGrants, formatSearchResults } from '@/lib/ai/web-search';
@@ -1738,13 +1739,14 @@ async function loadSectorIntelligence(
 
 // ===== Main Handler =====
 
-export async function POST(request: NextRequest) {
+export const POST = withAuth(async (request, auth) => {
   try {
-    const { message, conversation_id, org_id, user_id, active_tab } = await request.json();
+    const { message, conversation_id, active_tab } = await request.json();
+    const org_id = auth.orgId;
+    const user_id = auth.userId;
 
-    if (!message || !org_id || !user_id) {
-      console.error('Missing required fields:', { message: !!message, org_id, user_id });
-      return Response.json({ error: 'Missing required fields', debug: { hasMessage: !!message, org_id, user_id } }, { status: 400 });
+    if (!message) {
+      return Response.json({ error: 'Missing message' }, { status: 400 });
     }
 
     const supabase = createAdminClient();
@@ -2212,4 +2214,4 @@ ${blockSummary}
     console.error('Chat API error:', errMsg, error);
     return Response.json({ error: errMsg }, { status: 500 });
   }
-}
+});

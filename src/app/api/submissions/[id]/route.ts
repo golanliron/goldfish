@@ -1,23 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getAuthContext } from '@/lib/api-auth';
 import { recordOutcome } from '@/lib/ai/funder-learning';
 
 // GET /api/submissions/[id] — get submission by id or share_token
+// Share token access (16 chars) is public; direct ID access requires auth
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const orgId = req.nextUrl.searchParams.get('org_id');
+  const isShareToken = id.length === 16;
   const supabase = createAdminClient();
 
-  // Try by share_token first (public access), then by id+org_id
   let query = supabase.from('submissions').select('*');
-  if (id.length === 16 && !orgId) {
+  if (isShareToken) {
     query = query.eq('share_token', id);
   } else {
-    query = query.eq('id', id);
-    if (orgId) query = query.eq('org_id', orgId);
+    const auth = await getAuthContext(req);
+    if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    query = query.eq('id', id).eq('org_id', auth.orgId);
   }
 
   const { data: sub } = await query.single();

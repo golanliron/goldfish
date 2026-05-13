@@ -39,7 +39,7 @@ function LoginInner() {
       }
 
       // Auth succeeded — force navigate with fallback
-      const dest = email === 'golanliron1@gmail.com' ? '/dashboard' : '/onboarding';
+      const dest = '/dashboard';
       // Try immediate navigation
       window.location.href = dest;
       // Fallback: if still here after 2s, force reload

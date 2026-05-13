@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { withAuth } from '@/lib/api-auth';
 import { extractOrgDNA, resolveInterestTags } from '@/lib/ai/org-dna';
 
 interface OrgProfile {
@@ -162,8 +163,8 @@ function scoreCompany(
   return Math.min(100, score);
 }
 
-export async function GET(req: NextRequest) {
-  const orgId = req.nextUrl.searchParams.get('org_id');
+export const GET = withAuth(async (req, auth) => {
+  const orgId = auth.orgId;
   const search = req.nextUrl.searchParams.get('search') || '';
   const type = req.nextUrl.searchParams.get('type') || '';
   const matchedOnly = req.nextUrl.searchParams.get('matched') === 'true';
@@ -301,4 +302,4 @@ export async function GET(req: NextRequest) {
     typeCounts,
     matchedCount,
   });
-}
+});

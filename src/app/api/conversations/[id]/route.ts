@@ -1,18 +1,11 @@
 import { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { withAuth } from '@/lib/api-auth';
 
-// GET /api/conversations/[id]?org_id=xxx
-// Returns a specific conversation by ID
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id } = await params;
-  const orgId = request.nextUrl.searchParams.get('org_id');
-
-  if (!orgId) {
-    return Response.json({ error: 'Missing org_id' }, { status: 400 });
-  }
+// GET /api/conversations/[id] — returns a specific conversation
+export const GET = withAuth(async (req, auth, params) => {
+  const id = params?.id;
+  if (!id) return Response.json({ error: 'Missing id' }, { status: 400 });
 
   const supabase = createAdminClient();
 
@@ -20,7 +13,7 @@ export async function GET(
     .from('conversations')
     .select('id, title, messages, updated_at')
     .eq('id', id)
-    .eq('org_id', orgId)
+    .eq('org_id', auth.orgId)
     .single();
 
   if (error || !conv) {
@@ -35,4 +28,4 @@ export async function GET(
       updated_at: conv.updated_at,
     },
   });
-}
+});

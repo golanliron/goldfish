@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { withAuth } from '@/lib/api-auth';
 
 // Gmail send endpoint — uses Resend or SMTP
-// For now, this creates a mailto: link for the client to open
 // TODO: integrate with Resend API when RESEND_API_KEY is available
 
-export async function POST(req: NextRequest) {
+export const POST = withAuth(async (req, auth) => {
   try {
     const { to, subject, body, from_name } = await req.json();
 
@@ -52,4 +52,4 @@ export async function POST(req: NextRequest) {
     console.error('Send email error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
+});

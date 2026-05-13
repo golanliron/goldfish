@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { withAuth } from '@/lib/api-auth';
 import pdfParse from 'pdf-parse';
 import { geminiClassify, geminiExtract, geminiSummarize, geminiOcrPdf, geminiParseXlsx } from '@/lib/ai/gemini';
 
@@ -129,15 +130,16 @@ export const maxDuration = 60;
 
 // ===== Main Handler =====
 
-export async function POST(request: NextRequest) {
+export const POST = withAuth(async (request, auth) => {
   try {
     const contentType = request.headers.get('content-type') || '';
 
     // ===== JSON body: free-text or URL input =====
     if (contentType.includes('application/json')) {
-      const { org_id, text, category, filename } = await request.json();
-      if (!org_id || !text) {
-        return Response.json({ error: 'Missing org_id or text' }, { status: 400 });
+      const { text, category, filename } = await request.json();
+      const org_id = auth.orgId;
+      if (!text) {
+        return Response.json({ error: 'Missing text' }, { status: 400 });
       }
 
       const supabase = createAdminClient();
@@ -192,10 +194,10 @@ export async function POST(request: NextRequest) {
     // ===== FormData: file upload =====
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
-    const orgId = formData.get('org_id') as string;
+    const orgId = auth.orgId;
 
-    if (!orgId || !file) {
-      return Response.json({ error: 'Missing file or org_id' }, { status: 400 });
+    if (!file) {
+      return Response.json({ error: 'Missing file' }, { status: 400 });
     }
 
     const supabase = createAdminClient();
@@ -295,7 +297,7 @@ export async function POST(request: NextRequest) {
     console.error('Upload error:', msg, error);
     return Response.json({ error: `שגיאה בעיבוד: ${msg.slice(0, 200)}` }, { status: 500 });
   }
-}
+});
 
 // ===== Org Profile Update =====
 

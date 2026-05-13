@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { withAuth } from '@/lib/api-auth';
 import Anthropic from '@anthropic-ai/sdk';
 import { randomUUID } from 'crypto';
 
@@ -7,10 +8,9 @@ export const maxDuration = 120; // seconds — Vercel Pro/Team plan
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// GET /api/submissions?org_id=xxx — list all submissions for org
-export async function GET(req: NextRequest) {
-  const orgId = req.nextUrl.searchParams.get('org_id');
-  if (!orgId) return NextResponse.json({ error: 'Missing org_id' }, { status: 400 });
+// GET /api/submissions — list all submissions for authenticated org
+export const GET = withAuth(async (req, auth) => {
+  const orgId = auth.orgId;
 
   const supabase = createAdminClient();
   const { data } = await supabase
@@ -20,12 +20,13 @@ export async function GET(req: NextRequest) {
     .order('created_at', { ascending: false });
 
   return NextResponse.json({ submissions: data || [] });
-}
+});
 
 // POST /api/submissions — generate draft submission from rfp_id + org profile
-export async function POST(req: NextRequest) {
-  const { org_id, rfp_id, opportunity_id } = await req.json();
-  if (!org_id || !rfp_id) return NextResponse.json({ error: 'Missing org_id or rfp_id' }, { status: 400 });
+export const POST = withAuth(async (req, auth) => {
+  const { rfp_id, opportunity_id } = await req.json();
+  const org_id = auth.orgId;
+  if (!rfp_id) return NextResponse.json({ error: 'Missing rfp_id' }, { status: 400 });
 
   const supabase = createAdminClient();
 
@@ -217,4 +218,4 @@ ${funderStyle}
     rfp_title: rfp.rfp_title,
     funder_name: rfp.funder_name,
   });
-}
+});

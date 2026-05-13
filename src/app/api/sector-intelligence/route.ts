@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { withAuth } from '@/lib/api-auth';
 
-export async function GET(req: NextRequest) {
+export const GET = withAuth(async (req, auth) => {
   const query = req.nextUrl.searchParams.get('q') || '';
   const category = req.nextUrl.searchParams.get('category') || '';
   const limit = Math.min(Number(req.nextUrl.searchParams.get('limit')) || 20, 50);
@@ -48,4 +49,4 @@ export async function GET(req: NextRequest) {
       intelligence_items: intelligence?.length || 0,
     },
   });
-}
+});

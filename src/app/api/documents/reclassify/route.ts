@@ -1,17 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { withAuth } from '@/lib/api-auth';
 import { geminiClassify, geminiExtract, geminiSummarize } from '@/lib/ai/gemini';
 
 export const maxDuration = 120;
 
-// POST /api/documents/reclassify — re-classify all "other" documents for an org
-export async function POST(req: NextRequest) {
-  const { org_id } = await req.json();
-  if (!org_id) return NextResponse.json({ error: 'missing org_id' }, { status: 400 });
-
+// POST /api/documents/reclassify — re-classify all "other" documents for the authenticated org
+export const POST = withAuth(async (req, auth) => {
+  const org_id = auth.orgId;
   const supabase = createAdminClient();
 
-  // Get all documents with category 'other' that have parsed_text
   const { data: docs } = await supabase
     .from('documents')
     .select('id, filename, parsed_text, category')
@@ -23,7 +21,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ reclassified: 0, message: 'אין מסמכים לסיווג מחדש' });
   }
 
-  // Process all docs in parallel (max 5 at a time to avoid rate limits)
   const results: { id: string; filename: string; oldCategory: string; newCategory: string }[] = [];
 
   const batch = async (doc: typeof docs[0]) => {
@@ -46,7 +43,6 @@ export async function POST(req: NextRequest) {
         })
         .eq('id', doc.id);
 
-      // Update org profile with extracted data
       const { data: existing } = await supabase
         .from('org_profiles')
         .select('data')
@@ -71,12 +67,11 @@ export async function POST(req: NextRequest) {
         oldCategory: 'other',
         newCategory: category,
       });
-    } catch (e) {
-      console.error(`Reclassify error for ${doc.filename}:`, e);
+    } catch {
+      // Skip failed documents
     }
   };
 
-  // Process in batches of 5
   for (let i = 0; i < docs.length; i += 5) {
     await Promise.all(docs.slice(i, i + 5).map(batch));
   }
@@ -86,4 +81,4 @@ export async function POST(req: NextRequest) {
     total: docs.length,
     results,
   });
-}
+});

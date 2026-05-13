@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { withAuth } from '@/lib/api-auth';
 import { extractOrgDNA, scoreDNAMatch } from '@/lib/ai/org-dna';
 import { calculateReadiness, findUpcomingRecurrences } from '@/lib/ai/funder-learning';
 
-export async function GET(req: NextRequest) {
-  const orgId = req.nextUrl.searchParams.get('org_id');
+export const GET = withAuth(async (req, auth) => {
+  const orgId = auth.orgId;
   const supabase = createAdminClient();
   const today = new Date().toISOString().split('T')[0];
 
@@ -212,4 +213,4 @@ export async function GET(req: NextRequest) {
     funderInfo,
     upcomingRecurrences,
   });
-}
+});

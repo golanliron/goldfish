@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { withAuth } from '@/lib/api-auth';
 import pdfParse from 'pdf-parse';
 import { geminiAnalyzeDocument, geminiDeepAnalysis, geminiOcrPdf, geminiParseXlsx } from '@/lib/ai/gemini';
 
@@ -245,12 +246,12 @@ async function fetchUrlSmart(url: string): Promise<{ text: string; source: strin
 
 // ===== AI Classification & Extraction =====
 
-async function classifyAndExtract(text: string): Promise<{
+async function classifyAndExtract(text: string, orgName?: string): Promise<{
   category: string;
   metadata: Record<string, unknown>;
   summary: string;
 }> {
-  return geminiAnalyzeDocument(text);
+  return geminiAnalyzeDocument(text, orgName);
 }
 
 // ===== Chunking =====
@@ -320,19 +321,23 @@ async function saveToRag(
 
 // ===== Main Handler =====
 
-export async function POST(request: NextRequest) {
+export const POST = withAuth(async (request, auth) => {
   try {
     const contentType = request.headers.get('content-type') || '';
 
     // ===== JSON body: URL or text =====
     if (contentType.includes('application/json')) {
-      const { org_id, url, text, urls } = await request.json();
+      const { url, text, urls, org_name } = await request.json();
+      const org_id = auth.orgId;
 
-      if (!org_id) {
-        return NextResponse.json({ error: 'Missing org_id' }, { status: 400 });
+      // Fetch org name if not provided
+      const supabase = createAdminClient();
+      let resolvedOrgName: string | undefined = org_name;
+      if (!resolvedOrgName) {
+        const { data: profile } = await supabase.from('org_profiles').select('data').eq('org_id', org_id).single();
+        resolvedOrgName = (profile?.data as Record<string, unknown>)?.name as string | undefined;
       }
 
-      const supabase = createAdminClient();
       const results: Array<{
         url?: string;
         document_id: string | null;
@@ -360,7 +365,7 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        const { category, metadata, summary } = await classifyAndExtract(fetchedText);
+        const { category, metadata, summary } = await classifyAndExtract(fetchedText, resolvedOrgName);
 
         const hostname = (() => { try { return new URL(u).hostname; } catch { return 'unknown'; } })();
         const docId = await saveToRag(
@@ -401,13 +406,18 @@ export async function POST(request: NextRequest) {
     // ===== FormData: file upload =====
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
-    const orgId = formData.get('org_id') as string;
+    const orgId = auth.orgId;
 
-    if (!orgId || !file) {
-      return NextResponse.json({ error: 'Missing file or org_id' }, { status: 400 });
+    if (!file) {
+      return NextResponse.json({ error: 'Missing file' }, { status: 400 });
     }
 
     const supabase = createAdminClient();
+
+    // Fetch org name for accurate extraction
+    let uploadOrgName: string | undefined;
+    const { data: uploadProfile } = await supabase.from('org_profiles').select('data').eq('org_id', orgId).single();
+    uploadOrgName = (uploadProfile?.data as Record<string, unknown>)?.name as string | undefined;
     const ext = file.name.split('.').pop()?.toLowerCase() || 'txt';
     const buffer = Buffer.from(await file.arrayBuffer());
 
@@ -457,7 +467,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Use deep analysis for file uploads — leverage Pro's full context window
-    const analysis = await geminiDeepAnalysis(parsedText);
+    const analysis = await geminiDeepAnalysis(parsedText, undefined, uploadOrgName);
 
     // Upload to storage
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -518,4 +528,4 @@ export async function POST(request: NextRequest) {
     console.error('Smart reader error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
+});

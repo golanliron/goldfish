@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { withAuth } from '@/lib/api-auth';
 import { geminiCall } from '@/lib/ai/gemini';
 
 export const maxDuration = 120; // seconds — Vercel Pro/Team plan
 
 // POST /api/rfp — parse a grant call (URL or text) and generate a draft submission
-export async function POST(req: NextRequest) {
-  const { org_id, url, text, opportunity_id } = await req.json();
-  if (!org_id) return NextResponse.json({ error: 'Missing org_id' }, { status: 400 });
+export const POST = withAuth(async (req, auth) => {
+  const { url, text, opportunity_id } = await req.json();
+  const org_id = auth.orgId;
   if (!url && !text) return NextResponse.json({ error: 'Missing url or text' }, { status: 400 });
 
   const supabase = createAdminClient();
@@ -116,4 +117,4 @@ ${rawText.slice(0, 60000)}
     rfp_id: rfpRow?.id,
     rfp: rfpData,
   });
-}
+});

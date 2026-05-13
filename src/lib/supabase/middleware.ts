@@ -28,7 +28,7 @@ export async function updateSession(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
 
   // Admin emails that can freely navigate between all pages
-  const ADMIN_EMAILS = ['golanliron1@gmail.com'];
+  const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'golanliron1@gmail.com').split(',').map(e => e.trim());
   const isAdmin = user?.email && ADMIN_EMAILS.includes(user.email);
 
   const isProtectedRoute = request.nextUrl.pathname.startsWith('/dashboard') ||

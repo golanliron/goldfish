@@ -143,8 +143,9 @@ export async function POST(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const secret = searchParams.get('secret');
 
-  // Simple protection
-  if (secret !== 'fishgold2026') {
+  // Protection via env var or CRON_SECRET
+  const expectedSecret = process.env.SEED_SECRET || process.env.CRON_SECRET;
+  if (!expectedSecret || secret !== expectedSecret) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

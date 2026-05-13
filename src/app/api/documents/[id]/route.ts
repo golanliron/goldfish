@@ -1,22 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { withAuth } from '@/lib/api-auth';
 
 // DELETE /api/documents/[id] — delete a document and its chunks
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const DELETE = withAuth(async (req, auth, params) => {
   try {
-    const { id } = await params;
-    const { org_id } = await request.json();
+    const id = params?.id;
+    const org_id = auth.orgId;
 
-    if (!org_id || !id) {
-      return NextResponse.json({ error: 'Missing org_id or document id' }, { status: 400 });
+    if (!id) {
+      return NextResponse.json({ error: 'Missing document id' }, { status: 400 });
     }
 
     const supabase = createAdminClient();
 
-    // Get the document first (to delete from storage too)
     const { data: doc } = await supabase
       .from('documents')
       .select('storage_path')
@@ -28,20 +25,17 @@ export async function DELETE(
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     }
 
-    // Delete chunks first (foreign key)
     await supabase
       .from('document_chunks')
       .delete()
       .eq('document_id', id);
 
-    // Delete the document record
     await supabase
       .from('documents')
       .delete()
       .eq('id', id)
       .eq('org_id', org_id);
 
-    // Try to delete from storage (non-critical)
     if (doc.storage_path && !doc.storage_path.startsWith('http')) {
       try {
         await supabase.storage.from('documents').remove([doc.storage_path]);
@@ -51,21 +45,19 @@ export async function DELETE(
     }
 
     return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('Delete document error:', error);
+  } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
+});
 
 // PATCH /api/documents/[id] — update category
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const PATCH = withAuth(async (req, auth, params) => {
   try {
-    const { id } = await params;
-    const { org_id, category } = await request.json();
-    if (!org_id || !id || !category) {
+    const id = params?.id;
+    const org_id = auth.orgId;
+    const { category } = await req.json();
+
+    if (!id || !category) {
       return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
     }
 
@@ -80,32 +72,30 @@ export async function PATCH(
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
     return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('Update document error:', error);
+  } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
+});
 
-// GET /api/documents/[id]/download — download document content
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+// GET /api/documents/[id] — download document content
+export const GET = withAuth(async (req, auth, params) => {
   try {
-    const { id } = await params;
+    const id = params?.id;
+    if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
+
     const supabase = createAdminClient();
 
     const { data: doc } = await supabase
       .from('documents')
       .select('filename, parsed_text, storage_path, file_type')
       .eq('id', id)
+      .eq('org_id', auth.orgId)
       .single();
 
     if (!doc) {
       return NextResponse.json({ error: 'Document not found' }, { status: 404 });
     }
 
-    // Try storage first
     if (doc.storage_path && !doc.storage_path.startsWith('http') && !doc.storage_path.startsWith('local/')) {
       try {
         const { data } = await supabase.storage.from('documents').download(doc.storage_path);
@@ -123,7 +113,6 @@ export async function GET(
       }
     }
 
-    // Fallback: return parsed text
     if (doc.parsed_text) {
       return new NextResponse(doc.parsed_text, {
         headers: {
@@ -134,8 +123,7 @@ export async function GET(
     }
 
     return NextResponse.json({ error: 'No content available' }, { status: 404 });
-  } catch (error) {
-    console.error('Download document error:', error);
+  } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
-}
+});

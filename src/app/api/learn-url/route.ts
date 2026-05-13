@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { withAuth } from '@/lib/api-auth';
 import { geminiClassify, geminiExtract, geminiSummarize } from '@/lib/ai/gemini';
 
 // ===== URL Type Detection =====
@@ -335,12 +336,13 @@ export const maxDuration = 60;
 
 // ===== Main Handler =====
 
-export async function POST(request: NextRequest) {
+export const POST = withAuth(async (request, auth) => {
   try {
-    const { org_id, url } = await request.json();
+    const { url } = await request.json();
+    const org_id = auth.orgId;
 
-    if (!org_id || !url) {
-      return NextResponse.json({ error: 'Missing org_id or url' }, { status: 400 });
+    if (!url) {
+      return NextResponse.json({ error: 'Missing url' }, { status: 400 });
     }
 
     const urlType = detectUrlType(url);
@@ -559,4 +561,4 @@ export async function POST(request: NextRequest) {
     console.error('Learn URL error:', msg, error);
     return NextResponse.json({ error: `שגיאה בקריאת הקישור: ${msg.slice(0, 200)}` }, { status: 500 });
   }
-}
+});

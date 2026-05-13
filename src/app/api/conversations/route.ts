@@ -1,24 +1,17 @@
 import { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { withAuth } from '@/lib/api-auth';
 
-// GET /api/conversations?org_id=xxx&user_id=xxx
-// Returns the most recent conversation so Goldfish "remembers" the user
-// GET /api/conversations?org_id=xxx&user_id=xxx&list=true
-// Returns all conversations for the history drawer
-export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const orgId = searchParams.get('org_id');
-  const userId = searchParams.get('user_id');
+// GET /api/conversations — returns conversations for the authenticated user's org
+export const GET = withAuth(async (req, auth) => {
+  const { searchParams } = new URL(req.url);
+  const orgId = auth.orgId;
+  const userId = auth.userId;
   const list = searchParams.get('list') === 'true';
-
-  if (!orgId || !userId) {
-    return Response.json({ error: 'Missing org_id or user_id' }, { status: 400 });
-  }
 
   const supabase = createAdminClient();
 
   if (list) {
-    // Return all conversations for history drawer
     const { data: convs } = await supabase
       .from('conversations')
       .select('id, title, updated_at, messages')
@@ -40,7 +33,6 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // Get the most recent conversation for this org+user
   const { data: conv } = await supabase
     .from('conversations')
     .select('id, title, messages, updated_at')
@@ -62,4 +54,4 @@ export async function GET(request: NextRequest) {
       updated_at: conv.updated_at,
     },
   });
-}
+});

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { withAuth } from '@/lib/api-auth';
 import Anthropic from '@anthropic-ai/sdk';
 
 export const maxDuration = 60;
@@ -7,10 +8,11 @@ export const maxDuration = 60;
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // POST /api/submissions/analyze — analyze org-RFP fit before writing a draft
-export async function POST(req: NextRequest) {
-  const { org_id, rfp_id } = await req.json();
-  if (!org_id || !rfp_id) {
-    return NextResponse.json({ error: 'Missing org_id or rfp_id' }, { status: 400 });
+export const POST = withAuth(async (req, auth) => {
+  const { rfp_id } = await req.json();
+  const org_id = auth.orgId;
+  if (!rfp_id) {
+    return NextResponse.json({ error: 'Missing rfp_id' }, { status: 400 });
   }
 
   const supabase = createAdminClient();
@@ -102,4 +104,4 @@ ${docSnippet || 'אין מסמכים'}
     console.error('Analyze error:', err);
     return NextResponse.json({ error: 'Analysis failed' }, { status: 500 });
   }
-}
+});
