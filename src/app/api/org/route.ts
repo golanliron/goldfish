@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { withAuth } from '@/lib/api-auth';
 import { fetchByRegistrationNumber, formatForProfile } from '@/lib/ai/guidestar';
 import { extractOrgDNA, extractOrgDNAWithAI, mergeOrgDNA } from '@/lib/ai/org-dna';
 
-export async function GET(req: NextRequest) {
-  const orgId = req.nextUrl.searchParams.get('org_id');
-  if (!orgId) return NextResponse.json({ error: 'missing org_id' }, { status: 400 });
+export const GET = withAuth(async (req, auth) => {
+  const orgId = auth.orgId;
 
   const supabase = createAdminClient();
 
@@ -20,9 +20,11 @@ export async function GET(req: NextRequest) {
   });
 }
 
-export async function POST(req: NextRequest) {
-  const { org_id, data } = await req.json();
-  if (!org_id) return NextResponse.json({ error: 'missing org_id' }, { status: 400 });
+});
+
+export const POST = withAuth(async (req, auth) => {
+  const org_id = auth.orgId;
+  const { data } = await req.json();
 
   const supabase = createAdminClient();
 
@@ -66,7 +68,7 @@ export async function POST(req: NextRequest) {
     .limit(5);
 
   for (const doc of docs || []) {
-    const d = doc as { summary?: string; content?: string };
+    const d = doc as { summary?: string; content?: string; parsed_text?: string };
     if (d.summary) orgTextParts.push(d.summary);
     else if (d.parsed_text) orgTextParts.push((d.parsed_text as string).slice(0, 500));
   }
@@ -98,4 +100,4 @@ export async function POST(req: NextRequest) {
   }, { onConflict: 'org_id' });
 
   return NextResponse.json({ ok: true, dna_extracted: !!aiDna });
-}
+});
