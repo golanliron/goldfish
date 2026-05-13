@@ -861,10 +861,8 @@ async function scanOpportunities(
       return '';
     }
     if (!opportunities || opportunities.length === 0) {
-      console.log('No opportunities found');
       return '';
     }
-    console.log(`Scan: found ${opportunities.length} active opportunities`);
 
     // Pre-filter by category/population overlap
     const focusAreas = (profileData.focus_areas as string[]) || [];
@@ -1619,7 +1617,6 @@ async function extractAndSaveMemory(
         );
     }
 
-    console.log(`[memory] Saved ${memoryItems.length} AI-extracted items for org ${orgId}`);
   } catch (e) {
     console.error('Memory extraction error:', e);
   }
@@ -1814,7 +1811,6 @@ export const POST = withAuth(async (request, auth) => {
             data: merged,
             last_updated: new Date().toISOString(),
           }, { onConflict: 'org_id' });
-          console.log('[guidestar] Profile enriched for org', org_id);
         }
       } catch (e) {
         console.error('[guidestar] Error:', e);
@@ -1882,7 +1878,6 @@ export const POST = withAuth(async (request, auth) => {
     let grantWritingContext = '';
     if (userAsksForGrantWriting(message)) {
       grantWritingContext = await loadFullDocumentsForGrantWriting(supabase, org_id);
-      console.log(`Grant writing mode: loaded ${grantWritingContext.length} chars of full documents`);
 
       // Load funder-specific lessons from org_memory
       const { data: allMemories } = await supabase
@@ -1915,7 +1910,6 @@ export const POST = withAuth(async (request, auth) => {
             .map((m: { key: string; value: string; confidence: string }) => `- ${m.value}`)
             .join('\n');
           grantWritingContext += `\n\n--- זיכרון היסטורי רלוונטי ---\n${memorySummary}\nהתחשב בלקחים אלה בעת כתיבת ההגשה.\n`;
-          console.log(`Grant writing: added ${relevantMemories.length} historical memory items`);
         }
       }
     }
@@ -1937,7 +1931,6 @@ export const POST = withAuth(async (request, auth) => {
             .limit(10);
 
           if (docs?.length) {
-            console.log(`Generating org blocks from ${docs.length} documents...`);
             const docTexts = docs
               .filter((d: { parsed_text: string | null }) => d.parsed_text)
               .map((d: { category: string; parsed_text: string | null; filename: string }) => ({
@@ -1949,7 +1942,6 @@ export const POST = withAuth(async (request, auth) => {
             const generated = await generateOrgBlocks(profile.data as import('@/types').OrgProfileData, docTexts);
             await saveOrgBlocks(supabase, org_id, generated);
             blocks = await loadOrgBlocks(supabase, org_id);
-            console.log(`Generated and saved ${blocks.length} org blocks`);
           }
         }
 
@@ -1961,7 +1953,6 @@ export const POST = withAuth(async (request, auth) => {
           const rfp = await parseRfp(rfpText);
           rfp.org_id = org_id;
           const rfpId = await saveRfpParsed(supabase, org_id, rfp);
-          console.log(`RFP parsed: ${rfp.questions.length} questions, saved as ${rfpId}`);
 
           // Load org docs for readiness check
           const { data: orgDocs } = await supabase
@@ -2038,7 +2029,6 @@ ${blockSummary}
           }
           if (results.length > 0) {
             webSearchContext = formatSearchResults(results);
-            console.log(`Web search: "${effectiveQuery}" → ${results.length} results (funder=${!!funderQuery})`);
           }
         }
       } catch (e) {
@@ -2089,7 +2079,6 @@ ${blockSummary}
       console.warn(`System prompt too large: ${systemPrompt.length} chars, truncating to ${MAX_SYSTEM_CHARS}`);
       systemPrompt = systemPrompt.slice(0, MAX_SYSTEM_CHARS) + '\n[... חלק מהמידע נחתך בגלל מגבלת גודל]';
     }
-    console.log(`System prompt size: ${systemPrompt.length} chars`);
 
     // Load conversation history
     let chatMessages: { role: 'user' | 'assistant'; content: string }[] = [];

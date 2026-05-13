@@ -167,8 +167,6 @@ export async function POST(req: NextRequest) {
   const budgetChunks = splitToChunks(FISHGOLD_BUDGET_INTELLIGENCE, 'budget', 'intelligence');
   allChunks.push(...budgetChunks);
 
-  console.log(`[seed-rag] Total chunks to upsert: ${allChunks.length}`);
-
   const result = await upsertChunks(allChunks);
 
   return Response.json({
