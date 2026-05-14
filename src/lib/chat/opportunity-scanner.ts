@@ -47,7 +47,7 @@ export async function scanOpportunities(
         const oppIds = matches.map(m => m.opportunity_id);
         const { data: grants } = await supabase
           .from('opportunities')
-          .select('id, title, deadline, funder, url, description, amount_max, contact_info')
+          .select('id, title, deadline, funder, url, description, amount_max, contact_info, full_content')
           .in('id', oppIds);
 
         const grantsMap = new Map((grants || []).map(g => [g.id, g]));
@@ -55,7 +55,8 @@ export async function scanOpportunities(
         const lines = matches.map((m) => {
           const opp = grantsMap.get(m.opportunity_id);
           if (!opp) return null;
-          return `- **${opp.title}** (ציון: ${Math.round(m.score / 10)}/10)${opp.deadline ? ` | דדליין: ${opp.deadline}` : ''}${opp.funder ? ` | ${opp.funder}` : ''}${opp.amount_max ? ` | עד ${(opp.amount_max / 1000).toFixed(0)}K ש"ח` : ''}${opp.url ? ` | לינק: ${opp.url}` : ''}${opp.contact_info ? ` | ${opp.contact_info}` : ''}\n  ${m.reasoning}${opp.description ? `\n  תיאור: ${opp.description.slice(0, 200)}` : ''}`;
+          const contentSnippet = opp.full_content ? `\n  פרטי קול קורא: ${opp.full_content.slice(0, 500)}` : '';
+          return `- **${opp.title}** (ציון: ${Math.round(m.score / 10)}/10)${opp.deadline ? ` | דדליין: ${opp.deadline}` : ''}${opp.funder ? ` | ${opp.funder}` : ''}${opp.amount_max ? ` | עד ${(opp.amount_max / 1000).toFixed(0)}K ש"ח` : ''}${opp.url ? ` | לינק: ${opp.url}` : ''}${opp.contact_info ? ` | ${opp.contact_info}` : ''}\n  ${m.reasoning}${opp.description ? `\n  תיאור: ${opp.description.slice(0, 200)}` : ''}${contentSnippet}`;
         }).filter(Boolean);
 
         if (lines.length > 0) {

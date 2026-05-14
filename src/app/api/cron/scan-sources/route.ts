@@ -519,9 +519,10 @@ async function scanAllSources() {
           continue;
         }
 
-        // Try to extract contact info from the grant page
+        // Fetch grant page — extract contact info + full content
         let contactInfo: string | null = null;
         let pageText = '';
+        let fullContent: string | null = null;
         if (item.url) {
           try {
             const pageRes = await fetch(item.url, {
@@ -536,6 +537,10 @@ async function scanAllSources() {
                 .replace(/\s+/g, ' ')
                 .slice(0, 15000);
               contactInfo = extractContactInfo(pageText);
+              // Save meaningful content (>200 chars) for AI to use later
+              if (pageText.trim().length > 200) {
+                fullContent = pageText.trim().slice(0, 8000);
+              }
             }
           } catch { /* page fetch failed, that's ok */ }
         }
@@ -570,6 +575,7 @@ async function scanAllSources() {
           source: source.name,
           type: 'grant',
           contact_info: contactInfo,
+          full_content: fullContent,
         });
 
         if (!insertErr) {
