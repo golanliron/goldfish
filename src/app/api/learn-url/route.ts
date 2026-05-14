@@ -430,7 +430,32 @@ export const POST = withAuth(async (request, auth) => {
       const { html, ok, status } = await smartFetch(url);
 
       if (!ok) {
-        return NextResponse.json({ error: `לא הצלחתי לגשת לכתובת (${status}). בדקו שהקישור תקין.` }, { status: 400 });
+        // Site blocked or unreachable — save URL reference and return friendly message
+        const hostname = (() => { try { return new URL(url).hostname; } catch { return url; } })();
+        await supabase.from('documents').insert({
+          org_id,
+          filename: hostname,
+          file_type: 'url',
+          storage_path: url,
+          category: 'identity',
+          parsed_text: `כתובת האתר: ${url}`,
+          metadata: { source_url: url, url_type: urlType, blocked: true, status },
+          status: 'ready',
+        });
+
+        // Save website URL in org profile
+        const { data: existingProfile } = await supabase.from('org_profiles').select('data').eq('org_id', org_id).single();
+        const profileData = (existingProfile?.data as Record<string, unknown>) || {};
+        if (!profileData.website) profileData.website = url;
+        await supabase.from('org_profiles').upsert({ org_id, data: profileData, last_updated: new Date().toISOString() }, { onConflict: 'org_id' });
+
+        return NextResponse.json({
+          title: hostname,
+          category: 'identity',
+          summary: `כתובת האתר נשמרה. האתר חסם קריאה אוטומטית — ניתן להדביק תיאור הארגון ישירות בצ'אט כדי שגולדפיש יכיר אתכם טוב יותר.`,
+          url_saved: true,
+          blocked: true,
+        });
       }
 
       const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
