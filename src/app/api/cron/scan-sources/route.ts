@@ -535,14 +535,16 @@ async function scanAllSources() {
           continue;
         }
 
-        // Strip generic URLs — only specific grant pages are valid
+        // Strip invalid URLs — only specific grant pages are valid
         if (item.url) {
           const stripped = item.url.replace(/\/+$/, '');
           const path = stripped.replace(/^https?:\/\/[^/]+/, '');
-          // Homepage = no path or only 1 shallow segment
           const isHomepage = /^https?:\/\/[^/]+\/?$/.test(item.url) || path.split('/').filter(Boolean).length < 2;
           const isSourceUrl = source.url && stripped === source.url.replace(/\/+$/, '');
-          if (isHomepage || isSourceUrl) {
+          // File downloads and generic list pages are not valid grant URLs
+          const isFileDownload = /\.(docx?|xlsx?|zip|pptx?)$/i.test(item.url);
+          const isListPage = /\/(category|tag|search|tenders\/?$|grants\/?$|calls\/?$|kolotkorim\/pages)/i.test(path);
+          if (isHomepage || isSourceUrl || isFileDownload || isListPage) {
             item.url = undefined;
           }
         }
