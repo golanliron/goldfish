@@ -80,7 +80,7 @@ async function smartFetch(url: string): Promise<{ html: string; ok: boolean; sta
     clearTimeout(timeout);
   }
 
-  // Fallback: Jina Reader — bypasses most bot-blocking
+  // Fallback 1: Jina Reader — bypasses most bot-blocking
   try {
     const jinaController = new AbortController();
     const jinaTimeout = setTimeout(() => jinaController.abort(), 25000);
@@ -94,9 +94,50 @@ async function smartFetch(url: string): Promise<{ html: string; ok: boolean; sta
     clearTimeout(jinaTimeout);
     if (jinaRes.ok) {
       const text = await jinaRes.text();
-      return { html: text, ok: true, status: 200 };
+      if (text.length > 200) return { html: text, ok: true, status: 200 };
     }
-  } catch { /* both failed */ }
+  } catch { /* try next */ }
+
+  // Fallback 2: Google Cache
+  try {
+    const cacheController = new AbortController();
+    const cacheTimeout = setTimeout(() => cacheController.abort(), 15000);
+    const cacheRes = await fetch(`https://webcache.googleusercontent.com/search?q=cache:${encodeURIComponent(url)}`, {
+      signal: cacheController.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+      },
+    });
+    clearTimeout(cacheTimeout);
+    if (cacheRes.ok) {
+      const html = await cacheRes.text();
+      if (html.length > 200) return { html, ok: true, status: 200 };
+    }
+  } catch { /* try next */ }
+
+  // Fallback 3: Wayback Machine (latest snapshot)
+  try {
+    const wbController = new AbortController();
+    const wbTimeout = setTimeout(() => wbController.abort(), 15000);
+    const wbApiRes = await fetch(`https://archive.org/wayback/available?url=${encodeURIComponent(url)}`, {
+      signal: wbController.signal,
+    });
+    clearTimeout(wbTimeout);
+    if (wbApiRes.ok) {
+      const wbData = await wbApiRes.json();
+      const snapshotUrl = wbData?.archived_snapshots?.closest?.url;
+      if (snapshotUrl) {
+        const snapController = new AbortController();
+        const snapTimeout = setTimeout(() => snapController.abort(), 20000);
+        const snapRes = await fetch(snapshotUrl, { signal: snapController.signal });
+        clearTimeout(snapTimeout);
+        if (snapRes.ok) {
+          const html = await snapRes.text();
+          if (html.length > 200) return { html, ok: true, status: 200 };
+        }
+      }
+    }
+  } catch { /* all failed */ }
 
   return { html: '', ok: false, status: 0 };
 }
