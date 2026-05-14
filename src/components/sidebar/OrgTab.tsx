@@ -350,7 +350,7 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
   const missingDocs = REQUIRED_DOCS.filter(req => {
     const byPattern = docSearchStrings.some(t => req.pattern.test(t));
     const byCategory = req.hint
-      ? documents.some(d => d.category === req.hint || (d.category === 'identity' && req.hint === 'official'))
+      ? documents.some(d => d.category === req.hint && d.file_type !== 'url')
       : false;
     return !byPattern && !byCategory;
   });
