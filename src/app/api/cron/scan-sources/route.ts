@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { geminiOcrPdf } from '@/lib/ai/gemini';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -114,6 +115,45 @@ const SOURCES = [
     funder: 'משרד האוצר',
   },
 ];
+
+// ============================================================
+// PDF EXTRACTION — reads grant PDFs linked from grant pages
+// ============================================================
+const GRANT_PDF_KEYWORDS = /מכרז|קול.קורא|הנחי|תנאי|נוהל|הזמנה|בקשה|טופס|נספח|הוראות|פרטים|תקנון|כללים|requirements|guidelines|application|terms|call.for|grant/i;
+
+async function extractPdfFromPage(pageUrl: string, html: string): Promise<string> {
+  const pdfLinks: string[] = [];
+  const linkPattern = /href=["']([^"']*\.pdf[^"']*)/gi;
+  for (const match of html.matchAll(linkPattern)) {
+    let pdfUrl = match[1];
+    if (!pdfUrl.startsWith('http')) {
+      try {
+        const base = new URL(pageUrl);
+        pdfUrl = pdfUrl.startsWith('/') ? `${base.origin}${pdfUrl}` : `${base.origin}/${pdfUrl}`;
+      } catch { continue; }
+    }
+    if (GRANT_PDF_KEYWORDS.test(pdfUrl) && !pdfLinks.includes(pdfUrl)) {
+      pdfLinks.push(pdfUrl);
+    }
+  }
+
+  for (const pdfUrl of pdfLinks.slice(0, 1)) {
+    try {
+      const pdfRes = await fetch(pdfUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!pdfRes.ok) continue;
+      const buffer = Buffer.from(await pdfRes.arrayBuffer());
+      if (buffer.length < 500 || buffer.length > 10_000_000) continue;
+      const extracted = await geminiOcrPdf(buffer);
+      if (extracted && extracted.length > 100) {
+        return `\n\n--- מסמך PDF מצורף ---\n${extracted.slice(0, 4000)}`;
+      }
+    } catch { /* skip */ }
+  }
+  return '';
+}
 
 // ============================================================
 // CONTACT EXTRACTION — phones & emails from page text
@@ -519,7 +559,7 @@ async function scanAllSources() {
           continue;
         }
 
-        // Fetch grant page — extract contact info + full content
+        // Fetch grant page — extract contact info + full content + PDF
         let contactInfo: string | null = null;
         let pageText = '';
         let fullContent: string | null = null;
@@ -537,9 +577,10 @@ async function scanAllSources() {
                 .replace(/\s+/g, ' ')
                 .slice(0, 15000);
               contactInfo = extractContactInfo(pageText);
-              // Save meaningful content (>200 chars) for AI to use later
+              // Save meaningful content (>200 chars) + any attached PDF
               if (pageText.trim().length > 200) {
-                fullContent = pageText.trim().slice(0, 8000);
+                const pdfText = await extractPdfFromPage(item.url, pageHtml);
+                fullContent = (pageText.trim().slice(0, 8000) + pdfText).slice(0, 8000);
               }
             }
           } catch { /* page fetch failed, that's ok */ }
