@@ -495,16 +495,14 @@ async function scanAllSources() {
           continue;
         }
 
-        // Strip generic URLs — source homepage is not a valid grant URL
+        // Strip generic URLs — only specific grant pages are valid
         if (item.url) {
           const stripped = item.url.replace(/\/+$/, '');
-          const isHomepage = stripped.split('/').length <= 3 || /^https?:\/\/[^/]+\/?$/.test(item.url);
+          const path = stripped.replace(/^https?:\/\/[^/]+/, '');
+          // Homepage = no path or only 1 shallow segment
+          const isHomepage = /^https?:\/\/[^/]+\/?$/.test(item.url) || path.split('/').filter(Boolean).length < 2;
           const isSourceUrl = source.url && stripped === source.url.replace(/\/+$/, '');
-          const isGenericGovPath = /tmichot\.gov\.il\/?$/.test(stripped) ||
-            /innovationisrael\.org\.il\/kalpiot\/?$/.test(stripped) ||
-            /kkl\.org\.il\/?$/.test(stripped) ||
-            /matnasim\.org\.il\/?$/.test(stripped);
-          if (isHomepage || isSourceUrl || isGenericGovPath) {
+          if (isHomepage || isSourceUrl) {
             item.url = undefined;
           }
         }
