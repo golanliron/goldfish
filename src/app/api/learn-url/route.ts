@@ -57,6 +57,7 @@ function extractMetaTags(html: string): Record<string, string> {
 // ===== Smart fetch with browser-like UA =====
 
 async function smartFetch(url: string): Promise<{ html: string; ok: boolean; status: number }> {
+  // Try direct fetch first
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20000);
 
@@ -71,12 +72,33 @@ async function smartFetch(url: string): Promise<{ html: string; ok: boolean; sta
       redirect: 'follow',
     });
     clearTimeout(timeout);
-    const html = await res.text();
-    return { html, ok: res.ok, status: res.status };
+    if (res.ok) {
+      const html = await res.text();
+      return { html, ok: true, status: res.status };
+    }
   } catch {
     clearTimeout(timeout);
-    return { html: '', ok: false, status: 0 };
   }
+
+  // Fallback: Jina Reader — bypasses most bot-blocking
+  try {
+    const jinaController = new AbortController();
+    const jinaTimeout = setTimeout(() => jinaController.abort(), 25000);
+    const jinaRes = await fetch(`https://r.jina.ai/${url}`, {
+      signal: jinaController.signal,
+      headers: {
+        'Accept': 'text/plain',
+        'X-Return-Format': 'text',
+      },
+    });
+    clearTimeout(jinaTimeout);
+    if (jinaRes.ok) {
+      const text = await jinaRes.text();
+      return { html: text, ok: true, status: 200 };
+    }
+  } catch { /* both failed */ }
+
+  return { html: '', ok: false, status: 0 };
 }
 
 // ===== Chunking =====
