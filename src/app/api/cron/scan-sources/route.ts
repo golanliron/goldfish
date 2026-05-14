@@ -321,6 +321,11 @@ function extractGovIlJson(html: string, defaultFunder: string): ScannedItem[] {
         let url = String(obj.Url || obj.url || obj.link || '').trim();
         if (!title || title.length < 8) continue;
         if (url && !url.startsWith('http')) url = `https://www.gov.il${url}`;
+        // Reject generic URLs — must have a specific path (at least 2 segments)
+        if (url) {
+          const path = url.replace(/^https?:\/\/[^/]+/, '').replace(/\/+$/, '');
+          if (path.split('/').filter(Boolean).length < 2) url = '';
+        }
 
         results.push({
           title: title.slice(0, 300),
@@ -490,12 +495,23 @@ async function scanAllSources() {
           continue;
         }
 
+        // Strip generic URLs — source homepage is not a valid grant URL
+        if (item.url) {
+          const stripped = item.url.replace(/\/+$/, '');
+          const isHomepage = stripped.split('/').length <= 3 || /^https?:\/\/[^/]+\/?$/.test(item.url);
+          const isSourceUrl = source.url && stripped === source.url.replace(/\/+$/, '');
+          const isGenericGovPath = /tmichot\.gov\.il\/?$/.test(stripped) ||
+            /innovationisrael\.org\.il\/kalpiot\/?$/.test(stripped) ||
+            /kkl\.org\.il\/?$/.test(stripped) ||
+            /matnasim\.org\.il\/?$/.test(stripped);
+          if (isHomepage || isSourceUrl || isGenericGovPath) {
+            item.url = undefined;
+          }
+        }
+
         // Dedup: check URL (only specific URLs, not homepages) and title prefix
-        const isGenericUrl = item.url && (
-          item.url.replace(/\/+$/, '').split('/').length <= 3 || // just domain
-          item.url.match(/^https?:\/\/[^/]+\/?$/) // homepage
-        );
-        if (item.url && !isGenericUrl && existingUrls.has(item.url)) {
+        const isGenericUrl = false; // already filtered above
+        if (item.url && existingUrls.has(item.url)) {
           totalSkipped++;
           continue;
         }
@@ -599,7 +615,11 @@ async function extractOpportunities(html: string, sourceName: string, sourceUrl:
 חוקים קריטיים:
 1. חלץ רק קולות קוראים/מענקים/תמיכות פתוחים — לא פרופילים של קרנות, לא דפי מידע כלליים.
 2. אם הכותרת היא רק שם קרן (כמו "קרן הדסה") בלי פרטי קול קורא — דלג.
-3. חייב לינק ישיר לדף הקול הקורא. לינק לדף הבית של קרן = לא מספיק.
+3. URL חייב להיות ישיר לדף הקול הקורא הספציפי — לא לדף הבית של הקרן/הממשלה.
+   - gov.il/he/pages/XXXX ✓ | gov.il ✗
+   - shatil.org.il/kol/XXXX ✓ | shatil.org.il ✗
+   - innovationisrael.org.il/kol_kore/XXXX ✓ | innovationisrael.org.il/kalpiot ✗
+   - אם אין URL ספציפי — שים null (עדיף null מ-URL גנרי)
 4. חלץ את שם הגוף המממן (funder) — לא את שם הקול קורא.
 
 החזר JSON בלבד — מערך של אובייקטים:
@@ -608,7 +628,7 @@ async function extractOpportunities(html: string, sourceName: string, sourceUrl:
   "description": "תיאור קצר (עד 200 תווים)",
   "funder": "שם הגוף המממן",
   "deadline": "YYYY-MM-DD או null",
-  "url": "לינק ישיר לדף הקול קורא"
+  "url": "לינק ישיר לדף הקול הקורא הספציפי, או null"
 }
 
 אם אין קולות קוראים בדף — החזר מערך ריק [].
