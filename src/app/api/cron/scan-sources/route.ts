@@ -526,6 +526,18 @@ async function scanAllSources() {
           continue;
         }
 
+        // Skip personal benefit grants (not for NGOs) — e.g. maternity grant, death grant
+        const PERSONAL_GRANT_SKIP = /מענק לידה|מענק פטירה|מענק בעבודה נדרשת|מענק לימודים|תמיכה טכנית|גיוס עובדים|פרסומים בתמיכת|successfully completed|cohort.*completed/i;
+        if (PERSONAL_GRANT_SKIP.test(item.title)) {
+          totalSkipped++;
+          continue;
+        }
+
+        // Skip personal-benefit URLs (btl benefits, jobs pages)
+        if (item.url && /\/(benefits|jobs|Publications|BakashotNetunim|snifim|TroubleShooting)\//i.test(item.url)) {
+          item.url = undefined;
+        }
+
         // Skip old years in title
         const titleLower = item.title.toLowerCase();
         const oldYearInTitle = Array.from({ length: 5 }, (_, i) => String(currentYear - 1 - i))
