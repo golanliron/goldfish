@@ -5,6 +5,17 @@ import FishLogo from './FishLogo';
 import type { ChatMessage } from '@/types';
 import { FISHGOLD_WELCOME, getRandomLoadingPhrase } from '@/lib/ai/fishgold';
 
+function linkifyText(text: string): string {
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  return escaped.replace(
+    /(https?:\/\/[^\s<>"')\]]+)/g,
+    '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-accent underline break-all hover:opacity-80">$1</a>'
+  );
+}
+
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
@@ -582,7 +593,7 @@ ${docIds.length > 0 ? `\n[document_ids: ${docIds.join(',')}]` : ''}
               {msg.role === 'assistant' && msg.content && msg.id !== 'welcome' && msg.id !== 'memory-separator' && (
                 <CopyButton text={msg.content} />
               )}
-              <div className="whitespace-pre-wrap">{msg.content}</div>
+              <div className="whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: linkifyText(msg.content) }} />
               {msg.role === 'assistant' && isStreaming && msg === messages[messages.length - 1] && !msg.content && (
                 <div className="flex items-center gap-2 py-1">
                   <span className="text-[11px] text-muted italic">{getRandomLoadingPhrase()}</span>
