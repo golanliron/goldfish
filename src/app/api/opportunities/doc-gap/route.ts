@@ -10,7 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { withAuth } from '@/lib/api-auth';
-import { REQUIRED_VAULT_DOCS } from '../../../documents/vault/route';
+import { REQUIRED_VAULT_DOCS } from '@/lib/vault-docs';
 
 // חילוץ דרישות מסמכים מ-research_notes של הסוכן
 function extractDocRequirements(researchNotes: string | null): string[] {

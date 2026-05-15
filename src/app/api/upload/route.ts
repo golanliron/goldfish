@@ -2,8 +2,9 @@ import { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { withAuth } from '@/lib/api-auth';
 import pdfParse from 'pdf-parse';
-import { geminiClassify, geminiExtract, geminiSummarize, geminiOcrPdf, geminiParseXlsx } from '@/lib/ai/gemini';
+import { geminiClassify, geminiExtract, geminiSummarize, geminiOcrPdf, geminiParseXlsx, geminiCall } from '@/lib/ai/gemini';
 import { embedBatch } from '@/lib/ai/rag';
+import { REQUIRED_VAULT_DOCS } from '@/lib/vault-docs';
 
 // PDF: use pdf-parse v1, fallback to Gemini OCR
 async function parsePDF(buffer: Buffer): Promise<string> {
@@ -123,6 +124,84 @@ function chunkText(text: string, maxChars: number = 2000): string[] {
   }
   if (current.trim()) chunks.push(current.trim());
   return chunks.length > 0 ? chunks : [text.slice(0, maxChars)];
+}
+
+// ===== Vault Document Validation =====
+
+// Match by filename OR by content snippet (first 1000 chars)
+function detectVaultDocType(filename: string, contentSnippet?: string): typeof REQUIRED_VAULT_DOCS[number] | null {
+  const combined = `${filename} ${contentSnippet?.slice(0, 1000) || ''}`;
+  for (const req of REQUIRED_VAULT_DOCS) {
+    if (req.pattern.test(combined)) return req;
+  }
+  return null;
+}
+
+interface VaultValidationResult {
+  vaultKey: string | null;
+  vaultLabel: string | null;
+  isGenuine: boolean;
+  expiryDate: string | null; // ISO date string YYYY-MM-DD
+  isExpired: boolean;
+  warning: string | null;
+}
+
+async function validateVaultDoc(text: string, filename: string): Promise<VaultValidationResult> {
+  // Try to detect vault type from filename + content
+  const match = detectVaultDocType(filename, text);
+  if (!match) {
+    return { vaultKey: null, vaultLabel: null, isGenuine: true, expiryDate: null, isExpired: false, warning: null };
+  }
+
+  const snippet = text.slice(0, 3000);
+
+  // Ask Gemini: verify doc type + extract expiry date
+  const prompt = `אתה מומחה לניתוח מסמכים רשמיים ישראליים.
+
+סוג המסמך הצפוי: "${match.label}" (${match.hint})
+תוכן המסמך (עד 3000 תווים):
+---
+${snippet}
+---
+
+ענה ONLY בפורמט JSON בלי הסבר נוסף:
+{
+  "is_genuine": true,
+  "expiry_date": "YYYY-MM-DD",
+  "confidence": "high"
+}
+
+חוקים:
+- is_genuine: false רק אם הטקסט ריק לחלוטין או ברור שזה מסמך אחר לגמרי
+- expiry_date: חפש תאריך "בתוקף עד", "תוקף", "valid until", "expires" — פורמט YYYY-MM-DD. null אם אין
+- confidence: high/medium/low לפי בהירות הזיהוי`;
+
+  try {
+    const raw = await geminiCall(prompt, 150, 0);
+    const jsonMatch = raw.match(/\{[\s\S]*?\}/);
+    if (!jsonMatch) throw new Error('no json');
+    const parsed = JSON.parse(jsonMatch[0]);
+
+    const expiryDate = (typeof parsed.expiry_date === 'string' && parsed.expiry_date !== 'null')
+      ? parsed.expiry_date
+      : null;
+    const isExpired = expiryDate ? new Date(expiryDate) < new Date() : false;
+    const isGenuine = parsed.is_genuine !== false;
+
+    let warning: string | null = null;
+    if (!isGenuine) {
+      warning = `הקובץ שהועלה אינו נראה כ"${match.label}" — יתכן שהועלה הקובץ הלא נכון`;
+    } else if (isExpired && expiryDate) {
+      const d = new Date(expiryDate);
+      const formatted = d.toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      warning = `שימו לב — המסמך שהעליתם (${match.label}) אינו בתוקף. פג תוקפו ב-${formatted}`;
+    }
+
+    return { vaultKey: match.key, vaultLabel: match.label, isGenuine, expiryDate, isExpired, warning };
+  } catch {
+    // Validation failed silently — doc still saved, just no vault metadata
+    return { vaultKey: match.key, vaultLabel: match.label, isGenuine: true, expiryDate: null, isExpired: false, warning: null };
+  }
 }
 
 // ===== Route Config =====
@@ -299,13 +378,36 @@ export const POST = withAuth(async (request, auth) => {
     try { finalMetadata = await extractStructuredData(parsedText, category, orgName); } catch { /* keep empty */ }
     try { summary = await summarizeDocument(parsedText); } catch { /* keep filename */ }
 
+    // 6.5 Vault validation — detect type, verify genuineness, extract expiry date
+    let vaultWarning: string | null = null;
+    try {
+      const vault = await validateVaultDoc(parsedText, file.name);
+      if (vault.expiryDate) {
+        finalMetadata = { ...finalMetadata, expiry_date: vault.expiryDate };
+      }
+      if (vault.vaultKey) {
+        finalMetadata = { ...finalMetadata, vault_key: vault.vaultKey };
+        // Override category to 'official' for vault docs
+        category = 'official';
+      }
+      if (vault.warning) {
+        vaultWarning = vault.warning;
+      }
+    } catch { /* vault validation failure does not block upload */ }
+
     // 7. Update document with enriched data — status=ready
-    await supabase.from('documents').update({
+    const { error: updateError } = await supabase.from('documents').update({
       category,
       parsed_text: parsedText.slice(0, 50000),
       metadata: { ...finalMetadata, summary },
       status: 'ready',
     }).eq('id', doc.id);
+
+    if (updateError) {
+      console.error('[upload] DB update failed:', JSON.stringify(updateError));
+      await markError(`DB update failed: ${updateError.message}`);
+      return Response.json({ error: `שגיאה בשמירת המסמך: ${updateError.message}` }, { status: 500 });
+    }
 
     // 8. Store chunks for RAG with embeddings (non-fatal)
     try {
@@ -330,9 +432,13 @@ export const POST = withAuth(async (request, auth) => {
     try { await seedMemoryFromDoc(supabase, orgId, doc.id, category, finalMetadata); } catch { /* non-blocking */ }
 
     return Response.json({
+      status: 'ready',
       document_id: doc.id,
       category,
       summary,
+      expiry_date: (finalMetadata.expiry_date as string) || null,
+      vault_key: (finalMetadata.vault_key as string) || null,
+      vault_warning: vaultWarning,
       extracted_fields: finalMetadata,
     });
   } catch (error) {
