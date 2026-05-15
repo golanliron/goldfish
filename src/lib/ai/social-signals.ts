@@ -6,6 +6,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { webSearch, type SearchResult } from './web-search';
+import { MODELS } from '@/lib/ai/prompts';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -134,7 +135,7 @@ ${sourceInfluencer ? `הוחפש בהקשר של: ${sourceInfluencer.name}, ${so
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: MODELS.scoring,
       max_tokens: 800,
       messages: [{ role: 'user', content: prompt }],
     });

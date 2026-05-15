@@ -20,8 +20,10 @@ import type {
 
 // ===== Gemini helpers (reuse same pattern as gemini.ts) =====
 
+import { MODELS } from '@/lib/ai/prompts';
+
 const GEMINI_KEY = process.env.GEMINI_API_KEY || '';
-const PRO_MODEL = 'gemini-2.5-pro-preview-06-05';
+const PRO_MODEL = MODELS.docAnalysis;
 const PRO_BASE = `https://generativelanguage.googleapis.com/v1beta/models/${PRO_MODEL}`;
 
 async function geminiPro(prompt: string, maxTokens: number = 8000): Promise<string> {

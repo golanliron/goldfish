@@ -11,13 +11,16 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { processStagingCalls, processExistingCalls } from '@/lib/ai/agent-pipeline';
+import { ProcessGrantsRequestSchema } from '@/lib/utils/validate';
 
 export const maxDuration = 300; // 5 דקות — Vercel Pro
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   // Read body ONCE — re-reading a consumed stream returns {}
-  const body = await req.json().catch(() => ({}));
+  const rawBody = await req.json().catch(() => ({}));
+  const parsed = ProcessGrantsRequestSchema.safeParse(rawBody);
+  const body = parsed.success ? parsed.data : rawBody; // degrade gracefully for cron
 
   const authHeader = req.headers.get('authorization') || '';
   const cronSecret = process.env.CRON_SECRET || '';

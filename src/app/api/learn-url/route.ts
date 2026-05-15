@@ -4,6 +4,7 @@ import { withAuth } from '@/lib/api-auth';
 import { geminiClassify, geminiExtract, geminiSummarize, geminiSearchGrounding } from '@/lib/ai/gemini';
 import { embedBatch } from '@/lib/ai/rag';
 import { stripHtml, chunkText, isGenericOrgName } from '@/lib/utils/text';
+import { LearnUrlRequestSchema, validationError } from '@/lib/utils/validate';
 
 // ===== URL Type Detection =====
 
@@ -395,12 +396,12 @@ export const maxDuration = 60;
 
 export const POST = withAuth(async (request, auth) => {
   try {
-    const { url } = await request.json();
-    const org_id = auth.orgId;
+    const rawBody = await request.json().catch(() => ({}));
+    const parsed = LearnUrlRequestSchema.safeParse(rawBody);
+    if (!parsed.success) return validationError(parsed.error);
 
-    if (!url) {
-      return NextResponse.json({ error: 'Missing url' }, { status: 400 });
-    }
+    const { url } = parsed.data;
+    const org_id = auth.orgId;
 
     const urlType = detectUrlType(url);
     const supabase = createAdminClient();

@@ -1,8 +1,10 @@
 // Org DNA — Smart classification of any organization based on profile + documents
 // Used for matching against grants, companies, and opportunities
 
+import { MODELS } from '@/lib/ai/prompts';
+
 const GEMINI_KEY = process.env.GEMINI_API_KEY || '';
-const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash';
+const GEMINI_BASE = `https://generativelanguage.googleapis.com/v1beta/models/${MODELS.dna}`;
 
 export interface OrgDNA {
   // Who the org serves (specific populations)

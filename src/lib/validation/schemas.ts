@@ -4,9 +4,7 @@ import { z } from 'zod';
 
 export const CompanySchema = z.object({
   name: z.string().min(2, 'שם חברה חייב להכיל לפחות 2 תווים'),
-  type: z.enum(['business', 'fund', 'public'], {
-    errorMap: () => ({ message: 'סוג חברה חייב להיות: business, fund או public' }),
-  }),
+  type: z.enum(['business', 'fund', 'public']),
   description: z.string().min(50, 'תיאור חייב להכיל לפחות 50 תווים'),
   website: z.string().url('כתובת אתר לא תקינה').optional().nullable(),
   email: z.string().email('כתובת מייל לא תקינה').optional().nullable(),
@@ -36,9 +34,7 @@ export type GrantOpportunityInput = z.infer<typeof GrantOpportunitySchema>;
 
 export const DocumentSchema = z.object({
   file_name: z.string().min(1, 'שם קובץ הוא שדה חובה'),
-  file_type: z.enum(['pdf', 'docx', 'xlsx', 'url'], {
-    errorMap: () => ({ message: 'סוג קובץ חייב להיות: pdf, docx, xlsx או url' }),
-  }),
+  file_type: z.enum(['pdf', 'docx', 'xlsx', 'url']),
   organization_id: z.string().uuid('מזהה ארגון לא תקין'),
 });
 
