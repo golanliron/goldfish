@@ -77,6 +77,8 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
   const [profileCompleteness, setProfileCompleteness] = useState<number | null>(null);
   const [funderInfo, setFunderInfo] = useState<FunderInfoMap>({});
   const [upcomingRecurrences, setUpcomingRecurrences] = useState<UpcomingRecurrence[]>([]);
+  const [agentRunning, setAgentRunning] = useState(false);
+  const [agentToast, setAgentToast] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
 
   const categories = useMemo(() => taxonomy.filter(t => t.type === 'category'), [taxonomy]);
   const populations = useMemo(() => taxonomy.filter(t => t.type === 'population'), [taxonomy]);
@@ -92,7 +94,7 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
     national: 'ארצי',
   };
 
-  useEffect(() => {
+  const loadOpportunities = () => {
     fetch(`/api/opportunities${orgId ? `?org_id=${orgId}` : ''}`)
       .then(r => r.json())
       .then(({ taxonomy: tax, opportunities: opps, matches: m, profileCompleteness: pc, funderInfo: fi, upcomingRecurrences: ur }) => {
@@ -109,7 +111,40 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
         setLoading(false);
       })
       .catch(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    loadOpportunities();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleAgentSync = async () => {
+    if (!orgId || agentRunning) return;
+    setAgentRunning(true);
+    setAgentToast({ type: 'info', text: 'הסוכן התחיל לסרוק ולנתח הגשות עבורכם, זה עשוי לקחת כדקה...' });
+
+    try {
+      const res = await fetch('/api/process-grants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ org_id: orgId, mode: 'existing' }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'שגיאה בהפעלת הסוכן');
+      const { processed = 0, high = 0, medium = 0 } = data.result || {};
+      setAgentToast({
+        type: 'success',
+        text: `הסוכן סיים! עובדו ${processed} הגשות — ${high} גבוהות, ${medium} בינוניות`,
+      });
+      // Refresh the list so user sees updated scores & direct links
+      loadOpportunities();
+    } catch (err) {
+      setAgentToast({ type: 'error', text: err instanceof Error ? err.message : 'שגיאה לא צפויה' });
+    } finally {
+      setAgentRunning(false);
+      setTimeout(() => setAgentToast(null), 6000);
+    }
+  };
 
   const filtered = useMemo(() => {
     let result = opportunities;
@@ -177,6 +212,22 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
 
   return (
     <div className="flex flex-col h-full">
+      {/* Agent Toast */}
+      {agentToast && (
+        <div className={`mx-3 mt-2 px-3 py-2 rounded-xl text-[11px] font-medium flex items-start gap-2 border transition-all ${
+          agentToast.type === 'info'    ? 'bg-blue-50 border-blue-200 text-blue-800' :
+          agentToast.type === 'success' ? 'bg-green-50 border-green-200 text-green-800' :
+                                          'bg-red-50 border-red-200 text-red-700'
+        }`}>
+          {agentToast.type === 'info' && (
+            <div className="w-3.5 h-3.5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin flex-shrink-0 mt-0.5" />
+          )}
+          {agentToast.type === 'success' && <span className="flex-shrink-0">✓</span>}
+          {agentToast.type === 'error'   && <span className="flex-shrink-0">!</span>}
+          {agentToast.text}
+        </div>
+      )}
+
       {/* Header */}
       <div className="p-3 border-b border-border space-y-2">
         {/* Stats banner */}
@@ -188,12 +239,35 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
               <span className="text-[12px] font-bold text-accent">הגשות מותאמות לארגון שלכם</span>
             </div>
           )}
-          {/* Secondary: total open */}
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-2 h-2 rounded-full bg-green animate-pulse" />
-            <span className="text-[11px] text-muted">
-              מתוך {opportunities.length} הגשות פתוחות במאגר
-            </span>
+          {/* Secondary: total open + sync button */}
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-green animate-pulse" />
+              <span className="text-[11px] text-muted">
+                מתוך {opportunities.length} הגשות פתוחות במאגר
+              </span>
+            </div>
+            {orgId && (
+              <button
+                onClick={handleAgentSync}
+                disabled={agentRunning}
+                title="סנכרון והעשרת הגשות"
+                className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg border font-medium transition-colors flex-shrink-0 ${
+                  agentRunning
+                    ? 'bg-surf2 text-muted border-border cursor-not-allowed'
+                    : 'bg-surf2 text-muted border-border hover:border-accent/40 hover:text-accent'
+                }`}
+              >
+                {agentRunning ? (
+                  <div className="w-3 h-3 border-2 border-muted border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 3v3M12 18v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M3 12h3M18 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12" />
+                  </svg>
+                )}
+                {agentRunning ? 'מנתח...' : 'סנכרון והעשרה'}
+              </button>
+            )}
           </div>
           {matchedCount > 0 && (
             <>
