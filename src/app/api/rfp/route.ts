@@ -109,6 +109,7 @@ ${rawText.slice(0, 60000)}
       eligibility: rfpData.eligibility || {},
       evaluation_criteria: rfpData.evaluation_criteria || [],
       raw_text: rawText.slice(0, 50000),
+      rfp_url: url || null,
     })
     .select('id')
     .single();
