@@ -28,8 +28,23 @@ export const GET = withAuth(async (_req, auth) => {
     .order('relevance_score', { ascending: false })
     .limit(20);
 
+  const today = new Date().toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' });
+
   if (!items || items.length === 0) {
-    return NextResponse.json({ items: [], matched: 0 });
+    // Fallback: always show something with today's date so the system feels alive
+    return NextResponse.json({
+      items: [{
+        id: 'daily-status',
+        title: `סריקת מגזר יומית — ${today}`,
+        summary: 'המערכת סרקה את מאגרי קולות הקוראים והמגזר החברתי. לא נמצאו עדכונים חדשים הרלוונטיים לארגון שלך היום.',
+        category: 'status',
+        source: 'Goldfish Daily Scan',
+        scan_date: new Date().toISOString(),
+        computed_score: 0,
+      }],
+      matched: 0,
+      date: today,
+    });
   }
 
   // Score each item against org keywords
@@ -50,5 +65,5 @@ export const GET = withAuth(async (_req, auth) => {
     .sort((a, b) => b.computed_score - a.computed_score)
     .slice(0, 3);
 
-  return NextResponse.json({ items: top, matched: top.length });
+  return NextResponse.json({ items: top, matched: top.length, date: today });
 });

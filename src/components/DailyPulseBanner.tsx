@@ -19,6 +19,8 @@ const DISMISS_KEY = 'goldfish_pulse_dismissed';
 
 export default function DailyPulseBanner({ orgId }: Props) {
   const [items, setItems] = useState<PulseItem[]>([]);
+  const [date, setDate] = useState('');
+  const [hasReal, setHasReal] = useState(false);
   const [visible, setVisible] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
@@ -35,6 +37,8 @@ export default function DailyPulseBanner({ orgId }: Props) {
       .then(data => {
         if (data.items && data.items.length > 0) {
           setItems(data.items);
+          setDate(data.date || today);
+          setHasReal(data.matched > 0);
           setVisible(true);
         }
       })
@@ -56,18 +60,20 @@ export default function DailyPulseBanner({ orgId }: Props) {
     <div className="relative z-50" dir="rtl">
       {/* Banner */}
       <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center gap-3 text-sm">
-        <span className="text-amber-600 text-base shrink-0">🔔</span>
-        <span className="font-medium text-amber-800 shrink-0">עדכון יומי</span>
-        <span className="text-amber-700 truncate flex-1">{first.title}</span>
-        {items.length > 1 && (
+        <span className="text-amber-600 text-base shrink-0">{hasReal ? '🔔' : '✓'}</span>
+        <span className="font-medium text-amber-800 shrink-0">סריקה יומית · {date}</span>
+        <span className="text-amber-700 truncate flex-1">{hasReal ? first.title : 'המערכת עדכנית — לא נמצאו התראות חדשות'}</span>
+        {hasReal && items.length > 1 && (
           <span className="text-amber-500 shrink-0">+{items.length - 1} נוספים</span>
         )}
-        <button
-          onClick={() => setExpanded(e => !e)}
-          className="text-amber-600 hover:text-amber-800 shrink-0 underline text-xs"
-        >
-          {expanded ? 'סגור' : 'קרא עוד'}
-        </button>
+        {hasReal && (
+          <button
+            onClick={() => setExpanded(e => !e)}
+            className="text-amber-600 hover:text-amber-800 shrink-0 underline text-xs"
+          >
+            {expanded ? 'סגור' : 'קרא עוד'}
+          </button>
+        )}
         <button
           onClick={dismiss}
           className="text-amber-400 hover:text-amber-700 shrink-0 text-lg leading-none"
