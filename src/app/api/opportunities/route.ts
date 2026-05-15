@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { withAuth } from '@/lib/api-auth';
-import { extractOrgDNA, scoreDNAMatch } from '@/lib/ai/org-dna';
+import { extractOrgDNA } from '@/lib/ai/org-dna';
+import { scoreOpportunityDNA, type FunderIntel } from '@/lib/ai/scoring-service';
 import { calculateReadiness, findUpcomingRecurrences } from '@/lib/ai/funder-learning';
 
 export const GET = withAuth(async (req, auth) => {
@@ -9,6 +10,7 @@ export const GET = withAuth(async (req, auth) => {
   const supabase = createAdminClient();
   const today = new Date().toISOString().split('T')[0];
 
+  try {
   const [taxRes, oppRes, matchRes, profileRes, docsRes, hotOppsRes] = await Promise.all([
     supabase.from('grant_taxonomy').select('*').order('label_he'),
     supabase
@@ -131,51 +133,16 @@ export const GET = withAuth(async (req, auth) => {
     if (orgDna.populations.length > 0 || orgDna.domains.length > 0) {
       const scored = opportunities
         .map((opp: Record<string, unknown>) => {
-          const { score, reasoning, isNegativeMatch } = scoreDNAMatch(
-            orgDna,
-            (opp.categories as string[]) || [],
-            (opp.target_populations as string[]) || [],
-            String(opp.title || ''),
-            String(opp.description || ''),
-            (opp.also_relevant_for as string[]) || []
-          );
-
-          // Apply funder intelligence bonus
-          let adjustedScore = score;
-          const reasons = [reasoning];
           const funderName = String(opp.funder || '');
-          const fi = funderIntelMap.get(funderName);
-
-          if (fi && !isNegativeMatch) {
-            // Bonus: funder's preferred domains/populations overlap with org DNA
-            const funderDomainOverlap = fi.preferred_domains.filter(d => orgDna.domains.includes(d));
-            const funderPopOverlap = fi.preferred_populations.filter(p => orgDna.populations.includes(p));
-            if (funderDomainOverlap.length > 0 || funderPopOverlap.length > 0) {
-              const bonus = Math.min(8, (funderDomainOverlap.length + funderPopOverlap.length) * 3);
-              adjustedScore += bonus;
-              reasons.push(`גוף מממן מעדיף תחומים/אוכלוסיות תואמים (+${bonus})`);
-            }
-
-            // Bonus: funder prefers org size that matches
-            if (fi.preferred_org_sizes.length > 0 && fi.preferred_org_sizes.includes(orgDna.orgType)) {
-              adjustedScore += 5;
-              reasons.push('גודל ארגון מתאים לגוף מממן (+5)');
-            }
-          }
-
-          // Bonus: cross-org outcome learning
+          const fi = funderIntelMap.get(funderName) as FunderIntel | undefined;
           const outcomeBonus = outcomeBoosts.get(funderName) || 0;
-          if (outcomeBonus > 0 && !isNegativeMatch) {
-            adjustedScore += outcomeBonus;
-            reasons.push(`ארגונים דומים אושרו אצל גוף זה (+${outcomeBonus})`);
-          }
 
-          return {
-            opportunity_id: String(opp.id),
-            score: Math.min(100, adjustedScore),
-            reasoning: reasons.join('. '),
-            isNegativeMatch,
-          };
+          return scoreOpportunityDNA(
+            opp as Parameters<typeof scoreOpportunityDNA>[0],
+            orgDna,
+            fi,
+            outcomeBonus,
+          );
         })
         .filter(m => !m.isNegativeMatch && m.score >= 50)
         .sort((a, b) => b.score - a.score);
@@ -236,4 +203,18 @@ export const GET = withAuth(async (req, auth) => {
     upcomingRecurrences,
     hotOpportunities,
   });
+
+  } catch (error) {
+    console.error('[opportunities] unexpected error:', error);
+    return NextResponse.json(
+      {
+        error: 'שגיאה בטעינת ההזדמנויות. נסי שוב בעוד מספר דקות.',
+        taxonomy: [],
+        opportunities: [],
+        matches: [],
+        hotOpportunities: [],
+      },
+      { status: 500 },
+    );
+  }
 });

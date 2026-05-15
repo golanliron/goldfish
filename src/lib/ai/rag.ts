@@ -63,9 +63,11 @@ export async function searchKnowledge(
     category?: string;
     limit?: number;
     threshold?: number;
+    /** Pass org_id to restrict results to shared knowledge + this org's private chunks */
+    organization_id?: string;
   } = {}
 ): Promise<{ title: string; content: string; category: string; subcategory?: string; similarity: number }[]> {
-  const { category, limit = 10, threshold = 0.5 } = options;
+  const { category, limit = 10, threshold = 0.5, organization_id } = options;
 
   const queryEmbedding = await embed(query);
   const supabase = createAdminClient();
@@ -75,6 +77,7 @@ export async function searchKnowledge(
     match_count: limit,
     filter_category: category || null,
     similarity_threshold: threshold,
+    filter_org_id: organization_id || null,
   });
 
   if (error) {
@@ -93,8 +96,8 @@ export async function searchKnowledge(
 
 // ===== Build RAG context for prompt =====
 
-export async function buildRAGContext(userMessage: string): Promise<string> {
-  const results = await searchKnowledge(userMessage, { limit: 12, threshold: 0.45 });
+export async function buildRAGContext(userMessage: string, organization_id?: string): Promise<string> {
+  const results = await searchKnowledge(userMessage, { limit: 12, threshold: 0.45, organization_id });
 
   if (!results.length) return '';
 
@@ -113,17 +116,26 @@ export async function upsertChunk(chunk: {
   title: string;
   content: string;
   metadata?: Record<string, unknown>;
+  /** If set, this chunk is private to the org. If null/undefined, it's shared knowledge. */
+  organization_id?: string | null;
 }): Promise<void> {
   const embedding = await embed(`${chunk.title}\n${chunk.content}`);
   const supabase = createAdminClient();
 
-  // Check if chunk with same title+category exists
-  const { data: existing } = await supabase
+  // Check if chunk with same title+category+org_id exists
+  let existingQuery = supabase
     .from('knowledge_chunks')
     .select('id')
     .eq('category', chunk.category)
-    .eq('title', chunk.title)
-    .limit(1);
+    .eq('title', chunk.title);
+
+  if (chunk.organization_id) {
+    existingQuery = existingQuery.eq('organization_id', chunk.organization_id);
+  } else {
+    existingQuery = existingQuery.is('organization_id', null);
+  }
+
+  const { data: existing } = await existingQuery.limit(1);
 
   if (existing?.length) {
     await supabase
@@ -144,6 +156,7 @@ export async function upsertChunk(chunk: {
       content: chunk.content,
       embedding,
       metadata: chunk.metadata || {},
+      organization_id: chunk.organization_id || null,
     });
   }
 }
