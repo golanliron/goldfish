@@ -233,6 +233,40 @@ ${text.slice(0, 100000)}
 }
 
 /**
+ * Fetch a URL's content using Gemini Search Grounding
+ * Useful for gov.il and other bot-protected sites
+ */
+export async function geminiSearchGrounding(url: string): Promise<string> {
+  if (!GEMINI_KEY) return '';
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: `קרא את הדף הזה והחזר את כל התוכן הטקסטואלי שלו בעברית ובאנגלית. כלול את הכותרת, תיאור התוכנית/מענק, תנאי זכאות, סכומים, דדליינים ופרטי קשר. URL: ${url}` }] }],
+          tools: [{ googleSearch: {} }],
+          generationConfig: { maxOutputTokens: 8000, temperature: 0 },
+        }),
+      }
+    );
+    if (!res.ok) return '';
+    const data = await res.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    // Also collect grounding sources
+    const sources = data.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+    const sourceUrls = sources.map((s: { web?: { uri?: string } }) => s.web?.uri).filter(Boolean).join(', ');
+    if (text.length > 100) {
+      return sourceUrls ? `${text}\n\n[מקורות: ${sourceUrls}]` : text;
+    }
+    return '';
+  } catch {
+    return '';
+  }
+}
+
+/**
  * Run classify + extract + summarize in parallel
  */
 export async function geminiAnalyzeDocument(text: string, orgName?: string): Promise<{

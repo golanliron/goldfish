@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { geminiSearchGrounding } from '@/lib/ai/gemini';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -155,6 +156,20 @@ function isLinkedInUrl(url: string): boolean {
   return /linkedin\.com\/(company|in|posts|pulse|feed)/i.test(url);
 }
 
+function isGovUrl(url: string): boolean {
+  return /\.gov\.il|\.mof\.gov|\.mohe\.gov|\.molsa\.gov|\.education\.gov|\.health\.gov/i.test(url);
+}
+
+async function fetchWithGemini(url: string): Promise<string | null> {
+  try {
+    const text = await geminiSearchGrounding(url);
+    if (text && text.length > 200) return text.slice(0, 15000);
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 async function fetchUrlContent(url: string): Promise<string | null> {
   const grantData = await lookupGrantByUrl(url);
   if (grantData) return grantData;
@@ -163,6 +178,16 @@ async function fetchUrlContent(url: string): Promise<string | null> {
     const jinaContent = await fetchWithJinaReader(url);
     if (jinaContent) return `[תוכן לינקדאין מ-${url}]\n${jinaContent}`;
     return `[לא הצלחתי לקרוא את דף הלינקדאין. לינקדאין חוסם קריאה ישירה — בקש מהמשתמש להעתיק את הטקסט מהדף.]`;
+  }
+
+  // gov.il and other heavily blocked government sites — go straight to Gemini Grounding
+  if (isGovUrl(url)) {
+    const geminiContent = await fetchWithGemini(url);
+    if (geminiContent) return `[תוכן ממשלתי מ-${url} (אוחזר דרך Gemini Search)]\n${geminiContent}`;
+    // Fallback to Jina
+    const jinaContent = await fetchWithJinaReader(url);
+    if (jinaContent) return jinaContent;
+    return `[אתר ממשלתי חסום: ${url}. לא הצלחתי לאחזר את התוכן. בקש מהמשתמש להדביק את הטקסט מהדף ישירות בצ'אט, או להוריד את המסמך כ-PDF ולהעלות.]`;
   }
 
   try {
@@ -183,6 +208,8 @@ async function fetchUrlContent(url: string): Promise<string | null> {
     if (!res.ok) {
       const jinaContent = await fetchWithJinaReader(url);
       if (jinaContent) return jinaContent;
+      const geminiContent = await fetchWithGemini(url);
+      if (geminiContent) return geminiContent;
       return `[שגיאה: ${res.status} ${res.statusText}]`;
     }
 
@@ -232,6 +259,8 @@ async function fetchUrlContent(url: string): Promise<string | null> {
   } catch (e) {
     const jinaContent = await fetchWithJinaReader(url);
     if (jinaContent) return jinaContent;
+    const geminiContent = await fetchWithGemini(url);
+    if (geminiContent) return geminiContent;
     return `[לא הצלחתי לקרוא את הלינק: ${e instanceof Error ? e.message : 'שגיאה'}]`;
   }
 }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { withAuth } from '@/lib/api-auth';
-import { geminiClassify, geminiExtract, geminiSummarize } from '@/lib/ai/gemini';
+import { geminiClassify, geminiExtract, geminiSummarize, geminiSearchGrounding } from '@/lib/ai/gemini';
 import { embedBatch } from '@/lib/ai/rag';
 import { stripHtml, chunkText, isGenericOrgName } from '@/lib/utils/text';
 
@@ -39,7 +39,38 @@ function extractMetaTags(html: string): Record<string, string> {
 
 // ===== Smart fetch with browser-like UA =====
 
+function isGovUrl(url: string): boolean {
+  return /\.gov\.il|\.mof\.gov|\.mohe\.gov|\.molsa\.gov|\.education\.gov|\.health\.gov/i.test(url);
+}
+
 async function smartFetch(url: string): Promise<{ html: string; ok: boolean; status: number }> {
+  // For gov.il — skip direct fetch (always blocked), go straight to Gemini Grounding
+  if (isGovUrl(url)) {
+    try {
+      const geminiText = await geminiSearchGrounding(url);
+      if (geminiText && geminiText.length > 200) {
+        return { html: geminiText, ok: true, status: 200 };
+      }
+    } catch { /* fall through to Jina */ }
+
+    // Jina as secondary for gov.il
+    try {
+      const jinaController = new AbortController();
+      const jinaTimeout = setTimeout(() => jinaController.abort(), 25000);
+      const jinaRes = await fetch(`https://r.jina.ai/${url}`, {
+        signal: jinaController.signal,
+        headers: { 'Accept': 'text/plain', 'X-Return-Format': 'text' },
+      });
+      clearTimeout(jinaTimeout);
+      if (jinaRes.ok) {
+        const text = await jinaRes.text();
+        if (text.length > 200) return { html: text, ok: true, status: 200 };
+      }
+    } catch { /* all failed */ }
+
+    return { html: '', ok: false, status: 0 };
+  }
+
   // Try direct fetch first
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20000);
@@ -102,6 +133,14 @@ async function smartFetch(url: string): Promise<{ html: string; ok: boolean; sta
           if (html.length > 200) return { html, ok: true, status: 200 };
         }
       }
+    }
+  } catch { /* try next */ }
+
+  // Fallback 3: Gemini Search Grounding — works even for heavily blocked sites
+  try {
+    const geminiText = await geminiSearchGrounding(url);
+    if (geminiText && geminiText.length > 200) {
+      return { html: geminiText, ok: true, status: 200 };
     }
   } catch { /* all failed */ }
 
