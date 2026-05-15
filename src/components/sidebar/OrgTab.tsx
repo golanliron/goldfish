@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import type { AppStage, OrgProfileData, Document as FgDoc } from '@/types';
+import type { AppStage, OrgProfileData, Document as FgDoc, OrgScore } from '@/types';
 
 interface OrgTabProps {
   stage: AppStage;
@@ -105,7 +105,7 @@ const GEO_OPTIONS = [
 export default function OrgTab({ stage, orgId }: OrgTabProps) {
   const [profile, setProfile] = useState<OrgProfileData | null>(null);
   const [documents, setDocuments] = useState<FgDoc[]>([]);
-  const [orgScore, setOrgScore] = useState<import('@/lib/ai/org-score').OrgScore | null>(null);
+  const [orgScore, setOrgScore] = useState<OrgScore | null>(null);
   const [editing, setEditing] = useState(false);
   const [editData, setEditData] = useState<Partial<OrgProfileData>>({});
   const [editPopulations, setEditPopulations] = useState<string[]>([]);

@@ -337,6 +337,23 @@ export interface UploadResponse {
   extracted_fields: Record<string, unknown>;
 }
 
+// ===== Org Knowledge Score =====
+
+export type OrgScoreCategory = 'identity' | 'dna' | 'impact' | 'operations' | 'submissions';
+
+export interface OrgScoreBreakdown {
+  category: OrgScoreCategory;
+  label: string;
+  score: number; // 0-100
+  status: 'full' | 'partial' | 'missing';
+  cta: string | null;
+}
+
+export interface OrgScore {
+  total: number; // 0-100
+  breakdown: OrgScoreBreakdown[];
+}
+
 // ===== App State =====
 
 export type SidebarTab = 'org' | 'opportunities' | 'business' | 'foundations';

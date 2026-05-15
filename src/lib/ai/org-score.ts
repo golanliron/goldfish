@@ -1,20 +1,8 @@
 // Goldfish Org Knowledge Score
 // Measures how well Goldfish *actually knows* the org — based on real extracted facts, not form fields.
 
-export type OrgScoreCategory = 'identity' | 'dna' | 'impact' | 'operations' | 'submissions';
-
-export interface OrgScoreBreakdown {
-  category: OrgScoreCategory;
-  label: string;
-  score: number; // 0-100
-  status: 'full' | 'partial' | 'missing';
-  cta: string | null; // what to do to improve
-}
-
-export interface OrgScore {
-  total: number; // 0-100
-  breakdown: OrgScoreBreakdown[];
-}
+import type { OrgScore, OrgScoreBreakdown, OrgScoreCategory } from '@/types';
+export type { OrgScore, OrgScoreBreakdown, OrgScoreCategory };
 
 interface MemoryItem {
   category: string | null;
