@@ -725,21 +725,23 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
         )}
       </div>
 
-      {/* Link to original — direct URL or Google search fallback */}
-      <a
-        href={opp.url || `https://www.google.com/search?q=${encodeURIComponent(opp.title + (opp.funder ? ' ' + opp.funder : '') + ' הגשה')}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={e => e.stopPropagation()}
-        className={`inline-flex items-center gap-1 text-[10px] mb-2 ${opp.url ? 'text-accent hover:underline' : 'text-muted hover:text-accent hover:underline'}`}
-      >
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
-          <polyline points="15 3 21 3 21 9" />
-          <line x1="10" y1="14" x2="21" y2="3" />
-        </svg>
-        {opp.url ? 'לינק להגשה' : 'חפש הגשה'}
-      </a>
+      {/* Link to original — direct URL only */}
+      {opp.url && (
+        <a
+          href={opp.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={e => e.stopPropagation()}
+          className="inline-flex items-center gap-1 text-[10px] mb-2 text-accent hover:underline"
+        >
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+            <polyline points="15 3 21 3 21 9" />
+            <line x1="10" y1="14" x2="21" y2="3" />
+          </svg>
+          לינק להגשה
+        </a>
+      )}
 
       {/* Category tags */}
       {opp.categories && opp.categories.length > 0 && (
@@ -854,15 +856,17 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
             >
               כתוב הגשה
             </button>
-            <a
-              href={opp.url || `https://www.google.com/search?q=${encodeURIComponent(opp.title + (opp.funder ? ' ' + opp.funder : '') + ' הגשה קול קורא')}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={e => e.stopPropagation()}
-              className="flex-1 py-1.5 text-[10px] font-medium text-center border border-border rounded-lg hover:bg-surf2 transition-colors"
-            >
-              {opp.url ? 'פתח הגשה' : 'חפש הגשה בגוגל'}
-            </a>
+            {opp.url && (
+              <a
+                href={opp.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={e => e.stopPropagation()}
+                className="flex-1 py-1.5 text-[10px] font-medium text-center border border-border rounded-lg hover:bg-surf2 transition-colors"
+              >
+                פתח הגשה
+              </a>
+            )}
           </div>
 
           {/* Prepare draft submission button */}
