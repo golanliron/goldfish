@@ -56,7 +56,7 @@ export async function updateSession(request: NextRequest) {
       .eq('user_id', user.id)
       .maybeSingle();
     const url = request.nextUrl.clone();
-    url.pathname = existing ? '/' : '/onboarding';
+    url.pathname = existing ? '/dashboard' : '/onboarding';
     return NextResponse.redirect(url);
   }
 
@@ -69,7 +69,7 @@ export async function updateSession(request: NextRequest) {
       .maybeSingle();
     if (existing) {
       const url = request.nextUrl.clone();
-      url.pathname = '/';
+      url.pathname = '/dashboard';
       return NextResponse.redirect(url);
     }
   }
