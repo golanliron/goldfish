@@ -7,6 +7,7 @@ import { withAuth } from '@/lib/api-auth';
 import { FISHGOLD_SYSTEM_PROMPT, FISHGOLD_GRANT_EXPERTISE, FISHGOLD_FUNDER_WRITING_DNA, FISHGOLD_FUNDER_QUESTIONS, FISHGOLD_GRANT_MASTERY, FISHGOLD_BEHAVIOR_RULES, FISHGOLD_PROPOSAL_GUIDE, FISHGOLD_SUBMISSION_ENGINE, FISHGOLD_COMPETITIVE_INTEL, FISHGOLD_FUNDRAISING_INTEL, FISHGOLD_EMAIL_MASTERY, buildOrgContext } from '@/lib/ai/fishgold';
 import { buildRAGContext } from '@/lib/ai/rag';
 import { detectSearchIntent, detectFunderQuery, webSearch, searchCompany, searchGrants, formatSearchResults } from '@/lib/ai/web-search';
+import { autoResearchFunder, formatFunderResearch } from '@/lib/ai/funder-auto-research';
 import { parseRfp, checkReadiness, assembleSubmission, generateOrgBlocks, formatReadinessReport } from '@/lib/ai/submission-engine';
 import { fetchByRegistrationNumber, formatForContext, formatForProfile } from '@/lib/ai/guidestar';
 import type { OrgBlock, OrgBlockType, RfpStructure } from '@/types';
@@ -446,6 +447,17 @@ ${blockSummary}
       }
     }
 
+    // Auto-Research: unknown funder detection + auto-ingestion
+    let autoResearchContext = '';
+    try {
+      const research = await autoResearchFunder(message);
+      if (research?.found) {
+        autoResearchContext = formatFunderResearch(research);
+      }
+    } catch (e) {
+      console.error('Auto-research error:', e);
+    }
+
     // Funder intelligence
     let funderIntelligenceContext = '';
     if (active_tab === 'opportunities' || active_tab === 'foundations' || /קול קורא|מענק|קרן|גוף מממן|הגשה|grant|funder/i.test(message)) {
@@ -477,7 +489,7 @@ ${blockSummary}
 
     const ragContext = await buildRAGContext(message);
 
-    let systemPrompt = FISHGOLD_SYSTEM_PROMPT + FISHGOLD_BEHAVIOR_RULES + FISHGOLD_GRANT_EXPERTISE + FISHGOLD_GRANT_MASTERY + FISHGOLD_FUNDER_WRITING_DNA + FISHGOLD_FUNDER_QUESTIONS + FISHGOLD_PROPOSAL_GUIDE + FISHGOLD_SUBMISSION_ENGINE + FISHGOLD_COMPETITIVE_INTEL + FISHGOLD_FUNDRAISING_INTEL + FISHGOLD_EMAIL_MASTERY + ragContext + tabFocus + orgContext + orgMemory + submissionHistory + docSummary + knowledge + rag + grantWritingContext + submissionEngineContext + opportunityContext + companyContext + companiesIndex + grantsIndex + fundersIndex + sectorContext + webSearchContext + guidestarContext + funderIntelligenceContext;
+    let systemPrompt = FISHGOLD_SYSTEM_PROMPT + FISHGOLD_BEHAVIOR_RULES + FISHGOLD_GRANT_EXPERTISE + FISHGOLD_GRANT_MASTERY + FISHGOLD_FUNDER_WRITING_DNA + FISHGOLD_FUNDER_QUESTIONS + FISHGOLD_PROPOSAL_GUIDE + FISHGOLD_SUBMISSION_ENGINE + FISHGOLD_COMPETITIVE_INTEL + FISHGOLD_FUNDRAISING_INTEL + FISHGOLD_EMAIL_MASTERY + ragContext + tabFocus + orgContext + orgMemory + submissionHistory + docSummary + knowledge + rag + grantWritingContext + submissionEngineContext + opportunityContext + companyContext + companiesIndex + grantsIndex + fundersIndex + sectorContext + webSearchContext + guidestarContext + funderIntelligenceContext + autoResearchContext;
 
     const MAX_SYSTEM_CHARS = 180000;
     if (systemPrompt.length > MAX_SYSTEM_CHARS) {
