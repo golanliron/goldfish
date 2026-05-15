@@ -175,6 +175,10 @@ def is_valid_grant_url(url):
     if 'guidestar.org.il/search' in url:
         return False
 
+    # REJECT: shiftshatil.org.il — training/courses site, not grant calls
+    if 'shiftshatil.org.il' in url:
+        return False
+
     # REJECT: generic gov.il listing pages (not specific grant)
     if re.match(r'https?://www\.gov\.il/he/departments/dynamiccollectors/', url, re.IGNORECASE):
         return False
@@ -288,6 +292,9 @@ def scan_shatil():
         if not link.startswith("http"):
             link = f"{base_url}{link}" if link.startswith("/") else f"{base_url}/{link}"
         if not link or link in seen:
+            continue
+        # shatil: only keep /kol/ paths (specific grant pages)
+        if "shatil.org.il" in link and "/kol/" not in link:
             continue
         seen.add(link)
         if title and is_actual_grant_title(title) and is_valid_grant_url(link):
