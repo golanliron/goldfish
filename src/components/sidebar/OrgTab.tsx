@@ -958,32 +958,6 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
         </div>
       )}
 
-      {/* ===== BLOCK 4: Knowledge bar ===== */}
-      <div className="bg-surf rounded-xl border border-border p-3">
-        <div className="flex items-center justify-between mb-1.5">
-          <h4 className="text-[11px] font-semibold text-muted">Goldfish מכיר</h4>
-          <span className={`text-[11px] font-bold ${
-            completeness >= 75 ? 'text-green-600' : completeness >= 50 ? 'text-amber-500' : 'text-red-500'
-          }`}>
-            {completeness}%
-          </span>
-        </div>
-        <div className="h-2 bg-surf2 rounded-full overflow-hidden">
-          <div
-            className="h-full rounded-full transition-all duration-500"
-            style={{
-              width: `${completeness}%`,
-              background: completeness >= 75 ? '#22C55E' : completeness >= 50 ? '#F59E0B' : '#EF4444',
-            }}
-          />
-        </div>
-        {missingKnowledge.length > 0 && completeness < 100 && (
-          <p className="text-[10px] text-muted2 mt-1.5">
-            <span className="text-muted">מה יעזור: </span>
-            {missingKnowledge.slice(0, 3).join(', ')}
-          </p>
-        )}
-      </div>
     </div>
   );
 }
