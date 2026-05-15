@@ -1281,10 +1281,14 @@ def scan_menomadin():
     """Menomadin Foundation — prizes and grants for social resilience."""
     results = []
     base_url = "https://menomadinfoundation.com"
+    # Only scan pages that are likely to contain grant calls
     urls = [
         f"{base_url}/he/",
         f"{base_url}/he/פרס-טייב-לחוסן-לאומי/",
     ]
+    # URL keywords that indicate a specific grant/prize page on menomadin
+    grant_url_kw = re.compile(r'פרס|קול.?קורא|מענק|הגשה|apply|grant|prize|call', re.IGNORECASE)
+
     seen = set()
     for url in urls:
         html = fetch(url)
@@ -1296,6 +1300,11 @@ def scan_menomadin():
             if not link.startswith("http"):
                 link = f"{base_url}{link}" if link.startswith("/") else f"{base_url}/{link}"
             if not link or link in seen:
+                continue
+            # Only keep menomadin's own domain pages with grant keywords
+            if "menomadinfoundation.com" not in link:
+                continue
+            if not grant_url_kw.search(link) and not grant_url_kw.search(title):
                 continue
             seen.add(link)
             if title and len(title) > 8 and is_actual_grant_title(title) and is_valid_grant_url(link):
