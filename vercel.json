@@ -29,6 +29,10 @@
     {
       "path": "/api/cron/build-funder-profiles",
       "schedule": "0 4 * * 0"
+    },
+    {
+      "path": "/api/cron/sector-knowledge",
+      "schedule": "0 3 1 * *"
     }
   ]
 }
