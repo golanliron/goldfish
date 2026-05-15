@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { processStagingCalls, processExistingCalls } from '@/lib/ai/agent-pipeline';
 
 export const maxDuration = 300; // 5 דקות — Vercel Pro
+export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   // Read body ONCE — re-reading a consumed stream returns {}
