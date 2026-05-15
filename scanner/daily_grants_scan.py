@@ -468,11 +468,18 @@ def scan_kkl():
 
 
 def scan_gov_ministry(url, source_name, funder_name):
-    """Scan a gov.il ministry page for specific grant links (not listing pages)."""
+    """
+    Scan a ministry/org page for specific grant links.
+    For each link found that looks like a listing page (not a specific grant),
+    deep_scan_page() is called to extract the individual grants inside it.
+    """
     results = []
     html = fetch(url)
     if not html:
         return results
+
+    parsed = urlparse(url)
+    base = f"{parsed.scheme}://{parsed.netloc}"
 
     keywords = r'(?:קול|תמיכ|מענק|תכנית|הזמנה|הגש|סיוע)'
     pattern = rf'<a[^>]*href="([^"]*)"[^>]*>([^<]*{keywords}[^<]*)</a>'
@@ -482,15 +489,107 @@ def scan_gov_ministry(url, source_name, funder_name):
     for link, title in matches:
         title = clean_html(title)
         if not link.startswith("http"):
-            link = f"https://www.gov.il{link}"
-        if title and link not in seen and is_actual_grant_title(title) and is_valid_grant_url(link):
-            seen.add(link)
+            link = base + link if link.startswith("/") else f"{base}/{link}"
+        if not link or link in seen:
+            continue
+        seen.add(link)
+
+        if title and is_actual_grant_title(title) and is_valid_grant_url(link):
             results.append({
                 "title": title,
                 "url": link,
                 "source": source_name,
                 "funder": funder_name,
             })
+        elif is_valid_grant_url(link) and urlparse(link).netloc == parsed.netloc:
+            # Looks like a sub-listing page — go one level deeper
+            deep_results = deep_scan_page(link, source_name, funder_name, base_url=base, depth=1)
+            for r in deep_results:
+                if r["url"] not in seen:
+                    seen.add(r["url"])
+                    results.append(r)
+
+    return results
+
+
+def deep_scan_page(url, source_name, funder_name, base_url=None, depth=1):
+    """
+    Deep scan: visit a page and follow links that look like specific grant pages.
+    Used for "parent" pages that list multiple calls — we enter each and extract grants.
+    depth=1 means we go one level deeper than the parent.
+    """
+    if depth == 0:
+        return []
+
+    html = fetch(url)
+    if not html:
+        return []
+
+    results = []
+    seen = set()
+    parsed_base = urlparse(url)
+    base = base_url or f"{parsed_base.scheme}://{parsed_base.netloc}"
+
+    # Find all links on the page
+    all_links = re.findall(r'<a[^>]*href="([^"#]+)"[^>]*>(.*?)</a>', html, re.DOTALL)
+
+    for link, title_html in all_links:
+        title = clean_html(title_html).strip()
+
+        # Build absolute URL
+        if link.startswith("http"):
+            full_url = link
+        elif link.startswith("/"):
+            full_url = base + link
+        else:
+            continue
+
+        # Skip if same as parent (avoid loops)
+        if full_url.rstrip("/") == url.rstrip("/"):
+            continue
+
+        # Skip if different domain
+        if urlparse(full_url).netloc != parsed_base.netloc:
+            continue
+
+        if full_url in seen:
+            continue
+
+        # Only follow links that look like specific grant pages (not navigation)
+        if not is_valid_grant_url(full_url):
+            continue
+
+        seen.add(full_url)
+
+        # If title already looks like a grant — save it directly
+        if title and is_actual_grant_title(title):
+            results.append({
+                "title": title[:300],
+                "url": full_url,
+                "source": source_name,
+                "funder": funder_name,
+            })
+        else:
+            # Visit the sub-page and look for a grant title in its content
+            sub_html = fetch(full_url, timeout=15)
+            if not sub_html:
+                continue
+            # Try to get page title
+            h1_match = re.search(r'<h1[^>]*>(.*?)</h1>', sub_html, re.DOTALL)
+            title_tag = re.search(r'<title[^>]*>([^<]+)</title>', sub_html)
+            page_title = ""
+            if h1_match:
+                page_title = clean_html(h1_match.group(1)).strip()
+            elif title_tag:
+                page_title = clean_html(title_tag.group(1)).strip()
+
+            if page_title and is_actual_grant_title(page_title):
+                results.append({
+                    "title": page_title[:300],
+                    "url": full_url,
+                    "source": source_name,
+                    "funder": funder_name,
+                })
 
     return results
 
