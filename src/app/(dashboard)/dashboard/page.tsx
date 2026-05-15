@@ -1,6 +1,7 @@
 'use client';
 
 import ChatPanel from '@/components/chat/ChatPanel';
+import DailyPulseBanner from '@/components/DailyPulseBanner';
 import { useAuth } from '@/lib/auth-context';
 
 export default function DashboardPage() {
@@ -15,12 +16,17 @@ export default function DashboardPage() {
   }
 
   return (
-    <ChatPanel
-      orgId={orgId || ''}
-      userId={userId || ''}
-      onStageChange={(stage) => {
-        localStorage.setItem('fishgold_stage', String(stage));
-      }}
-    />
+    <div className="h-full flex flex-col">
+      <DailyPulseBanner orgId={orgId || ''} />
+      <div className="flex-1 min-h-0">
+        <ChatPanel
+          orgId={orgId || ''}
+          userId={userId || ''}
+          onStageChange={(stage) => {
+            localStorage.setItem('fishgold_stage', String(stage));
+          }}
+        />
+      </div>
+    </div>
   );
 }
