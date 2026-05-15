@@ -31,10 +31,20 @@ const TYPE_COLORS: Record<OpportunityType, string> = {
   endowment: 'bg-amber-100 text-amber-700',
 };
 
+interface PillarScores {
+  eligibility: number;
+  mission_alignment: number;
+  geography: number;
+  capacity: number;
+  total: number;
+  reasoning: string;
+}
+
 interface MatchScore {
   opportunity_id: string;
   score: number;
   reasoning: string;
+  pillars?: PillarScores;
 }
 
 interface FunderInfoMap {
@@ -901,13 +911,46 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
     >
       {/* ── HEADER ── */}
       <div className="p-3 pb-2">
-      {/* Match score badge */}
+      {/* Match score badge + 4-pillar breakdown */}
       {match && (
-        <div className={`flex items-center gap-1.5 mb-2.5 px-2.5 py-1.5 rounded-lg border text-[10px] ${matchColor}`}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="flex-shrink-0">
-            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-          </svg>
-          <span className="font-bold">{match.score}% התאמה לארגון שלכם</span>
+        <div className={`mb-2.5 rounded-lg border text-[10px] overflow-hidden ${matchColor}`}>
+          {/* Main score row */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="flex-shrink-0">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+            </svg>
+            <span className="font-bold flex-1">{match.score}% התאמה לארגון שלכם</span>
+            {match.pillars && (
+              <span className="text-[8px] opacity-60 ml-1">לפי 4 עמודות</span>
+            )}
+          </div>
+          {/* Pillar mini-bars — only when pillars data exists */}
+          {match.pillars && (
+            <div className="px-2.5 pb-2 grid grid-cols-4 gap-1">
+              {[
+                { key: 'eligibility',       label: 'סף', value: match.pillars.eligibility },
+                { key: 'mission_alignment', label: 'משימה', value: match.pillars.mission_alignment },
+                { key: 'geography',         label: 'אזור', value: match.pillars.geography },
+                { key: 'capacity',          label: 'כמות', value: match.pillars.capacity },
+              ].map(({ key, label, value }) => (
+                <div key={key} className="flex flex-col items-center gap-0.5">
+                  <div className="w-full h-1 rounded-full bg-current/20 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${value >= 70 ? 'bg-green-500' : value >= 40 ? 'bg-amber-500' : 'bg-red-400'}`}
+                      style={{ width: `${value}%` }}
+                    />
+                  </div>
+                  <span className="text-[8px] opacity-70">{label}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {/* Reasoning — shown when reasoning exists */}
+          {match.reasoning && (
+            <div className="px-2.5 pb-2 text-[9px] opacity-75 leading-snug border-t border-current/10 pt-1.5">
+              {match.reasoning}
+            </div>
+          )}
         </div>
       )}
 
@@ -922,8 +965,42 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
               {TYPE_LABELS[opp.type]}
             </span>
           )}
+          {/* source_url — direct link to original grant page, or Google Search fallback */}
+          {opp.source_url ? (
+            <a
+              href={opp.source_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={e => e.stopPropagation()}
+              title="מעבר לדף המקור"
+              className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-md bg-accent/10 text-accent hover:bg-accent/20 font-medium transition-colors"
+            >
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+                <polyline points="15 3 21 3 21 9" />
+                <line x1="10" y1="14" x2="21" y2="3" />
+              </svg>
+              מקור
+            </a>
+          ) : (
+            <a
+              href={`https://www.google.com/search?q=${encodeURIComponent(`${opp.funder || ''} ${opp.title}`)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={e => e.stopPropagation()}
+              title="חפש את קול הקורא בגוגל"
+              className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-md bg-gray-100 text-gray-500 hover:bg-gray-200 font-medium transition-colors"
+            >
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              חפש
+            </a>
+          )}
           {(opp.application_url || opp.url) && (() => {
             const href = opp.application_url || opp.url!;
+            // Don't duplicate if source_url and this href are the same
+            if (href === opp.source_url) return null;
             const isDirect = !!opp.application_url;
             const isGov = href.includes('gov.il') || href.includes('merkava') || href.includes('taktziv') || href.includes('pras.');
             return (
@@ -933,7 +1010,7 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
                 rel="noopener noreferrer"
                 onClick={e => e.stopPropagation()}
                 title={isDirect ? 'מעבר לאתר ההגשה' : 'מעבר לאתר המקור'}
-                className="inline-flex items-center gap-0.5 text-[9px] text-accent hover:underline font-medium"
+                className="inline-flex items-center gap-0.5 text-[9px] text-muted hover:text-accent hover:underline"
               >
                 {isGov ? <span>🇮🇱</span> : (
                   <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -942,7 +1019,7 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
                     <line x1="10" y1="14" x2="21" y2="3" />
                   </svg>
                 )}
-                {isDirect ? 'הגשה' : 'מקור'}
+                {isDirect ? 'הגשה' : 'אתר'}
               </a>
             );
           })()}
@@ -1025,6 +1102,35 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
               ))}
             </ul>
           )}
+          {/* 4-Pillar Match Breakdown */}
+          {match?.pillars && (
+            <div className="rounded-lg border border-border bg-surf2 p-2.5 space-y-2">
+              <p className="text-[10px] font-semibold text-text">ניתוח התאמה</p>
+              {match.pillars.reasoning && (
+                <p className="text-[10px] text-text2 leading-relaxed">{match.pillars.reasoning}</p>
+              )}
+              <div className="space-y-1.5">
+                {([
+                  { key: 'eligibility',       label: 'זכאות',       color: 'bg-blue-400' },
+                  { key: 'mission_alignment', label: 'התאמת משימה', color: 'bg-accent' },
+                  { key: 'geography',         label: 'גיאוגרפיה',   color: 'bg-emerald-400' },
+                  { key: 'capacity',          label: 'היקף מענק',   color: 'bg-amber-400' },
+                ] as const).map(({ key, label, color }) => (
+                  <div key={key} className="flex items-center gap-2">
+                    <span className="text-[9px] text-muted w-20 text-right">{label}</span>
+                    <div className="flex-1 h-1.5 bg-border rounded-full overflow-hidden">
+                      <div
+                        className={`h-full ${color} rounded-full`}
+                        style={{ width: `${match.pillars![key]}%` }}
+                      />
+                    </div>
+                    <span className="text-[9px] font-medium text-text w-6 text-left">{match.pillars![key]}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {opp.eligibility && (
             <div>
               <span className="font-semibold text-text">תנאי סף: </span>
@@ -1144,9 +1250,9 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
               {draftState === 'done' && shareUrl && (
                 <div className="bg-green-50 border border-green-200 rounded-lg p-2.5 space-y-1.5">
                   <div className="text-[10px] font-semibold text-green-700">הטיוטה מוכנה!</div>
-                  {opp.url && (
+                  {(opp.source_url || opp.url) && (
                     <a
-                      href={opp.url}
+                      href={opp.source_url || opp.url!}
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={e => e.stopPropagation()}

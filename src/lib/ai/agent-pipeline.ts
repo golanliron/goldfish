@@ -13,6 +13,7 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { runResearchAgent, type RawCall, type EnrichedCall } from './research-agent';
 import type { OrgDNA } from './org-dna';
+import { calculateMatchScore } from './matching-engine';
 
 // ── Config ─────────────────────────────────────────────────────────────────────
 
@@ -27,6 +28,19 @@ const DEADLINE_CUTOFF_DAYS  = 3;    // קולות קוראים שהדדליין 
 // ── Helper: sleep ──────────────────────────────────────────────────────────────
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+// ── Helper: URL validation ─────────────────────────────────────────────────────
+// מחזיר true רק אם ה-URL תקין (http/https, לא מנוחש, לא ריק)
+
+function isValidUrl(url: string): boolean {
+  if (!url || url.trim() === '') return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -115,11 +129,19 @@ export async function processStagingCalls(orgId: string): Promise<PipelineResult
 
   // ── 3. עבד כל קול קורא ──
   for (const raw of rawCalls) {
+    // ── ולידציה: URL חובה — ללא URL מאומת, הרשומה לא נכנסת למסד ──
+    if (!isValidUrl(raw.url)) {
+      console.warn(`  [skip] "${(raw.title || '').slice(0, 60)}" — URL חסר או לא תקין: "${raw.url}"`);
+      await admin.from('scanner_calls').update({ processed: true }).eq('id', raw.id);
+      result.skipped++;
+      continue;
+    }
+
     const callForAgent: RawCall = {
       id:           raw.id,
       title:        raw.title        || '',
       source:       raw.source       || '',
-      url:          raw.url          || '',
+      url:          raw.url,
       category:     raw.category     || 'other',
       region:       raw.region       || 'israel',
       description:  raw.description  || '',
@@ -173,12 +195,22 @@ export async function processStagingCalls(orgId: string): Promise<PipelineResult
         if (updateErr) console.warn(`  -> Update warning: ${updateErr.message}`);
       } else {
         // הוסף רשומה חדשה
+        // Normalize source_url: if relative, resolve against the verified url's origin
+        let normalizedSourceUrl = callForAgent.url;
+        if (normalizedSourceUrl && !normalizedSourceUrl.startsWith('http')) {
+          try {
+            const base = new URL(enriched.url);
+            normalizedSourceUrl = new URL(normalizedSourceUrl, base.origin).href;
+          } catch { /* keep as-is */ }
+        }
+
         const { error: insertErr } = await admin
           .from('opportunities')
           .insert({
             title:          enriched.title,
             source:         enriched.source,
-            url:            enriched.url,
+            url:            enriched.url,            // URL מאומת/מתוקן ע"י הסוכן
+            source_url:     normalizedSourceUrl,     // URL מקורי כפי שהגיע מהסורק (מנורמל)
             categories:     enriched.category ? [enriched.category] : [],
             regions:        enriched.region   ? [enriched.region]   : [],
             description:    enriched.description,
@@ -196,6 +228,62 @@ export async function processStagingCalls(orgId: string): Promise<PipelineResult
         if (insertErr) console.warn(`  -> Insert warning: ${insertErr.message}`);
       }
 
+      // ── 4b. Score the newly ingested opportunity against this org (non-blocking) ──
+      try {
+        const { data: inserted } = await admin
+          .from('opportunities')
+          .select('id')
+          .eq('url', enriched.url)
+          .maybeSingle();
+
+        if (inserted?.id) {
+          const { data: profileRow } = await admin
+            .from('org_profiles')
+            .select('data')
+            .eq('org_id', orgId)
+            .single();
+          const { data: memRows } = await admin
+            .from('org_memory')
+            .select('value')
+            .eq('org_id', orgId)
+            .in('category', ['identity', 'dna', 'impact'])
+            .limit(10);
+
+          const profileData = (profileRow?.data as Record<string, unknown>) || {};
+          const memText = (memRows || []).map(r => r.value).join('. ');
+
+          const pillars = await calculateMatchScore(
+            {
+              id:                  inserted.id,
+              title:               enriched.title,
+              funder:              enriched.funder_profile ? String(Object.keys(enriched.funder_profile)[0] || '') : null,
+              description:         enriched.description,
+              categories:          enriched.category ? [enriched.category] : [],
+              regions:             enriched.region   ? [enriched.region]   : [],
+            },
+            profileData as Parameters<typeof calculateMatchScore>[1],
+            memText,
+          );
+
+          if (pillars.total >= 40) {
+            await admin.from('matches').upsert(
+              {
+                org_id:         orgId,
+                opportunity_id: inserted.id,
+                score:          pillars.total,
+                reasoning:      pillars.reasoning,
+                pillars:        pillars,
+                status:         'new',
+                matched_at:     new Date().toISOString(),
+              },
+              { onConflict: 'org_id,opportunity_id' },
+            );
+            console.log(`  -> 4-pillar match score: ${pillars.total} (E:${pillars.eligibility} M:${pillars.mission_alignment} G:${pillars.geography} C:${pillars.capacity})`);
+          }
+        }
+      } catch (matchErr) {
+        console.warn('  -> 4-pillar scoring failed (non-fatal):', matchErr);
+      }
     }
 
     // ── 5. סמן כ-processed ב-staging ──
@@ -271,6 +359,14 @@ export async function processExistingCalls(orgId: string): Promise<PipelineResul
   const orgDNA = await resolveOrgDNAForPipeline(orgId);
 
   for (const row of existing) {
+    // ── ולידציה: URL חובה ──
+    if (!isValidUrl(row.url)) {
+      console.warn(`  [skip-existing] "${(row.title || '').slice(0, 60)}" — URL לא תקין: "${row.url}"`);
+      await admin.from('opportunities').update({ agent_ran_at: new Date().toISOString(), active: false }).eq('id', row.id);
+      result.skipped++;
+      continue;
+    }
+
     // בנה RawCall מהרשומה הקיימת
     const rawCall: import('./research-agent').RawCall = {
       id:          row.id,

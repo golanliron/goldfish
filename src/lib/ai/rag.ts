@@ -167,6 +167,7 @@ export async function upsertChunks(chunks: {
   title: string;
   content: string;
   metadata?: Record<string, unknown>;
+  organization_id?: string | null;
 }[]): Promise<{ success: number; failed: number }> {
   let success = 0;
   let failed = 0;
@@ -190,6 +191,7 @@ export async function upsertChunks(chunks: {
             content: chunk.content,
             embedding: embeddings[j],
             metadata: chunk.metadata || {},
+            organization_id: chunk.organization_id ?? null,
             updated_at: new Date().toISOString(),
           },
           { onConflict: 'category,title', ignoreDuplicates: false }

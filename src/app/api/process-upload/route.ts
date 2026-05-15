@@ -1,53 +1,35 @@
 import { withAuth } from '@/lib/api-auth';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { geminiClassify, geminiExtract, geminiSummarize, geminiOcrPdf, geminiParseXlsx } from '@/lib/ai/gemini';
-import { embedBatch } from '@/lib/ai/rag';
-import pdfParse from 'pdf-parse';
+import { geminiClassify, geminiExtract, geminiSummarize } from '@/lib/ai/gemini';
+import { embedBatch, upsertChunk } from '@/lib/ai/rag';
+import { parseFileContent } from '@/lib/utils/file-parser';
+import { extractOrgDNA, extractOrgDNAWithAI, mergeOrgDNA } from '@/lib/ai/org-dna';
+import { calculateOrgScore } from '@/lib/ai/org-score';
+import { extractProfileData } from '@/lib/ai/profile-autopilot';
+import { REQUIRED_VAULT_DOCS } from '@/lib/vault-docs';
 
 export const maxDuration = 60;
 
-// ===== Text extraction from Buffer =====
-
-async function parsePDF(buffer: Buffer): Promise<string> {
-  try {
-    const result = await pdfParse(buffer);
-    if (result.text && result.text.trim().length > 20) return result.text;
-  } catch { /* fall through to Gemini */ }
-  try {
-    const text = await geminiOcrPdf(buffer);
-    if (text.length > 20) return text;
-  } catch { /* give up */ }
-  return '';
+// Derive extension from filename for mime-type-agnostic fallback
+function extFromFilename(filename: string): string {
+  return filename.split('.').pop()?.toLowerCase() ?? '';
 }
 
-async function parseDocx(buffer: Buffer): Promise<string> {
-  const mammoth = await import('mammoth');
-  const extract = mammoth.default?.extractRawText || mammoth.extractRawText;
-  const result = await extract({ buffer });
-  return result.value || '';
-}
-
-function stripHtml(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/\s+/g, ' ').trim();
-}
-
-async function extractTextFromBuffer(buffer: Buffer, ext: string, filename: string): Promise<string> {
-  switch (ext) {
-    case 'pdf': return parsePDF(buffer);
-    case 'docx': case 'doc': return parseDocx(buffer);
-    case 'xlsx': case 'xls': return (await geminiParseXlsx(buffer)) || `[קובץ אקסל: ${filename}]`;
-    case 'html': case 'htm': return stripHtml(buffer.toString('utf-8'));
-    case 'txt': case 'md': case 'csv': return buffer.toString('utf-8');
-    default: {
-      const text = buffer.toString('utf-8');
-      return (text.length > 100 && !text.includes('\u0000')) ? text : `[קובץ ${ext}: ${filename}]`;
-    }
-  }
+// Map stored file_type extension to a pseudo-MIME so parseFileContent can route correctly
+function extToMime(ext: string): string {
+  const map: Record<string, string> = {
+    pdf:  'application/pdf',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    doc:  'application/msword',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    xls:  'application/vnd.ms-excel',
+    csv:  'text/csv',
+    txt:  'text/plain',
+    md:   'text/markdown',
+    html: 'text/html',
+    htm:  'text/html',
+  };
+  return map[ext] ?? 'application/octet-stream';
 }
 
 function chunkText(text: string, maxChars = 2000): string[] {
@@ -114,12 +96,13 @@ export const POST = withAuth(async (request, auth) => {
   }
 
   const buffer = Buffer.from(await fileData.arrayBuffer());
-  const ext = doc.file_type || doc.filename.split('.').pop()?.toLowerCase() || 'txt';
+  const ext = doc.file_type || extFromFilename(doc.filename);
+  const mimeType = extToMime(ext);
 
   // Extract text
   let parsedText = '';
   try {
-    parsedText = await extractTextFromBuffer(buffer, ext, doc.filename);
+    parsedText = await parseFileContent(buffer, mimeType, doc.filename);
   } catch (e) {
     await markError(`text extraction failed: ${e instanceof Error ? e.message : String(e)}`);
     return Response.json({ error: 'לא הצלחתי לחלץ טקסט מהקובץ' }, { status: 422 });
@@ -146,6 +129,17 @@ export const POST = withAuth(async (request, auth) => {
   }
   try { finalMetadata = await geminiExtract(parsedText, category, orgName); } catch { /* keep empty */ }
   try { summary = await geminiSummarize(parsedText); } catch { /* keep filename */ }
+
+  // Detect vault doc type from filename + parsed content, store vault_key in metadata
+  // This ensures the /api/documents/vault checklist can identify the doc even without re-parsing
+  const vaultText = `${doc.filename} ${parsedText.slice(0, 500)}`;
+  for (const req of REQUIRED_VAULT_DOCS) {
+    if (req.pattern.test(vaultText)) {
+      finalMetadata.vault_key = req.key;
+      if (category === 'other') category = 'official';
+      break;
+    }
+  }
 
   // Update document to ready
   const { error: updateError } = await supabase.from('documents').update({
@@ -174,44 +168,199 @@ export const POST = withAuth(async (request, auth) => {
         metadata: { category, filename: doc.filename },
       });
     }
+
+    // Bridge into knowledge_chunks so RAG (match_knowledge RPC) can find them
+    // Each chunk is scoped to this org so it won't surface for other orgs
+    for (let i = 0; i < chunks.length; i++) {
+      upsertChunk({
+        category: 'document',
+        subcategory: category,
+        title: `${doc.filename} [${i + 1}/${chunks.length}]`,
+        content: chunks[i],
+        metadata: { document_id: doc.id, filename: doc.filename, category },
+        organization_id: orgId,
+      }).catch(() => { /* non-blocking */ });
+    }
   } catch { /* chunks failure doesn't affect document status */ }
 
-  // Update org profile (non-fatal)
+  // ===== Profile Autopilot =====
+  // Dedicated extraction pass targeting profile-specific fields (CEO, board, NGO number, budget, etc.)
+  // Uses "patch" logic: never overwrites existing data with shorter/weaker values.
+  // Runs in parallel with org_memory seeding (both non-fatal).
+  let scoreBefore = 0;
+  let scoreAfter = 0;
+  let profileUpdateSummary = '';
   try {
     const { data: existing } = await supabase.from('org_profiles').select('data').eq('org_id', orgId).single();
-    const current = (existing?.data as Record<string, unknown>) || {};
-    const merged = { ...current };
-    for (const key of ['name', 'registration_number', 'founded_year', 'mission', 'focus_areas', 'target_populations', 'annual_budget', 'contact_name', 'contact_email', 'contact_phone', 'website', 'theory_of_change', 'unique_model', 'strengths', 'age_range']) {
-      if (finalMetadata[key] && !merged[key]) merged[key] = finalMetadata[key];
+    const currentProfile = (existing?.data as Record<string, unknown>) || {};
+
+    // Run profile autopilot extraction
+    const autopilot = await extractProfileData(parsedText, currentProfile, orgName);
+    profileUpdateSummary = autopilot.summary;
+
+    // Merge autopilot results with general geminiExtract results
+    // Autopilot results take precedence for the fields it specializes in;
+    // geminiExtract fills remaining fields (theory_of_change, unique_model, etc.)
+    const merged: Record<string, unknown> = { ...currentProfile };
+
+    // Apply general extraction fields first (lower priority)
+    const GENERAL_FIELDS = [
+      'name', 'theory_of_change', 'unique_model', 'age_range', 'sub_populations',
+      'geographic_focus', 'impact_metrics', 'success_rate', 'research_backing',
+      'testimonials', 'partner_organizations', 'strengths', 'funder', 'amount',
+      'doc_type', 'submission_history', 'active_projects',
+    ];
+    for (const key of GENERAL_FIELDS) {
+      const newVal = finalMetadata[key];
+      if (!newVal) continue;
+      const newStr = typeof newVal === 'string' ? newVal : JSON.stringify(newVal);
+      const existingStr = merged[key] ? (typeof merged[key] === 'string' ? merged[key] as string : JSON.stringify(merged[key])) : '';
+      if (newStr.length > existingStr.length || !existingStr) {
+        merged[key] = newVal;
+      }
     }
-    await supabase.from('org_profiles').upsert({ org_id: orgId, data: merged, last_updated: new Date().toISOString() }, { onConflict: 'org_id' });
+
+    // Apply autopilot patched profile (higher priority, type-aware patch logic)
+    Object.assign(merged, autopilot.patched);
+
+    // Re-run DNA extraction on the merged profile so _dna stays current
+    const orgTextParts = [
+      merged.name, merged.mission, merged.theory_of_change, merged.unique_model,
+      Array.isArray(merged.focus_areas) ? (merged.focus_areas as string[]).join(' ') : merged.focus_areas,
+      Array.isArray(merged.target_populations) ? (merged.target_populations as string[]).join(' ') : merged.target_populations,
+    ].filter(Boolean).join('\n');
+
+    if (orgTextParts.length > 50) {
+      try {
+        const aiDna = await extractOrgDNAWithAI(orgTextParts as string);
+        const regexDna = extractOrgDNA(merged);
+        merged._dna = mergeOrgDNA(regexDna, aiDna ?? {});
+        merged._dna_extracted_at = new Date().toISOString();
+      } catch { /* non-blocking */ }
+    }
+
+    await supabase.from('org_profiles').upsert(
+      { org_id: orgId, data: merged, last_updated: new Date().toISOString() },
+      { onConflict: 'org_id' }
+    );
   } catch { /* non-blocking */ }
 
-  // Seed org_memory (non-fatal)
+  // ===== Seed org_memory — all fields, no cap =====
+  // Map category → memory category and all its relevant fields at the right depth
   try {
-    const CATEGORY_TO_MEM: Record<string, string> = { identity: 'identity', official: 'identity', impact: 'impact', budget: 'operations', project: 'operations', grant: 'submissions', other: 'dna' };
+    const CATEGORY_TO_MEM: Record<string, string> = {
+      identity: 'identity', official: 'identity',
+      impact: 'impact',
+      budget: 'operations', project: 'operations', project_budget: 'operations',
+      grant: 'submissions', submission: 'submissions',
+      other: 'dna',
+    };
     const memCat = CATEGORY_TO_MEM[category] || 'dna';
-    const fieldPriority = memCat === 'identity' ? ['name', 'mission', 'registration_number', 'website']
-      : memCat === 'impact' ? ['impact_metrics', 'key_achievements', 'beneficiaries_count']
-      : memCat === 'operations' ? ['annual_budget', 'employees_count', 'active_projects']
-      : memCat === 'submissions' ? ['funder', 'amount', 'doc_type']
-      : ['focus_areas', 'target_populations', 'theory_of_change', 'unique_model'];
 
-    const records: { key: string; value: string; confidence: 'medium' | 'high'; depth: number }[] = [];
-    for (const field of fieldPriority) {
-      if (records.length >= 3) break;
+    // All fields by memory category — each gets the right depth
+    const FIELDS_BY_MEM_CAT: Record<string, { field: string; depth: number }[]> = {
+      identity: [
+        { field: 'name',                depth: 2 },
+        { field: 'mission',             depth: 2 },
+        { field: 'registration_number', depth: 3 },
+        { field: 'website',             depth: 1 },
+        { field: 'contact_name',        depth: 2 },
+        { field: 'contact_email',       depth: 2 },
+        { field: 'founded_year',        depth: 2 },
+      ],
+      dna: [
+        { field: 'focus_areas',         depth: 2 },
+        { field: 'target_populations',  depth: 2 },
+        { field: 'theory_of_change',    depth: 3 },
+        { field: 'unique_model',        depth: 3 },
+        { field: 'age_range',           depth: 2 },
+        { field: 'sub_populations',     depth: 2 },
+        { field: 'geographic_focus',    depth: 2 },
+      ],
+      impact: [
+        { field: 'impact_metrics',      depth: 3 },
+        { field: 'key_achievements',    depth: 3 },
+        { field: 'beneficiaries_count', depth: 3 },
+        { field: 'success_rate',        depth: 3 },
+        { field: 'research_backing',    depth: 3 },
+        { field: 'testimonials',        depth: 2 },
+      ],
+      operations: [
+        { field: 'annual_budget',       depth: 3 },
+        { field: 'employees_count',     depth: 2 },
+        { field: 'active_projects',     depth: 2 },
+        { field: 'partner_organizations', depth: 2 },
+        { field: 'cities_active',       depth: 2 },
+        { field: 'strengths',           depth: 2 },
+      ],
+      submissions: [
+        { field: 'funder',              depth: 2 },
+        { field: 'amount',              depth: 3 },
+        { field: 'doc_type',            depth: 1 },
+        { field: 'submission_history',  depth: 3 },
+      ],
+    };
+
+    // Collect records across all relevant categories, not just the primary one
+    // e.g. an identity doc might also surface impact_metrics
+    const allFieldDefs = Object.values(FIELDS_BY_MEM_CAT).flat();
+    const { data: memoriesBefore } = await supabase
+      .from('org_memory')
+      .select('category, depth, updated_at')
+      .eq('org_id', orgId);
+    scoreBefore = calculateOrgScore(memoriesBefore || []).total;
+
+    for (const { field, depth } of allFieldDefs) {
       const val = finalMetadata[field];
       if (!val) continue;
       const strVal = typeof val === 'string' ? val : JSON.stringify(val);
       if (strVal.length < 3) continue;
-      records.push({ key: `doc_${doc.id.slice(0, 8)}_${field}`, value: strVal.slice(0, 300), confidence: strVal.length > 20 ? 'high' : 'medium', depth: strVal.length > 50 ? 2 : 1 });
-    }
-    if (records.length === 0) records.push({ key: `doc_${doc.id.slice(0, 8)}_uploaded`, value: `מסמך מסוג ${category} הועלה`, confidence: 'medium', depth: 1 });
 
-    for (const rec of records) {
-      await supabase.from('org_memory').upsert({ org_id: orgId, key: rec.key, value: rec.value, source: 'document_upload', confidence: rec.confidence, category: memCat, depth: rec.depth, updated_at: new Date().toISOString() }, { onConflict: 'org_id,key' });
+      // Determine which memory category this field belongs to
+      const fieldMemCat = Object.entries(FIELDS_BY_MEM_CAT).find(([, defs]) =>
+        defs.some(d => d.field === field)
+      )?.[0] || memCat;
+
+      await supabase.from('org_memory').upsert({
+        org_id: orgId,
+        key: `doc_${doc.id.slice(0, 8)}_${field}`,
+        value: strVal.slice(0, 300),
+        source: 'document_upload',
+        confidence: strVal.length > 20 ? 'high' : 'medium',
+        category: fieldMemCat,
+        depth,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'org_id,key' });
     }
+
+    // Always record that this document was uploaded (fallback entry)
+    await supabase.from('org_memory').upsert({
+      org_id: orgId,
+      key: `doc_${doc.id.slice(0, 8)}_uploaded`,
+      value: `מסמך "${doc.filename}" מסוג ${category} הועלה`,
+      source: 'document_upload',
+      confidence: 'medium',
+      category: memCat,
+      depth: 1,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'org_id,key' });
+
+    // Recalculate score after upserts
+    const { data: memoriesAfter } = await supabase
+      .from('org_memory')
+      .select('category, depth, updated_at')
+      .eq('org_id', orgId);
+    scoreAfter = calculateOrgScore(memoriesAfter || []).total;
   } catch { /* non-blocking */ }
 
-  return Response.json({ document_id: doc.id, status: 'ready', category, summary });
+  return Response.json({
+    document_id: doc.id,
+    status: 'ready',
+    category,
+    summary,
+    score_before: scoreBefore,
+    score_after: scoreAfter,
+    score_delta: scoreAfter - scoreBefore,
+    profile_update: profileUpdateSummary || null,
+  });
 });

@@ -11,6 +11,7 @@ interface UploadedFile {
   category: string;
   summary: string;
   status: 'uploading' | 'done' | 'error';
+  scoreDelta?: number;
 }
 
 export default function OnboardingPage() {
@@ -162,7 +163,7 @@ export default function OnboardingPage() {
 
       if (processRes.ok) {
         setFiles(prev => prev.map((f, i) => i === index
-          ? { ...f, status: 'done', category: processData.category, summary: processData.summary }
+          ? { ...f, status: 'done', category: processData.category, summary: processData.summary, scoreDelta: processData.score_delta ?? 0 }
           : f
         ));
       } else {
@@ -654,6 +655,11 @@ export default function OnboardingPage() {
                   </div>
                   {f.status === 'done' && f.summary && (
                     <p className="text-[11px] text-green-600 px-3 pb-1.5 leading-relaxed line-clamp-2">{f.summary}</p>
+                  )}
+                  {f.status === 'done' && f.scoreDelta != null && f.scoreDelta > 0 && (
+                    <p className="text-[11px] text-accent font-medium px-3 pb-1.5">
+                      ציון הידע עלה +{f.scoreDelta} נקודות
+                    </p>
                   )}
                 </div>
               ))}

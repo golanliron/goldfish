@@ -222,12 +222,51 @@ const TAB_FOCUS: Record<string, string> = {
 
 export const POST = withAuth(async (request, auth) => {
   try {
-    const { message, conversation_id, active_tab } = await request.json();
+    const { message, conversation_id, active_tab, attachment_ids } = await request.json();
     const org_id = auth.orgId;
     const user_id = auth.userId;
 
     if (!message) {
       return Response.json({ error: 'Missing message' }, { status: 400 });
+    }
+
+    // ===== Attachment context: read pre-parsed text from DB =====
+    // attachment_ids are document IDs that were already processed by /api/process-upload.
+    // We read parsed_text directly — no re-parsing needed.
+    let attachmentContext = '';
+    let attachmentHasRfp = false;
+
+    if (Array.isArray(attachment_ids) && attachment_ids.length > 0) {
+      const supabaseForAttachments = createAdminClient();
+      const { data: attachedDocs } = await supabaseForAttachments
+        .from('documents')
+        .select('id, filename, category, parsed_text')
+        .in('id', attachment_ids)
+        .eq('org_id', org_id)          // enforce ownership
+        .eq('status', 'ready')         // only fully-processed docs
+        .limit(5);                     // guard against oversized requests
+
+      if (attachedDocs && attachedDocs.length > 0) {
+        const docBlocks = attachedDocs.map(doc => {
+          const text = (doc.parsed_text as string | null) ?? '';
+          const snippet = text.length > 30000 ? text.slice(0, 30000) + '\n[... המסמך נחתך]' : text;
+          return `<document filename="${doc.filename}" category="${doc.category}">\n${snippet}\n</document>`;
+        });
+
+        attachmentContext = `\n\n<document_context>\n${docBlocks.join('\n\n')}\n</document_context>`;
+
+        // Flag if any attached doc is a grant/RFP call
+        // Detect by category OR by filename keywords
+        const RFP_FILENAME_PATTERNS = /קול.?קורא|rfp|grant.?call|request.?for.?proposal|מכרז|הזמנת.?הצעות/i;
+        attachmentHasRfp = attachedDocs.some(
+          doc =>
+            doc.category === 'grant' ||
+            doc.category === 'submission' ||
+            doc.category === 'project' ||
+            doc.category === 'programs' ||
+            RFP_FILENAME_PATTERNS.test(doc.filename)
+        );
+      }
     }
 
     const supabase = createAdminClient();
@@ -419,6 +458,14 @@ ${blockSummary}
       chatLog.error({ err: engineErr, org_id }, 'submission engine failed');
     }
 
+    // RFP proactive CTA — fire when a grant/RFP doc was attached and the user
+    // hasn't explicitly asked to parse or write yet (avoid duplicate instructions)
+    if (attachmentHasRfp && !userAsksForRfpParse(message) && !userAsksForGrantWriting(message)) {
+      submissionEngineContext += `\n\n===== הנחיה: קול קורא זוהה =====
+המשתמש צירף מסמך מסוג קול קורא / הגשה. לאחר שתענה על שאלתם, הצע בסיום: "זיהיתי שמדובר בקול קורא. רוצה שאנתח את דרישותיו ואכין טיוטת הגשה ראשונה בהתאם לפרופיל הארגון?"
+אל תאמר זאת בתחילת התשובה — רק בסיום, כהצעה קצרה.`;
+    }
+
     // Web Search
     let webSearchContext = '';
     if (process.env.TAVILY_API_KEY) {
@@ -489,9 +536,27 @@ ${blockSummary}
       }
     }
 
-    const ragContext = await buildRAGContext(message);
+    const ragContext = await buildRAGContext(message, org_id);
 
-    let systemPrompt = FISHGOLD_SYSTEM_PROMPT + FISHGOLD_BEHAVIOR_RULES + FISHGOLD_GRANT_EXPERTISE + FISHGOLD_GRANT_MASTERY + FISHGOLD_FUNDER_WRITING_DNA + FISHGOLD_FUNDER_QUESTIONS + FISHGOLD_PROPOSAL_GUIDE + FISHGOLD_SUBMISSION_ENGINE + FISHGOLD_COMPETITIVE_INTEL + FISHGOLD_FUNDRAISING_INTEL + FISHGOLD_EMAIL_MASTERY + ragContext + tabFocus + orgContext + orgMemory + submissionHistory + docSummary + knowledge + rag + grantWritingContext + submissionEngineContext + opportunityContext + companyContext + companiesIndex + grantsIndex + fundersIndex + sectorContext + webSearchContext + guidestarContext + funderIntelligenceContext + autoResearchContext;
+    // Document interpretation rules — injected only when an attachment is present
+    const documentInterpretationRules = attachmentContext ? `
+
+===== הנחיות לקריאת מסמכים מצורפים =====
+המשתמש צירף מסמכים לשיחה זו. הם מופיעים בתגיות <document_context> בהודעת המשתמש.
+
+כיצד לפרש כל סוג:
+- PDF / Word: קרא כטקסט רציף. עובדות, מספרים, שמות — השתמש בהם כפי שהם.
+- Excel (גיליון): הנתונים הומרו לטבלה בפורמט pipe-delimited (| ערך | ערך |). שורה ראשונה היא כותרות העמודות. פרש כנתונים מבניים — ניתן לסכום, לממוצע, לסנן ולהשוות בין שורות.
+- CSV: כמו Excel — שורה ראשונה = כותרות, שאר השורות = נתונים.
+
+כללים:
+1. ענה על שאלות המשתמש בהתבסס על תוכן המסמך בפועל — לא על הנחות כלליות.
+2. אם שאלה מתייחסת לנתון מספרי ממסמך Excel, חשב ישירות מהטבלה ואמור מה חישבת.
+3. אם המסמך הוא קול קורא — זהה שאלות, תנאי סף, דדליין, סכום מקסימלי.
+4. אם המסמך הוא תקציב — זהה שורות הוצאה, סכומים, קטגוריות.
+5. ציין תמיד מאיזה קובץ שלפת את המידע (לפי שם הקובץ ב-filename).` : '';
+
+    let systemPrompt = FISHGOLD_SYSTEM_PROMPT + FISHGOLD_BEHAVIOR_RULES + FISHGOLD_GRANT_EXPERTISE + FISHGOLD_GRANT_MASTERY + FISHGOLD_FUNDER_WRITING_DNA + FISHGOLD_FUNDER_QUESTIONS + FISHGOLD_PROPOSAL_GUIDE + FISHGOLD_SUBMISSION_ENGINE + FISHGOLD_COMPETITIVE_INTEL + FISHGOLD_FUNDRAISING_INTEL + FISHGOLD_EMAIL_MASTERY + ragContext + documentInterpretationRules + tabFocus + orgContext + orgMemory + submissionHistory + docSummary + knowledge + rag + grantWritingContext + submissionEngineContext + opportunityContext + companyContext + companiesIndex + grantsIndex + fundersIndex + sectorContext + webSearchContext + guidestarContext + funderIntelligenceContext + autoResearchContext;
 
     const MAX_SYSTEM_CHARS = 180000;
     if (systemPrompt.length > MAX_SYSTEM_CHARS) {
@@ -517,7 +582,7 @@ ${blockSummary}
       }
     }
 
-    const enrichedMessage = urlContent ? message + urlContent : message;
+    const enrichedMessage = message + (urlContent || '') + (attachmentContext || '');
     chatMessages.push({ role: 'user', content: enrichedMessage });
 
     const chatModel = active_tab === 'org' ? MODELS.scoring : MODELS.chat;

@@ -21,7 +21,7 @@ export const GET = withAuth(async (req, auth) => {
       .order('deadline', { ascending: true, nullsFirst: false })
       .limit(500),
     orgId
-      ? supabase.from('matches').select('opportunity_id, score, reasoning').eq('org_id', orgId).gte('score', 50)
+      ? supabase.from('matches').select('opportunity_id, score, reasoning, pillars').eq('org_id', orgId).gte('score', 50)
       : Promise.resolve({ data: [] }),
     orgId
       ? supabase.from('org_profiles').select('data').eq('org_id', orgId).single()

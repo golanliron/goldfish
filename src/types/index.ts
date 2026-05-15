@@ -64,17 +64,24 @@ export interface OrgProfile {
 
 export interface OrgProfileData {
   name?: string;
-  registration_number?: string;
+  ngo_number?: string;           // official NGO registration number (immutable once set)
+  registration_number?: string;  // ח"פ / company reg number
   founded_year?: number;
   mission?: string;
   focus_areas?: string[];
+  target_populations?: string[];
   annual_budget?: number;
   employees_count?: number;
   beneficiaries_count?: number;
   regions?: string[];
+  cities_active?: string[];
   active_projects?: ProjectSummary[];
   existing_grants?: GrantSummary[];
   key_achievements?: string[];
+  certifications?: string[];
+  // People
+  ceo_name?: string;
+  board_members?: string[];
   // Contact info
   contact_name?: string;
   contact_email?: string;
@@ -117,6 +124,7 @@ export interface Opportunity {
   type: OpportunityType | null;
   funder: string | null;
   url: string | null;
+  source_url: string | null;       // Original URL as scraped — direct link to the grant page/PDF
   application_url: string | null;  // Direct link to the application form (more specific than url)
   eligibility: string | null;
   how_to_apply: string | null;

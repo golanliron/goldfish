@@ -444,7 +444,108 @@ measurement = איך מודדים (KPIs, Theory of Change, מדדי אימפקט
   return result;
 }
 
-// ===== 6. Format Readiness Report =====
+// ===== 6. Generate Grant Draft =====
+
+/**
+ * AI Orchestrator — polishes raw assembled blocks into a professional grant application.
+ * Uses assembleSubmission() as a data source, then sends everything to Gemini Pro
+ * to produce a cohesive, funder-ready Markdown document.
+ */
+export async function generateGrantDraft(
+  rfp: RfpStructure,
+  orgProfile: OrgProfileData,
+  orgBlocks: OrgBlock[],
+  rawText?: string
+): Promise<string> {
+  // Step 1: Get raw assembled answers
+  const assembled = assembleSubmission(rfp, orgBlocks);
+
+  // Step 2: Serialize org profile
+  const profileLines = [
+    orgProfile.name && `שם: ${orgProfile.name}`,
+    orgProfile.registration_number && `ע.ר. ${orgProfile.registration_number}`,
+    orgProfile.founded_year && `שנת ייסוד: ${orgProfile.founded_year}`,
+    orgProfile.mission && `ייעוד: ${orgProfile.mission}`,
+    orgProfile.annual_budget && `תקציב שנתי: ${orgProfile.annual_budget.toLocaleString()} ₪`,
+    orgProfile.beneficiaries_count && `מוטבים: ${orgProfile.beneficiaries_count.toLocaleString()}`,
+    orgProfile.employees_count && `עובדים: ${orgProfile.employees_count}`,
+    orgProfile.volunteers_count && `מתנדבים: ${orgProfile.volunteers_count}`,
+    orgProfile.focus_areas?.length && `תחומים: ${orgProfile.focus_areas.join(', ')}`,
+    orgProfile.target_populations?.length && `אוכלוסיות: ${orgProfile.target_populations.join(', ')}`,
+    orgProfile.regions?.length && `אזורים: ${orgProfile.regions.join(', ')}`,
+    orgProfile.key_achievements?.length && `הישגים: ${orgProfile.key_achievements.join('; ')}`,
+    orgProfile.partners?.length && `שותפים: ${orgProfile.partners.join(', ')}`,
+    orgProfile.theory_of_change && `תיאוריית שינוי: ${orgProfile.theory_of_change}`,
+    orgProfile.unique_model && `מודל ייחודי: ${orgProfile.unique_model}`,
+  ].filter(Boolean).join('\n');
+
+  // Step 3: Serialize RFP context
+  const rfpLines = [
+    `גוף מממן: ${rfp.funder_name}`,
+    `סוג גוף: ${rfp.funder_type}`,
+    `שם הקול קורא: ${rfp.rfp_title}`,
+    rfp.deadline && `דדליין: ${rfp.deadline}`,
+    rfp.max_amount && `סכום מקסימלי: ${rfp.max_amount.toLocaleString()} ₪`,
+    rfp.evaluation_criteria?.length && `קריטריוני הערכה: ${rfp.evaluation_criteria.map(c => `${c.criterion}${c.weight ? ` (${c.weight}%)` : ''}`).join(', ')}`,
+  ].filter(Boolean).join('\n');
+
+  // Step 4: Serialize assembled Q&A
+  const questionsBlock = assembled.map((a, i) => {
+    const limitNote = a.question.char_limit
+      ? `[הגבלה: ${a.question.char_limit} תווים]`
+      : a.question.word_limit
+      ? `[הגבלה: ${a.question.word_limit} מילים]`
+      : '[ללא הגבלה]';
+    const sectionNote = a.question.section ? `[${a.question.section}]` : '';
+    const answer = a.answer || '[נדרש להשלים — אין מידע זמין]';
+    return `שאלה ${i + 1} ${sectionNote} ${limitNote}:\n${a.question.question}\n\nטיוטת תשובה:\n${answer}`;
+  }).join('\n\n---\n\n');
+
+  // Step 5: Compose prompt
+  const prompt = `אתה כותב בקשות מענק בכיר עם 15 שנות ניסיון בגיוס משאבים לעמותות ישראליות. המשימה שלך: לשכלל את טיוטות התשובות הבאות לכדי הגשה מקצועית, מגובשת ומשכנעת.
+
+===== פרופיל הארגון =====
+${profileLines}
+
+===== פרטי הקול קורא =====
+${rfpLines}
+${rawText ? `\nטקסט מקורי של הקול קורא (עד 30,000 תווים):\n${rawText.slice(0, 30000)}` : ''}
+
+===== טיוטות תשובות =====
+${questionsBlock}
+
+===== הנחיות =====
+כתוב מסמך Markdown מלא ומוגמר עם המבנה הבא בדיוק:
+
+## תקציר מנהלים
+3-4 משפטים. פתח עם נתון השפעה קונקרטי. הצג את הארגון, הבעיה שהוא פותר, וההתאמה לקול הקורא. סיים עם הסכום המבוקש ואופן השימוש. טון: בטוח, שקט, מקצועי.
+
+## תשובות לשאלות
+לכל שאלה:
+### שאלה N: [כותרת קצרה של השאלה] [הגבלה אם יש]
+[תשובה מעובדת]
+
+כללים לתשובות:
+- ענה ישירות על השאלה — אל תעתיק את תוכן הבלוק גנרית
+- אם יש הגבלת תווים — הקפד עליה בדיוק. ספור לפני שאתה מגיש
+- אם יש "נדרש להשלים" בטיוטה — כתוב [להשלים: תיאור קצר של מה שחסר]
+- כתוב עברית, גוף ראשון רבים, פסקאות זורמות
+- אסור: מקפים, כוכביות, אימוג'י, רשימות מנוקדות
+- אסור: "אנו שמחים", "מהפכה", "פורץ דרך", "גישה הוליסטית", "אנחנו מאמינים"
+- פתח כל תשובה עם עובדה, נתון או תצפית — לא עם הצהרה
+
+## צעדים הבאים
+רשימה ממוספרת של:
+- שאלות שסומנו [להשלים] — ציין מה בדיוק חסר
+- בלוקי תוכן שלא נמצאו לשאלות מסוימות
+- מסמכים שיש לצרף לפי הקול קורא
+- כל הערה אחרת לצוות לפני ההגשה הסופית`;
+
+  // Step 6: Call Gemini Pro and return
+  return geminiPro(prompt, 12000);
+}
+
+// ===== 7. Format Readiness Report =====
 
 export function formatReadinessReport(result: ReadinessResult, rfpTitle: string): string {
   const lines: string[] = [];
