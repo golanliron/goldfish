@@ -273,29 +273,31 @@ def is_actual_grant_title(title):
 def scan_shatil():
     """Shatil — direct links to specific grant pages."""
     results = []
-    html = fetch("https://shatil.org.il/%D7%A7%D7%A8%D7%A0%D7%95%D7%AA-%D7%95%D7%A7%D7%95%D7%9C%D7%95%D7%AA-%D7%A7%D7%95%D7%A8%D7%90%D7%99%D7%9D/")
+    base_url = "https://shatil.org.il"
+    html = fetch(f"{base_url}/%D7%A7%D7%A8%D7%A0%D7%95%D7%AA-%D7%95%D7%A7%D7%95%D7%9C%D7%95%D7%AA-%D7%A7%D7%95%D7%A8%D7%90%D7%99%D7%9D/")
     if not html:
         return results
-
-    pattern = r'href="(https?://shatil\.org\.il/kol/[^"]+)"[^>]*>.*?<h[2-4][^>]*>([^<]+)</h'
-    matches = re.findall(pattern, html, re.DOTALL)
 
     date_pattern = r'href="(https?://shatil\.org\.il/kol/[^"]+)"[^>]*>.*?<p class="date__title[^"]*">([^<]*)</p>'
     date_matches = dict(re.findall(date_pattern, html, re.DOTALL))
 
+    pattern = r'<a[^>]*href="([^"]+)"[^>]*>(.*?)</a>'
     seen = set()
-    for link, title in matches:
-        title = clean_html(title)
-        if title and link not in seen and is_actual_grant_title(title) and is_valid_grant_url(link):
-            seen.add(link)
+    for link, title_html in re.findall(pattern, html, re.DOTALL):
+        title = clean_html(title_html).strip()
+        if not link.startswith("http"):
+            link = f"{base_url}{link}" if link.startswith("/") else f"{base_url}/{link}"
+        if not link or link in seen:
+            continue
+        seen.add(link)
+        if title and is_actual_grant_title(title) and is_valid_grant_url(link):
             deadline = extract_date(date_matches.get(link, ""))
-            results.append({
-                "title": title,
-                "url": link,
-                "deadline": deadline,
-                "source": "shatil",
-                "funder": "",
-            })
+            results.append({"title": title, "url": link, "deadline": deadline, "source": "shatil", "funder": ""})
+        elif is_valid_grant_url(link) and "shatil.org.il" in link:
+            for r in deep_scan_page(link, "shatil", "", base_url=base_url):
+                if r["url"] not in seen:
+                    seen.add(r["url"])
+                    results.append(r)
 
     print(f"  [shatil] {len(results)} items")
     return results
@@ -378,36 +380,27 @@ def scan_gov_il_kolkore():
 def scan_innovation_authority():
     """Innovation Authority — specific grant pages."""
     results = []
-    html = fetch("https://innovationisrael.org.il/kol-kore/")
+    base_url = "https://innovationisrael.org.il"
+    html = fetch(f"{base_url}/kol-kore/")
     if not html:
         return results
 
-    patterns = [
-        r'<a[^>]*href="(https://innovationisrael\.org\.il/kol-kore/[^"]+)"[^>]*>.*?<h[2-4][^>]*>([^<]+)</h',
-        r'href="(https://innovationisrael\.org\.il/kol-kore/[^"]+)"[^>]*title="([^"]+)"',
-    ]
-
-    matches = []
-    for pat in patterns:
-        matches = re.findall(pat, html, re.DOTALL)
-        if matches:
-            break
-
-    if not matches:
-        pattern = r'<a[^>]*href="(https://innovationisrael\.org\.il/kol-kore/[^"/]+/?)"[^>]*>(.*?)</a>'
-        matches = [(l, clean_html(t)) for l, t in re.findall(pattern, html, re.DOTALL) if clean_html(t)]
-
+    pattern = r'<a[^>]*href="([^"]+)"[^>]*>(.*?)</a>'
     seen = set()
-    for link, title in matches:
-        title = clean_html(title)
-        if title and link not in seen and is_actual_grant_title(title) and is_valid_grant_url(link):
-            seen.add(link)
-            results.append({
-                "title": title,
-                "url": link,
-                "source": "innovation_authority",
-                "funder": "רשות החדשנות",
-            })
+    for link, title_html in re.findall(pattern, html, re.DOTALL):
+        title = clean_html(title_html).strip()
+        if not link.startswith("http"):
+            link = f"{base_url}{link}" if link.startswith("/") else f"{base_url}/{link}"
+        if not link or link in seen:
+            continue
+        seen.add(link)
+        if title and is_actual_grant_title(title) and is_valid_grant_url(link):
+            results.append({"title": title, "url": link, "source": "innovation_authority", "funder": "רשות החדשנות"})
+        elif is_valid_grant_url(link) and "innovationisrael.org.il" in link:
+            for r in deep_scan_page(link, "innovation_authority", "רשות החדשנות", base_url=base_url):
+                if r["url"] not in seen:
+                    seen.add(r["url"])
+                    results.append(r)
 
     print(f"  [innovation] {len(results)} items")
     return results
@@ -1201,24 +1194,31 @@ def scan_data_gov_il():
 def scan_menomadin():
     """Menomadin Foundation — prizes and grants for social resilience."""
     results = []
+    base_url = "https://menomadinfoundation.com"
     urls = [
-        "https://menomadinfoundation.com/he/",
-        "https://menomadinfoundation.com/he/פרס-טייב-לחוסן-לאומי/",
+        f"{base_url}/he/",
+        f"{base_url}/he/פרס-טייב-לחוסן-לאומי/",
     ]
+    seen = set()
     for url in urls:
         html = fetch(url)
         if not html:
             continue
-        pattern = r'<a[^>]*href="(https://menomadinfoundation\.com/[^"]+)"[^>]*>(.*?)</a>'
-        for link, title in re.findall(pattern, html, re.DOTALL):
-            title = clean_html(title).strip()
+        pattern = r'<a[^>]*href="([^"]+)"[^>]*>(.*?)</a>'
+        for link, title_html in re.findall(pattern, html, re.DOTALL):
+            title = clean_html(title_html).strip()
+            if not link.startswith("http"):
+                link = f"{base_url}{link}" if link.startswith("/") else f"{base_url}/{link}"
+            if not link or link in seen:
+                continue
+            seen.add(link)
             if title and len(title) > 8 and is_actual_grant_title(title) and is_valid_grant_url(link):
-                results.append({
-                    "title": title[:300],
-                    "url": link,
-                    "source": "menomadin",
-                    "funder": "Menomadin Foundation",
-                })
+                results.append({"title": title[:300], "url": link, "source": "menomadin", "funder": "Menomadin Foundation"})
+            elif is_valid_grant_url(link) and "menomadinfoundation.com" in link:
+                for r in deep_scan_page(link, "menomadin", "Menomadin Foundation", base_url=base_url):
+                    if r["url"] not in seen:
+                        seen.add(r["url"])
+                        results.append(r)
     print(f"  [menomadin] {len(results)} items")
     return results
 
@@ -1226,22 +1226,26 @@ def scan_menomadin():
 def scan_missfixtheuniverse():
     """Miss Fix the Universe — grants for women's employment & financial independence."""
     results = []
-    html = fetch("https://missfixtheuniverse.com")
+    base_url = "https://missfixtheuniverse.com"
+    html = fetch(base_url)
     if not html:
         return results
-    keywords = r'(?:קול|מענק|הגש|מועמד|תמיכ)'
-    pattern = rf'<a[^>]*href="([^"]+)"[^>]*>([^<]*{keywords}[^<]*)</a>'
-    for link, title in re.findall(pattern, html, re.IGNORECASE):
-        title = clean_html(title).strip()
+    pattern = r'<a[^>]*href="([^"]+)"[^>]*>(.*?)</a>'
+    seen = set()
+    for link, title_html in re.findall(pattern, html, re.DOTALL):
+        title = clean_html(title_html).strip()
         if not link.startswith("http"):
-            link = f"https://missfixtheuniverse.com{link}"
+            link = f"{base_url}{link}" if link.startswith("/") else f"{base_url}/{link}"
+        if not link or link in seen:
+            continue
+        seen.add(link)
         if title and is_actual_grant_title(title) and is_valid_grant_url(link):
-            results.append({
-                "title": title[:300],
-                "url": link,
-                "source": "missfixtheuniverse",
-                "funder": "שדולת הנשים / בנק הפועלים — Miss Fix the Universe",
-            })
+            results.append({"title": title[:300], "url": link, "source": "missfixtheuniverse", "funder": "שדולת הנשים / בנק הפועלים — Miss Fix the Universe"})
+        elif is_valid_grant_url(link) and "missfixtheuniverse.com" in link:
+            for r in deep_scan_page(link, "missfixtheuniverse", "שדולת הנשים / בנק הפועלים — Miss Fix the Universe", base_url=base_url):
+                if r["url"] not in seen:
+                    seen.add(r["url"])
+                    results.append(r)
     print(f"  [missfixtheuniverse] {len(results)} items")
     return results
 
@@ -1252,34 +1256,35 @@ def scan_mr_gov_il():
     Filter out equipment, construction, consulting, and other non-grant items.
     """
     results = []
-    html = fetch("https://mr.gov.il/ilgstorefront/he/c/KOLOT-KORIM")
+    base_url = "https://mr.gov.il"
+    html = fetch(f"{base_url}/ilgstorefront/he/c/KOLOT-KORIM")
     if not html:
         print("  [mr_gov_il] fetch failed")
         return results
 
-    pattern = r'<a[^>]*href="(/ilgstorefront/he/p/[^"]+)"[^>]*>(.*?)</a>'
-    seen = set()
-    # Reject procurement/equipment/construction items
     reject_kw = ['אספקת', 'התקנת', 'שאיבה', 'קידוח', 'מיזוג', 'חשמל', 'ביטוח',
                  'תחבורה', 'הסעה', 'ניקיון', 'שמירה', 'כביסה', 'ריהוט', 'מזון',
                  'דלק', 'רכב', 'תקשורת', 'מחשוב', 'דפוס', 'פרסום', 'הסברה',
                  'כנסייה', 'פטנט', 'דוזימטריה', 'CUBESAT', 'ARTEMIS']
-    for link, title in re.findall(pattern, html, re.DOTALL):
-        title = clean_html(title).strip()
-        full_url = f"https://mr.gov.il{link}"
-        if not title or full_url in seen or len(title) < 8:
+
+    pattern = r'<a[^>]*href="([^"]+)"[^>]*>(.*?)</a>'
+    seen = set()
+    for link, title_html in re.findall(pattern, html, re.DOTALL):
+        title = clean_html(title_html).strip()
+        if not link.startswith("http"):
+            link = f"{base_url}{link}" if link.startswith("/") else f"{base_url}/{link}"
+        if not link or link in seen or len(title) < 8:
             continue
         if any(kw in title for kw in reject_kw):
             continue
-        if not is_actual_grant_title(title):
-            continue
-        seen.add(full_url)
-        results.append({
-            "title": title[:300],
-            "url": full_url,
-            "source": "mr_gov_il",
-            "funder": "מרכז רכש ממשלתי",
-        })
+        seen.add(link)
+        if title and is_actual_grant_title(title) and is_valid_grant_url(link):
+            results.append({"title": title[:300], "url": link, "source": "mr_gov_il", "funder": "מרכז רכש ממשלתי"})
+        elif is_valid_grant_url(link) and "mr.gov.il" in link:
+            for r in deep_scan_page(link, "mr_gov_il", "מרכז רכש ממשלתי", base_url=base_url):
+                if r["url"] not in seen:
+                    seen.add(r["url"])
+                    results.append(r)
     print(f"  [mr_gov_il] {len(results)} items")
     return results
 
@@ -1287,29 +1292,26 @@ def scan_mr_gov_il():
 def scan_keren_yozmot():
     """Keren Yozmot — annual call for educational innovation projects."""
     results = []
-    html = fetch("https://www.keren-yozmot.org.il/kolkore/")
+    base_url = "https://www.keren-yozmot.org.il"
+    html = fetch(f"{base_url}/kolkore/")
     if not html:
         return results
-    pattern = r'<a[^>]*href="(https?://(?:www\.)?keren-yozmot\.org\.il/[^"]+)"[^>]*>(.*?)</a>'
+    pattern = r'<a[^>]*href="([^"]+)"[^>]*>(.*?)</a>'
     seen = set()
-    for link, title in re.findall(pattern, html, re.DOTALL):
-        title = clean_html(title).strip()
-        if title and link not in seen and len(title) > 8 and is_actual_grant_title(title) and is_valid_grant_url(link):
-            seen.add(link)
-            results.append({
-                "title": title[:300],
-                "url": link,
-                "source": "keren_yozmot",
-                "funder": "הקרן לעידוד יוזמות חינוכיות / משרד החינוך",
-            })
-    # If no links found, add the main page as a grant
-    if not results:
-        results.append({
-            "title": "קול קורא — המקום ליזמות חינוכית",
-            "url": "https://www.keren-yozmot.org.il/kolkore/",
-            "source": "keren_yozmot",
-            "funder": "הקרן לעידוד יוזמות חינוכיות / משרד החינוך",
-        })
+    for link, title_html in re.findall(pattern, html, re.DOTALL):
+        title = clean_html(title_html).strip()
+        if not link.startswith("http"):
+            link = f"{base_url}{link}" if link.startswith("/") else f"{base_url}/{link}"
+        if not link or link in seen:
+            continue
+        seen.add(link)
+        if title and len(title) > 8 and is_actual_grant_title(title) and is_valid_grant_url(link):
+            results.append({"title": title[:300], "url": link, "source": "keren_yozmot", "funder": "הקרן לעידוד יוזמות חינוכיות / משרד החינוך"})
+        elif is_valid_grant_url(link) and "keren-yozmot.org.il" in link:
+            for r in deep_scan_page(link, "keren_yozmot", "הקרן לעידוד יוזמות חינוכיות / משרד החינוך", base_url=base_url):
+                if r["url"] not in seen:
+                    seen.add(r["url"])
+                    results.append(r)
     print(f"  [keren_yozmot] {len(results)} items")
     return results
 
