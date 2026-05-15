@@ -96,10 +96,11 @@ export const POST = withAuth(async (request, auth) => {
   }
 
   const markError = async (msg: string) => {
-    await supabase.from('documents').update({
+    const { error: markErr } = await supabase.from('documents').update({
       status: 'error',
       metadata: { error: msg.slice(0, 200) },
     }).eq('id', doc.id);
+    if (markErr) console.error('[process-upload] markError UPDATE failed:', markErr.message, markErr);
   };
 
   // Download file from Storage
@@ -134,20 +135,30 @@ export const POST = withAuth(async (request, auth) => {
   const orgName = orgData?.name || undefined;
 
   // Gemini classify + extract + summarize (each non-fatal)
+  const VALID_CATEGORIES = new Set(['identity', 'budget', 'project', 'grant', 'submission', 'other', 'impact', 'project_budget']);
   let category = 'other';
   let finalMetadata: Record<string, unknown> = {};
   let summary = `קובץ: ${doc.filename}`;
   try { category = await geminiClassify(parsedText); } catch { /* keep 'other' */ }
+  if (!VALID_CATEGORIES.has(category)) {
+    console.error('[process-upload] invalid category from Gemini:', category, '— falling back to other');
+    category = 'other';
+  }
   try { finalMetadata = await geminiExtract(parsedText, category, orgName); } catch { /* keep empty */ }
   try { summary = await geminiSummarize(parsedText); } catch { /* keep filename */ }
 
   // Update document to ready
-  await supabase.from('documents').update({
+  const { error: updateError } = await supabase.from('documents').update({
     category,
     parsed_text: parsedText.slice(0, 50000),
     metadata: { ...finalMetadata, summary },
     status: 'ready',
   }).eq('id', doc.id);
+
+  if (updateError) {
+    console.error('[process-upload] UPDATE to ready failed:', updateError.message, updateError);
+    return Response.json({ error: 'document update failed', detail: updateError.message }, { status: 500 });
+  }
 
   // Chunks + embeddings (non-fatal)
   try {
