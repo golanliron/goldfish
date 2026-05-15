@@ -11,7 +11,6 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { processStagingCalls, processExistingCalls } from '@/lib/ai/agent-pipeline';
-import { getAuthContext } from '@/lib/api-auth';
 
 export const maxDuration = 300; // 5 דקות — Vercel Pro
 
@@ -23,27 +22,18 @@ export async function POST(req: NextRequest) {
   const cronSecret = process.env.CRON_SECRET || '';
   const isCron = !!cronSecret && authHeader === `Bearer ${cronSecret}`;
 
-  let orgId: string | undefined;
-  let mode: string = body?.mode || 'staging';
+  const orgId: string | undefined = body?.org_id;
+  const mode: string = body?.mode || 'staging';
 
-  if (isCron) {
-    orgId = body?.org_id;
-  } else {
-    // UI path — try cookie session, then fall back to org_id from body
-    const auth = await getAuthContext(req);
-    orgId = body?.org_id || auth?.orgId;
-    if (!orgId) {
-      console.log('[process-grants] Unauthorized — no org_id in body and no session', {
-        hasBody: !!body,
-        bodyKeys: Object.keys(body),
-        hasSession: !!auth,
-        detail: 'send org_id in POST body or ensure cookies are included',
-      });
-      return NextResponse.json({
-        error: 'Unauthorized',
-        detail: 'No session found and no org_id in request body. Include { org_id } in POST body.',
-      }, { status: 401 });
-    }
+  // Security: require either a valid CRON_SECRET token OR an org_id in the body
+  if (!isCron && !orgId) {
+    console.log('[process-grants] Rejected — no org_id in body, no cron token', {
+      bodyKeys: Object.keys(body),
+    });
+    return NextResponse.json({
+      error: 'Unauthorized',
+      detail: 'Include { org_id } in POST body.',
+    }, { status: 401 });
   }
 
   console.log(`[process-grants] mode=${mode} org=${orgId} isCron=${isCron}`);
