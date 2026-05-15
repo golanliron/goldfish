@@ -189,7 +189,7 @@ export default function BusinessTab({ orgId, companyTypeFilter }: BusinessTabPro
     sendToChat(parts.join('\n'));
   };
 
-  const handleDraftEmail = (company: Company) => {
+  const handleDraftEmail = (company: Company, projectHint?: string) => {
     const typeLabel = TYPE_LABELS[company.company_type] || company.company_type;
     const parts = [
       `[חברה מהמאגר שלך — נסח מייל פנייה!]`,
@@ -200,7 +200,29 @@ export default function BusinessTab({ orgId, companyTypeFilter }: BusinessTabPro
     if (company.contact_name) parts.push(`נמען: ${company.contact_name}${company.contact_role ? ` (${company.contact_role})` : ''}`);
     if (company.contact_email) parts.push(`מייל: ${company.contact_email}`);
     if (company.website) parts.push(`אתר: ${company.website}`);
-    parts.push(`\nתנסח מייל פנייה חכם ל${company.name}. קח מילים מתוך מה שהם עושים וחבר לארגון שלנו. אל תבקש כסף. תציע חיבור, שותפות, או שיחה. המייל חייב להרגיש כתוב אישית, לא template.`);
+    if (company.relevance_score && company.relevance_score >= 15) parts.push(`ציון התאמה לארגון שלנו: ${company.relevance_score}%`);
+    if (projectHint) parts.push(`פרויקט רלוונטי לציין: ${projectHint}`);
+    const contactLine = company.contact_name
+      ? `פנה ל${company.contact_name}${company.contact_role ? ` (${company.contact_role})` : ''} בשם אישי.`
+      : 'אין איש קשר ידוע — נסח פנייה כללית אך חמה.';
+    parts.push(`\n${contactLine}\nתנסח מייל פנייה חכם ל${company.name}. פתח עם משהו ספציפי שראית שהם עושים (תחומי עניין שלהם). הסבר בקצרה מה הקשר לארגון שלנו ולמה זה match טבעי. אל תבקש כסף ישירות. הצע שיחת היכרות או שותפות. המייל חייב להרגיש אישי, לא template.`);
+    sendToChat(parts.join('\n'));
+  };
+
+  const handleFindContact = (company: Company) => {
+    const parts = [
+      `[חברה מהמאגר — אנא מצא איש קשר!]`,
+      `שם החברה: ${company.name}`,
+      `סוג: ${TYPE_LABELS[company.company_type] || company.company_type}`,
+    ];
+    if (company.description) parts.push(`תיאור: ${company.description}`);
+    if (company.website) parts.push(`אתר: ${company.website}`);
+    if (company.interests?.length) parts.push(`תחומי עניין: ${company.interests.join(', ')}`);
+    parts.push(`\nמשימה: חפש מי אחראי התרומות / מנהל CSR / אחראי אחריות חברתית בחברת ${company.name}. נסה:`);
+    parts.push(`1. אתר החברה (עמוד צוות / אחריות חברתית)`);
+    parts.push(`2. לינקדאין — חפש עובדים עם תפקיד "CSR" / "Corporate Social Responsibility" / "תרומות" / "קשרי קהילה"`);
+    parts.push(`3. כל מקור ציבורי אחר`);
+    parts.push(`\nתחזיר: שם מלא, תפקיד, מייל אם מצאת, קישור לפרופיל. אם לא מצאת — הצע דרך פנייה חלופית.`);
     sendToChat(parts.join('\n'));
   };
 
@@ -416,6 +438,7 @@ export default function BusinessTab({ orgId, companyTypeFilter }: BusinessTabPro
               onAskGoldfish={handleAskGoldfish}
               onScanFund={handleScanFund}
               onDraftEmail={handleDraftEmail}
+              onFindContact={handleFindContact}
             />
           ))
         )}
@@ -429,262 +452,292 @@ function CompanyCard({
   onAskGoldfish,
   onScanFund,
   onDraftEmail,
+  onFindContact,
 }: {
   company: Company;
   onAskGoldfish: (c: Company) => void;
   onScanFund: (c: Company) => void;
-  onDraftEmail: (c: Company) => void;
+  onDraftEmail: (c: Company, projectHint?: string) => void;
+  onFindContact: (c: Company) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [projectHint, setProjectHint] = useState('');
+  const [showEmailComposer, setShowEmailComposer] = useState(false);
   const typeColor = TYPE_COLORS[company.company_type] || 'bg-gray-100 text-gray-600';
   const typeLabel = TYPE_LABELS[company.company_type] || company.company_type;
 
+  const score = company.relevance_score;
+  const scoreColor = score != null && score >= 50
+    ? 'bg-green-500 text-white'
+    : score != null && score >= 30
+    ? 'bg-amber-500 text-white'
+    : 'bg-gray-400 text-white';
+
   return (
     <div
-      className="bg-surf rounded-xl border border-border p-3 hover:border-accent/30 transition-colors cursor-pointer"
+      className="bg-surf rounded-xl border border-border hover:border-accent/30 transition-colors cursor-pointer overflow-hidden"
       onClick={() => setExpanded(!expanded)}
     >
-      {/* Top row */}
-      <div className="flex items-start justify-between gap-2 mb-1">
-        <h4 className="text-[13px] font-semibold leading-snug flex-1 min-w-0 line-clamp-2">
-          {company.name}
-        </h4>
-        <div className="flex items-center gap-1 flex-shrink-0">
-          {company.relevance_score != null && company.relevance_score >= 15 && (
-            <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
-              company.relevance_score >= 50 ? 'bg-green-100 text-green-700' :
-              company.relevance_score >= 30 ? 'bg-amber-100 text-amber-700' :
-              'bg-gray-100 text-gray-600'
-            }`}>
-              {company.relevance_score}%
-            </span>
-          )}
-          <span
-            className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${typeColor}`}
-          >
-            {typeLabel}
-          </span>
-        </div>
-      </div>
-
-      {/* Contact name + role */}
-      {company.contact_name && (
-        <p className="text-[11px] text-muted mb-1">
-          {company.contact_name}
-          {company.contact_role ? ` · ${company.contact_role}` : ''}
-        </p>
+      {/* Relevance bar — colored top stripe if matched */}
+      {score != null && score >= 15 && (
+        <div
+          className={`h-1 w-full ${score >= 50 ? 'bg-green-500' : score >= 30 ? 'bg-amber-400' : 'bg-gray-300'}`}
+          style={{ width: `${Math.min(100, score)}%` }}
+        />
       )}
 
-      {/* Meta row */}
-      <div className="flex items-center gap-3 text-[10px] mb-1.5">
-        {!!company.donation_amount && company.donation_amount > 0 && (
-          <span className="text-green-600 font-medium">
-            {formatAmount(company.donation_amount)} ש&quot;ח תרומות
-          </span>
-        )}
-        {!!company.csr_rank && company.csr_rank > 0 && (
-          <span className="text-accent font-medium">CSR #{company.csr_rank}</span>
-        )}
-      </div>
-
-      {/* Interests tags */}
-      {company.interests && company.interests.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-1.5">
-          {company.interests.slice(0, 3).map((interest) => (
-            <span
-              key={interest}
-              className="text-[9px] px-1.5 py-0.5 bg-surf2 text-muted rounded-md"
-            >
-              {interest}
+      <div className="p-3">
+        {/* Top row */}
+        <div className="flex items-start justify-between gap-2 mb-1">
+          <h4 className="text-[13px] font-semibold leading-snug flex-1 min-w-0 line-clamp-2">
+            {company.name}
+          </h4>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {score != null && score >= 15 && (
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${scoreColor}`}>
+                {score}% התאמה
+              </span>
+            )}
+            <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${typeColor}`}>
+              {typeLabel}
             </span>
-          ))}
-          {company.interests.length > 3 && (
-            <span className="text-[9px] text-muted">
-              +{company.interests.length - 3}
-            </span>
-          )}
+          </div>
         </div>
-      )}
 
-      {/* Expanded details */}
-      {expanded && (
-        <div className="mt-2 pt-2 border-t border-border space-y-2 text-[11px]">
-          {company.description && (
-            <p className="text-text2 leading-relaxed">{company.description}</p>
-          )}
-
-          {/* Contact info */}
-          <div className="space-y-1">
+        {/* CSR contact module */}
+        {company.contact_name ? (
+          <div className="flex items-center gap-1.5 mb-1.5 bg-accent/5 border border-accent/15 rounded-lg px-2 py-1">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-accent flex-shrink-0">
+              <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+              <circle cx="12" cy="7" r="4" />
+            </svg>
+            <div className="flex-1 min-w-0">
+              <span className="text-[11px] font-medium text-text">{company.contact_name}</span>
+              {company.contact_role && (
+                <span className="text-[10px] text-muted"> · {company.contact_role}</span>
+              )}
+            </div>
             {company.contact_email && (
-              <div className="flex items-center gap-1.5">
-                <svg
-                  width="11"
-                  height="11"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  className="text-muted flex-shrink-0"
-                >
-                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-                  <polyline points="22,6 12,13 2,6" />
-                </svg>
-                <a
-                  href={`mailto:${company.contact_email}`}
-                  onClick={(e) => e.stopPropagation()}
-                  className="text-accent hover:underline truncate"
-                  dir="ltr"
-                >
-                  {company.contact_email}
-                </a>
-              </div>
-            )}
-            {company.contact_phone && (
-              <div className="flex items-center gap-1.5">
-                <svg
-                  width="11"
-                  height="11"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  className="text-muted flex-shrink-0"
-                >
-                  <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" />
-                </svg>
-                <a
-                  href={`tel:${company.contact_phone}`}
-                  onClick={(e) => e.stopPropagation()}
-                  className="text-accent hover:underline"
-                  dir="ltr"
-                >
-                  {company.contact_phone}
-                </a>
-              </div>
-            )}
-            {company.website && (
-              <div className="flex items-center gap-1.5">
-                <svg
-                  width="11"
-                  height="11"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  className="text-muted flex-shrink-0"
-                >
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="2" y1="12" x2="22" y2="12" />
-                  <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
-                </svg>
-                <a
-                  href={company.website.startsWith('http') ? company.website : `https://${company.website}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="text-accent hover:underline truncate"
-                  dir="ltr"
-                >
-                  {company.website.replace(/^https?:\/\//, '')}
-                </a>
-              </div>
+              <a
+                href={`mailto:${company.contact_email}`}
+                onClick={(e) => e.stopPropagation()}
+                className="text-[9px] text-accent hover:underline flex-shrink-0"
+                dir="ltr"
+              >
+                מייל
+              </a>
             )}
           </div>
+        ) : (
+          <button
+            onClick={(e) => { e.stopPropagation(); onFindContact(company); }}
+            className="flex items-center gap-1 mb-1.5 text-[10px] text-muted hover:text-accent transition-colors"
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            בקש מגולדפיש לאתר איש קשר CSR
+          </button>
+        )}
 
-          {/* All interests when expanded */}
-          {company.interests && company.interests.length > 3 && (
-            <div className="flex flex-wrap gap-1">
-              <span className="font-medium text-text ml-1">תחומי עניין:</span>
-              {company.interests.map((interest) => (
-                <span
-                  key={interest}
-                  className="text-[9px] px-1.5 py-0.5 bg-accent/10 text-accent rounded-md"
-                >
-                  {interest}
-                </span>
-              ))}
-            </div>
+        {/* Meta row */}
+        <div className="flex items-center gap-3 text-[10px] mb-1.5">
+          {!!company.donation_amount && company.donation_amount > 0 && (
+            <span className="text-green-600 font-medium">
+              {formatAmount(company.donation_amount)} ש&quot;ח תרומות
+            </span>
           )}
-
-          {/* Scan button — adapted for federations vs regular funds */}
-          {(company.company_type === 'fund' || company.company_type === 'public') && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onScanFund(company);
-              }}
-              className="w-full py-2 text-[11px] font-bold bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-1.5"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="11" cy="11" r="8" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                <line x1="11" y1="8" x2="11" y2="14" />
-                <line x1="8" y1="11" x2="14" y2="11" />
-              </svg>
-              {company.interests?.includes('federation')
-                ? 'נתח פדרציה — התאמה, תוכניות, דרך פנייה'
-                : 'סרוק קרן — תרומות, התאמה, דרך פנייה'}
-            </button>
+          {!!company.csr_rank && company.csr_rank > 0 && (
+            <span className="text-accent font-medium">CSR #{company.csr_rank}</span>
           )}
+        </div>
 
-          {/* Primary action — draft email for business, already covered by scan for funds */}
-          {company.company_type === 'business' && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onDraftEmail(company);
-              }}
-              className="w-full py-2 text-[11px] font-bold bg-accent text-white rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
-                <polyline points="22,6 12,13 2,6" />
-              </svg>
-              כתוב מייל פנייה
-            </button>
-          )}
+        {/* Interests tags */}
+        {company.interests && company.interests.length > 0 && (
+          <div className="flex flex-wrap gap-1 mb-1.5">
+            {company.interests.slice(0, 3).map((interest) => (
+              <span key={interest} className="text-[9px] px-1.5 py-0.5 bg-surf2 text-muted rounded-md">
+                {interest}
+              </span>
+            ))}
+            {company.interests.length > 3 && (
+              <span className="text-[9px] text-muted">+{company.interests.length - 3}</span>
+            )}
+          </div>
+        )}
 
-          {/* Direct contact buttons */}
-          {(company.contact_email || company.contact_phone) && (
-            <div className="flex gap-1.5">
+        {/* Expanded details */}
+        {expanded && (
+          <div className="mt-2 pt-2 border-t border-border space-y-2 text-[11px]" onClick={(e) => e.stopPropagation()}>
+            {company.description && (
+              <p className="text-text2 leading-relaxed">{company.description}</p>
+            )}
+
+            {/* Contact info */}
+            <div className="space-y-1">
               {company.contact_email && (
-                <a
-                  href={`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(company.contact_email)}&su=${encodeURIComponent(`פנייה מ${company.name}`)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="flex-1 py-1.5 text-[10px] font-medium text-center border border-border rounded-lg hover:bg-surf2 transition-colors flex items-center justify-center gap-1"
-                >
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <div className="flex items-center gap-1.5">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted flex-shrink-0">
                     <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
                     <polyline points="22,6 12,13 2,6" />
                   </svg>
-                  שלח דרך Gmail
-                </a>
+                  <a href={`mailto:${company.contact_email}`} className="text-accent hover:underline truncate" dir="ltr">
+                    {company.contact_email}
+                  </a>
+                </div>
               )}
-              {company.contact_phone && /^0?5\d/.test(company.contact_phone.replace(/[^0-9]/g, '')) && (
-                <a
-                  href={`https://wa.me/${company.contact_phone.replace(/[^0-9+]/g, '').replace(/^0/, '972')}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="flex-1 py-1.5 text-[10px] font-medium text-center border border-green-300 text-green-700 rounded-lg hover:bg-green-50 transition-colors flex items-center justify-center gap-1"
-                >
-                  <svg
-                    width="11"
-                    height="11"
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
-                  >
-                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" />
+              {company.contact_phone && (
+                <div className="flex items-center gap-1.5">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted flex-shrink-0">
+                    <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" />
                   </svg>
-                  וואטסאפ
-                </a>
+                  <a href={`tel:${company.contact_phone}`} className="text-accent hover:underline" dir="ltr">
+                    {company.contact_phone}
+                  </a>
+                </div>
+              )}
+              {company.website && (
+                <div className="flex items-center gap-1.5">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted flex-shrink-0">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="2" y1="12" x2="22" y2="12" />
+                    <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
+                  </svg>
+                  <a href={company.website.startsWith('http') ? company.website : `https://${company.website}`} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline truncate" dir="ltr">
+                    {company.website.replace(/^https?:\/\//, '')}
+                  </a>
+                </div>
               )}
             </div>
-          )}
-        </div>
-      )}
+
+            {/* All interests when expanded */}
+            {company.interests && company.interests.length > 3 && (
+              <div className="flex flex-wrap gap-1">
+                <span className="font-medium text-text ml-1">תחומי עניין:</span>
+                {company.interests.map((interest) => (
+                  <span key={interest} className="text-[9px] px-1.5 py-0.5 bg-accent/10 text-accent rounded-md">
+                    {interest}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Scan button — funds & public */}
+            {(company.company_type === 'fund' || company.company_type === 'public') && (
+              <button
+                onClick={() => onScanFund(company)}
+                className="w-full py-2 text-[11px] font-bold bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-1.5"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  <line x1="11" y1="8" x2="11" y2="14" />
+                  <line x1="8" y1="11" x2="14" y2="11" />
+                </svg>
+                {company.interests?.includes('federation')
+                  ? 'נתח פדרציה — התאמה, תוכניות, דרך פנייה'
+                  : 'סרוק קרן — תרומות, התאמה, דרך פנייה'}
+              </button>
+            )}
+
+            {/* Email composer for business */}
+            {company.company_type === 'business' && (
+              <div className="space-y-1.5">
+                {showEmailComposer ? (
+                  <div className="space-y-1.5 p-2 bg-surf2 rounded-lg border border-border">
+                    <p className="text-[10px] text-muted font-medium">פרויקט רלוונטי לציין במייל (אופציונלי):</p>
+                    <input
+                      type="text"
+                      placeholder="לדוגמה: מנטורינג לנוער בפריפריה"
+                      value={projectHint}
+                      onChange={(e) => setProjectHint(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-full px-2 py-1.5 text-[11px] bg-surf border border-border rounded-md focus:border-accent focus:outline-none"
+                    />
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={() => { onDraftEmail(company, projectHint); setShowEmailComposer(false); }}
+                        className="flex-1 py-1.5 text-[11px] font-bold bg-accent text-white rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-1"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                          <polyline points="22,6 12,13 2,6" />
+                        </svg>
+                        צור מייל
+                      </button>
+                      <button
+                        onClick={() => setShowEmailComposer(false)}
+                        className="px-3 py-1.5 text-[11px] text-muted border border-border rounded-lg hover:bg-surf transition-colors"
+                      >
+                        ביטול
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowEmailComposer(true)}
+                    className="w-full py-2 text-[11px] font-bold bg-accent text-white rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                      <polyline points="22,6 12,13 2,6" />
+                    </svg>
+                    כתוב מייל פנייה אישית
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* No contact — find contact button */}
+            {!company.contact_email && !company.contact_name && (
+              <button
+                onClick={() => onFindContact(company)}
+                className="w-full py-1.5 text-[11px] font-medium border border-dashed border-border text-muted rounded-lg hover:border-accent hover:text-accent transition-colors flex items-center justify-center gap-1.5"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                בקש מגולדפיש לאתר אחראי CSR
+              </button>
+            )}
+
+            {/* Direct contact buttons */}
+            {(company.contact_email || company.contact_phone) && (
+              <div className="flex gap-1.5">
+                {company.contact_email && (
+                  <a
+                    href={`https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(company.contact_email)}&su=${encodeURIComponent(`פנייה מ${company.name}`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 py-1.5 text-[10px] font-medium text-center border border-border rounded-lg hover:bg-surf2 transition-colors flex items-center justify-center gap-1"
+                  >
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                      <polyline points="22,6 12,13 2,6" />
+                    </svg>
+                    שלח דרך Gmail
+                  </a>
+                )}
+                {company.contact_phone && /^0?5\d/.test(company.contact_phone.replace(/[^0-9]/g, '')) && (
+                  <a
+                    href={`https://wa.me/${company.contact_phone.replace(/[^0-9+]/g, '').replace(/^0/, '972')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 py-1.5 text-[10px] font-medium text-center border border-green-300 text-green-700 rounded-lg hover:bg-green-50 transition-colors flex items-center justify-center gap-1"
+                  >
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" />
+                    </svg>
+                    וואטסאפ
+                  </a>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
