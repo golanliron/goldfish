@@ -16,21 +16,34 @@ export interface SectorSource {
   lang?: 'he' | 'en';
 }
 
-// Core sources — Israeli nonprofit sector knowledge
+// Core sources — Israeli nonprofit sector knowledge (updated 2026-05)
 export const SECTOR_SOURCES: SectorSource[] = [
-  // Knowledge centers
-  { name: 'שתיל — מרכז ידע', url: 'https://shatil.org.il/knowledge/', category: 'sector_knowledge', subcategory: 'nonprofit_management', lang: 'he' },
-  { name: 'גיידסטאר ישראל — מגמות', url: 'https://www.guidestar.org.il/home', category: 'sector_knowledge', subcategory: 'sector_data', lang: 'he' },
-  { name: 'מאלה — אחריות תאגידית', url: 'https://www.maala.org.il/', category: 'funder_intel', subcategory: 'csr', lang: 'he' },
-  { name: 'מרכז טאוב — מחקרי רווחה', url: 'https://www.taubcenter.org.il/', category: 'research', subcategory: 'social_policy', lang: 'he' },
-  { name: 'המרכז לחינוך אזרחי', url: 'https://www.civiced.org.il/', category: 'sector_knowledge', subcategory: 'education', lang: 'he' },
-  // Grant sources
-  { name: 'מנהל הסיוע לאזרחים — קרן רווחה', url: 'https://www.btl.gov.il/', category: 'grants_intel', subcategory: 'government', lang: 'he' },
-  { name: 'קרנות ומענקים — ארנה', url: 'https://arna.org.il/', category: 'grants_intel', subcategory: 'foundations', lang: 'he' },
-  // English sources
-  { name: 'Israel Philantropy Association', url: 'https://www.philanthropy.org.il/en/', category: 'sector_knowledge', subcategory: 'philanthropy', lang: 'en' },
-  { name: 'Stanford Social Innovation Review', url: 'https://ssir.org/articles/category/nonprofits_and_ngos', category: 'research', subcategory: 'international', lang: 'en' },
-  { name: 'Alliance Magazine — Israel', url: 'https://www.alliancemagazine.org/region/middle-east/', category: 'sector_knowledge', subcategory: 'philanthropy', lang: 'en' },
+  // Sector data & nonprofit registries
+  { name: 'גיידסטאר ישראל — נתוני עמותות', url: 'https://www.guidestar.org.il/home', category: 'sector_knowledge', subcategory: 'sector_data', lang: 'he' },
+  { name: 'רשם העמותות — נהלים וניהול תקין', url: 'https://www.gov.il/he/departments/topics/amutot/govil-landing-page', category: 'sector_knowledge', subcategory: 'regulation', lang: 'he' },
+
+  // Knowledge & research centers
+  { name: 'מרכז הידע למגזר השלישי', url: 'https://www.thirdsector.org.il', category: 'research', subcategory: 'nonprofit_management', lang: 'he' },
+  { name: 'מרכז טאוב — מחקרי רווחה וחברה', url: 'https://www.taubcenter.org.il/', category: 'research', subcategory: 'social_policy', lang: 'he' },
+  { name: 'ג\'וינט-אלכא — מנהיגות וממשל', url: 'https://elka.thejoint.org.il', category: 'sector_knowledge', subcategory: 'leadership', lang: 'he' },
+  { name: 'מנהיגות אזרחית — חדשות רגולציה', url: 'https://www.civil-leadership.org.il', category: 'sector_knowledge', subcategory: 'civil_society', lang: 'he' },
+
+  // Government & grants portals
+  { name: 'פורטל התמיכות הממשלתי — קולות קוראים', url: 'https://www.gov.il/he/service/support-portal', category: 'grants_intel', subcategory: 'government', lang: 'he' },
+  { name: 'ועדת העבודה והרווחה — הכנסת', url: 'https://www.knesset.gov.il/committees/heb/committee.aspx?c_id=22', category: 'grants_intel', subcategory: 'policy', lang: 'he' },
+
+  // Major funders
+  { name: 'קרן רש"י — פריפריה וחינוך', url: 'https://www.rashi.org.il', category: 'funder_intel', subcategory: 'foundations', lang: 'he' },
+  { name: 'יד הנדיב — מגמות פילנתרופיה', url: 'https://www.yadhanadiv.org.il', category: 'funder_intel', subcategory: 'philanthropy', lang: 'he' },
+  { name: 'מאלה — אחריות תאגידית CSR', url: 'https://www.maala.org.il/', category: 'funder_intel', subcategory: 'csr', lang: 'he' },
+
+  // News & analysis
+  { name: 'כלכליסט — מגזר שלישי וחברה', url: 'https://www.calcalist.co.il/local_news', category: 'news', subcategory: 'sector_news', lang: 'he' },
+  { name: 'שתיל — מרכז ידע ניהול עמותות', url: 'https://shatil.org.il/knowledge/', category: 'sector_knowledge', subcategory: 'nonprofit_management', lang: 'he' },
+
+  // English / international
+  { name: 'Israel Philanthropy Association', url: 'https://www.philanthropy.org.il/en/', category: 'sector_knowledge', subcategory: 'philanthropy', lang: 'en' },
+  { name: 'Stanford Social Innovation Review — Nonprofits', url: 'https://ssir.org/articles/category/nonprofits_and_ngos', category: 'research', subcategory: 'international', lang: 'en' },
 ];
 
 // ===== Fetch & Extract =====
@@ -90,7 +103,8 @@ async function extractKnowledge(
 
   const langNote = lang === 'he' ? 'הטקסט בעברית. ענה בעברית.' : 'Text is in English. Answer in English.';
 
-  const prompt = `אתה מומחה ניתוח תוכן למגזר השלישי. ${langNote}
+  const prompt = `אתה מומחה ניתוח תוכן למגזר השלישי בישראל. ${langNote}
+דגש: העדף מידע מהשנים 2023–2026. אם התוכן ישן יותר, ציין זאת ב-year_context.
 
 מקור: "${sourceName}"
 תוכן:
@@ -98,19 +112,19 @@ async function extractKnowledge(
 ${rawText.slice(0, 8000)}
 ---
 
-חלץ ידע שיעזור לכתיבת הגשות מענקים ולניתוח מגזר שלישי.
+חלץ ידע שיעזור לכתיבת הגשות מענקים ולניתוח מגזר שלישי ישראלי.
 ענה ONLY ב-JSON:
 {
   "title": "כותרת תמציתית (עד 80 תווים)",
-  "executive_summary": "תקציר מנהלים של 3-4 משפטים — מה חשוב כאן",
-  "key_insights": ["תובנה 1", "תובנה 2", "תובנה 3"],
-  "data_points": ["נתון/סטטיסטיקה 1 עם מקור", "נתון 2"],
+  "executive_summary": "תקציר מנהלים של 3-4 משפטים — מה חשוב כאן לארגון שמגייס משאבים",
+  "key_insights": ["תובנה 1 — ספציפית ופעילה", "תובנה 2", "תובנה 3"],
+  "data_points": ["נתון/סטטיסטיקה 1 עם שנה ומקור", "נתון 2"],
   "relevant_for_grants": true,
   "year_context": "2024"
 }
 
 אם התוכן לא רלוונטי למגזר שלישי/עמותות/גיוס משאבים — החזר null.
-אל תמציא נתונים.`;
+אל תמציא נתונים. רק מה שמופיע במפורש בטקסט.`;
 
   try {
     const raw = await geminiCall(prompt, 500, 0.1);
