@@ -4,9 +4,11 @@
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { webSearch, SearchResult } from './web-search';
-import { geminiCall } from './gemini';
+import { geminiCall, geminiSearchGrounding } from './gemini';
 
 // ===== Types =====
+
+export type SubmissionMethod = 'Email' | 'Portal' | 'LOI';
 
 export interface FunderResearchResult {
   found: boolean;
@@ -14,6 +16,8 @@ export interface FunderResearchResult {
   description?: string;
   website?: string;
   applicationUrl?: string;       // Direct link to the application form
+  submissionMethod?: SubmissionMethod;
+  contactEmail?: string;
   focusAreas?: string[];
   targetPopulations?: string[];
   regions?: string[];
@@ -130,6 +134,8 @@ async function extractFunderProfile(
   const prompt = `אתה מומחה לניתוח גופים פילנתרופיים. מהטקסט הבא, חלץ מידע על "${funderName}".
 חשוב במיוחד: חלץ "מי קיבל כסף בפועל" (past grantees) ו"כמה נתנו בפועל" מדוחות שנתיים — לא מה שהגוף אומר על עצמו.
 חשוב מאוד: חלץ application_url — כתובת ישירה לדף ההגשה/טופס הבקשה (לא עמוד הבית של הקרן, אלא הלינק הספציפי שבו מגישים בקשות).
+חלץ גם submission_method: אחד מ- "Email" / "Portal" / "LOI" — על סמך איך מגישים (מייל ישיר = Email, טופס מקוון/מערכת = Portal, מכתב כוונות = LOI).
+חלץ גם contact_email — כתובת המייל הראשית לפניות/הגשות של הקרן.
 
 טקסט מהאינטרנט:
 ---
@@ -141,6 +147,8 @@ ${rawText}
   "description": "תיאור קצר של הגוף (2-3 משפטים)",
   "website": "כתובת האתר הראשית",
   "application_url": "כתובת ישירה לדף ההגשה/טופס — לא עמוד הבית. null אם לא נמצא.",
+  "submission_method": "Email|Portal|LOI|null",
+  "contact_email": "מייל ישיר לפניות/הגשות, null אם לא נמצא",
   "focus_areas": ["תחום1", "תחום2"],
   "target_populations": ["אוכלוסייה1", "אוכלוסייה2"],
   "regions": ["ישראל", "ארה\"ב"],
@@ -170,10 +178,37 @@ ${rawText}
       }
     }
 
+    // If no application_url found yet — try Gemini Grounding on the website
+    if (!applicationUrl && parsed.website) {
+      try {
+        const groundingText = await geminiSearchGrounding(
+          `"${funderName}" apply grant application form submit proposal online portal`
+        );
+        if (groundingText) {
+          const urlMatch = groundingText.match(/https?:\/\/[^\s"'<>]+(?:apply|grant|application|submit|proposal|portal)[^\s"'<>]*/i);
+          if (urlMatch) applicationUrl = urlMatch[0];
+        }
+      } catch { /* non-fatal */ }
+    }
+
+    // Parse submission_method
+    const rawMethod = (parsed.submission_method || '').toString().trim();
+    const submissionMethod: SubmissionMethod | undefined =
+      rawMethod === 'Email' ? 'Email' :
+      rawMethod === 'Portal' ? 'Portal' :
+      rawMethod === 'LOI' ? 'LOI' : undefined;
+
+    // Validate contact_email
+    const contactEmail: string | undefined =
+      parsed.contact_email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(parsed.contact_email)
+        ? parsed.contact_email : undefined;
+
     return {
       description: parsed.description || undefined,
       website: parsed.website || undefined,
       applicationUrl,
+      submissionMethod,
+      contactEmail,
       focusAreas: parsed.focus_areas?.filter(Boolean) || [],
       targetPopulations: parsed.target_populations?.filter(Boolean) || [],
       regions: parsed.regions?.filter(Boolean) || [],
@@ -287,7 +322,7 @@ async function saveFunderToDb(
     });
   }
 
-  // 2. Save to funder_intelligence table (including application_url for cross-org reuse)
+  // 2. Save to funder_intelligence table (including application_url, submission_method, contact_email)
   await supabase.from('funder_intelligence').upsert({
     funder_name: funderName,
     funder_style: 'foundation',
@@ -298,6 +333,8 @@ async function saveFunderToDb(
     typical_amount_max: profile.typicalAmountMax || null,
     cycle_notes: profile.deadlineNotes || null,
     application_url: profile.applicationUrl || null,
+    submission_method: profile.submissionMethod || null,
+    contact_email: profile.contactEmail || null,
     recurring_months: [],
     total_submissions: 0,
     total_approved: 0,
@@ -381,6 +418,8 @@ export function formatFunderResearch(research: FunderResearchResult): string {
   if (research.description) lines.push(`תיאור: ${research.description}`);
   if (research.website) lines.push(`אתר: ${research.website}`);
   if (research.applicationUrl) lines.push(`קישור ישיר להגשה: ${research.applicationUrl}`);
+  if (research.submissionMethod) lines.push(`שיטת הגשה: ${research.submissionMethod}`);
+  if (research.contactEmail) lines.push(`מייל פניות: ${research.contactEmail}`);
   if (research.focusAreas?.length) lines.push(`תחומים: ${research.focusAreas.join(', ')}`);
   if (research.targetPopulations?.length) lines.push(`אוכלוסיות: ${research.targetPopulations.join(', ')}`);
   if (research.regions?.length) lines.push(`אזורים: ${research.regions.join(', ')}`);

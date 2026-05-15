@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { geminiOcrPdf } from '@/lib/ai/gemini';
+import { analyzeGrantMatch } from '@/lib/ai/funder-auto-research';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -616,12 +617,32 @@ async function scanAllSources() {
           : regexTags.regions.length > 0 ? regexTags.regions : (item.regions || []);
         const alsoRelevantFor = aiTags?.also_relevant_for || [];
 
-        const { error: insertErr } = await supabase.from('opportunities').insert({
+        // Lookup funder_id from funder_intelligence (cross-tab link)
+        let funderId: string | null = null;
+        let funderAppUrl: string | null = null;
+        let funderSubmissionMethod: string | null = null;
+        if (item.funder) {
+          const { data: fi } = await supabase
+            .from('funder_intelligence')
+            .select('id, application_url, submission_method')
+            .ilike('funder_name', `%${item.funder}%`)
+            .limit(1)
+            .single();
+          if (fi) {
+            funderId = fi.id;
+            funderAppUrl = fi.application_url || null;
+            funderSubmissionMethod = fi.submission_method || null;
+          }
+        }
+
+        const { data: inserted, error: insertErr } = await supabase.from('opportunities').insert({
           title: item.title.slice(0, 300),
           description: item.description?.slice(0, 1000) || null,
           funder: item.funder || null,
+          funder_id: funderId,
           deadline: item.deadline || null,
           url: item.url || null,
+          application_url: funderAppUrl,
           categories: finalCategories,
           target_populations: finalPopulations,
           regions: finalRegions,
@@ -631,12 +652,41 @@ async function scanAllSources() {
           type: 'grant',
           contact_info: contactInfo,
           full_content: fullContent,
-        });
+          how_to_apply: funderSubmissionMethod ? `שיטת הגשה: ${funderSubmissionMethod}` : null,
+        }).select('id').single();
 
-        if (!insertErr) {
+        if (!insertErr && inserted) {
           totalNew++;
           existingTitles.add(titlePrefix);
           if (item.url) existingUrls.add(item.url);
+
+          // If funder_intelligence exists — auto-create funder_intelligence entry for new funder
+          if (!funderId && item.funder) {
+            await supabase.from('funder_intelligence').upsert({
+              funder_name: item.funder,
+              funder_style: 'foundation',
+              preferred_domains: finalCategories,
+              preferred_populations: finalPopulations,
+              preferred_regions: finalRegions,
+              recurring_months: [],
+              total_submissions: 0,
+              total_approved: 0,
+              total_rejected: 0,
+              updated_at: new Date().toISOString(),
+            }, { onConflict: 'funder_name' });
+
+            // Link the new opportunity to the funder_intelligence record
+            const { data: newFi } = await supabase
+              .from('funder_intelligence')
+              .select('id')
+              .eq('funder_name', item.funder)
+              .single();
+            if (newFi) {
+              await supabase.from('opportunities').update({ funder_id: newFi.id }).eq('id', inserted.id);
+            }
+          }
+        } else if (insertErr) {
+          // noop — skip duplicate
         }
       }
     } catch (e) {

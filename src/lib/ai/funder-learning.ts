@@ -90,7 +90,7 @@ export async function buildFunderProfiles(): Promise<{ created: number; updated:
   // Get all unique funders with their grant data
   const { data: opps } = await supabase
     .from('opportunities')
-    .select('funder, categories, target_populations, regions, amount_min, amount_max, deadline, open_date, type')
+    .select('funder, categories, target_populations, regions, amount_min, amount_max, deadline, open_date, type, contact_info, how_to_apply')
     .not('funder', 'is', null);
 
   if (!opps || opps.length === 0) return { created: 0, updated: 0 };
@@ -115,6 +115,8 @@ export async function buildFunderProfiles(): Promise<{ created: number; updated:
     const allRegions = new Set<string>();
     const amounts: { min: number; max: number }[] = [];
     const months = new Set<number>();
+    let detectedEmail: string | null = null;
+    let detectedSubmissionMethod: 'Email' | 'Portal' | 'LOI' | null = null;
 
     for (const g of grants) {
       for (const c of (g.categories || [])) allDomains.add(c);
@@ -128,6 +130,18 @@ export async function buildFunderProfiles(): Promise<{ created: number; updated:
       if (g.open_date) {
         const month = new Date(g.open_date).getMonth() + 1;
         months.add(month);
+      }
+      // Extract contact email from contact_info
+      if (!detectedEmail && g.contact_info) {
+        const emailMatch = g.contact_info.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
+        if (emailMatch) detectedEmail = emailMatch[0];
+      }
+      // Detect submission method from how_to_apply
+      if (!detectedSubmissionMethod && g.how_to_apply) {
+        const h = g.how_to_apply.toLowerCase();
+        if (/portal|מערכת|טופס מקוון|online|system/.test(h)) detectedSubmissionMethod = 'Portal';
+        else if (/loi|letter of intent|מכתב כוונות/.test(h)) detectedSubmissionMethod = 'LOI';
+        else if (/email|מייל|דוא"ל/.test(h)) detectedSubmissionMethod = 'Email';
       }
     }
 
@@ -150,7 +164,7 @@ export async function buildFunderProfiles(): Promise<{ created: number; updated:
       .limit(1)
       .single();
 
-    const profile = {
+    const profile: Record<string, unknown> = {
       funder_name: funderName,
       company_id: matchedCompany?.id || null,
       preferred_domains: [...allDomains],
@@ -162,6 +176,9 @@ export async function buildFunderProfiles(): Promise<{ created: number; updated:
       funder_style: style,
       updated_at: new Date().toISOString(),
     };
+    // Only set contact_email and submission_method if discovered (don't overwrite existing)
+    if (detectedEmail) profile.contact_email = detectedEmail;
+    if (detectedSubmissionMethod) profile.submission_method = detectedSubmissionMethod;
 
     const { error } = await supabase
       .from('funder_intelligence')
