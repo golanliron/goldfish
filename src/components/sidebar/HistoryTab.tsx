@@ -28,7 +28,8 @@ interface SubmissionItem {
   requested_amount: number | null;
   funder_feedback: string | null;
   lessons_learned: string | null;
-  opportunity: { title: string; funder: string | null } | null;
+  content: Record<string, unknown> | null;
+  opportunity: { title: string; funder: string | null; contact_info: string | null } | null;
 }
 
 export default function HistoryTab({ stage, orgId }: HistoryTabProps) {
@@ -52,7 +53,7 @@ export default function HistoryTab({ stage, orgId }: HistoryTabProps) {
         .limit(20),
       supabase
         .from('submissions')
-        .select('id, status, version, created_at, submitted_at, outcome, approved_amount, requested_amount, funder_feedback, lessons_learned, opportunity:opportunities(title, funder)')
+        .select('id, status, version, created_at, submitted_at, outcome, approved_amount, requested_amount, funder_feedback, lessons_learned, content, opportunity:opportunities(title, funder, contact_info)')
         .eq('org_id', orgId)
         .order('created_at', { ascending: false })
         .limit(20),
@@ -68,6 +69,22 @@ export default function HistoryTab({ stage, orgId }: HistoryTabProps) {
     const firstUser = conv.messages?.find(m => m.role === 'user');
     if (firstUser) return firstUser.content.slice(0, 60) + (firstUser.content.length > 60 ? '...' : '');
     return 'שיחה חדשה';
+  };
+
+  const buildMailto = (sub: SubmissionItem) => {
+    const contact = sub.opportunity?.contact_info || '';
+    const emailMatch = contact.match(/[\w.-]+@[\w.-]+\.\w+/);
+    const to = emailMatch ? emailMatch[0] : '';
+    const subject = encodeURIComponent(`הגשה: ${sub.opportunity?.title || 'בקשת מענק'}`);
+    const bodyParts: string[] = [];
+    if (sub.content) {
+      const c = sub.content as Record<string, unknown>;
+      if (typeof c.body === 'string') bodyParts.push(c.body);
+      else if (typeof c.text === 'string') bodyParts.push(c.text);
+      else bodyParts.push(JSON.stringify(c, null, 2));
+    }
+    const body = encodeURIComponent(bodyParts.join('\n\n') || 'טקסט ההגשה');
+    return `mailto:${to}?subject=${subject}&body=${body}`;
   };
 
   const getTimeAgo = (dateStr: string) => {
@@ -331,6 +348,19 @@ export default function HistoryTab({ stage, orgId }: HistoryTabProps) {
                 {savingOutcome ? 'שומר...' : 'שמירה'}
               </button>
             </div>
+
+            {editingSub.content && (
+              <a
+                href={buildMailto(editingSub)}
+                className="flex items-center justify-center gap-1.5 w-full text-xs py-1.5 rounded-lg border border-surf2 hover:bg-surf2 transition-colors"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                  <polyline points="22,6 12,12 2,6" />
+                </svg>
+                שלח במייל
+              </a>
+            )}
           </div>
         </div>
       )}
