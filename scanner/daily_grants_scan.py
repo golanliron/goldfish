@@ -87,7 +87,7 @@ def extract_date(text):
     return None
 
 
-def fetch(url, timeout=30):
+def fetch(url, timeout=12):
     """Fetch URL with browser headers, SSL bypass."""
     try:
         resp = requests.get(url, headers=HEADERS_BROWSER, timeout=timeout, verify=False)
@@ -601,7 +601,7 @@ def deep_scan_page(url, source_name, funder_name, base_url=None, depth=1, max_de
         else:
             # Visit the sub-page
             deep_count += 1
-            sub_html = fetch(full_url, timeout=15)
+            sub_html = fetch(full_url, timeout=8)
             if not sub_html:
                 continue
 
@@ -650,7 +650,7 @@ def deep_scan_page(url, source_name, funder_name, base_url=None, depth=1, max_de
                     else:
                         # Last resort: fetch and check h1
                         deep_count += 1
-                        leaf_html = fetch(sub_full, timeout=15)
+                        leaf_html = fetch(sub_full, timeout=8)
                         if not leaf_html:
                             continue
                         leaf_h1 = re.search(r'<h1[^>]*>(.*?)</h1>', leaf_html, re.DOTALL)
