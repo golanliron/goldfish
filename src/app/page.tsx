@@ -249,7 +249,7 @@ export default function LandingPage() {
             <a href="#whatsapp" className="text-sm text-text2 hover:text-accent transition-colors">גם בוואטסאפ שלך</a>
             <a href="#pricing" className="text-sm text-text2 hover:text-accent transition-colors">מחירים</a>
             <button
-              onClick={() => router.push('/signup')}
+              onClick={() => router.push('/login')}
               className="px-5 py-2 bg-accent text-white text-sm font-medium rounded-xl hover:bg-accent-hover transition-all hover:scale-105 active:scale-95"
             >
               כניסה למערכת
@@ -280,7 +280,7 @@ export default function LandingPage() {
             <a href="#whatsapp" onClick={() => setMobileMenu(false)} className="block text-sm font-medium py-2 px-3 rounded-xl hover:bg-surf2 transition-colors">גם בוואטסאפ שלך</a>
             <a href="#pricing" onClick={() => setMobileMenu(false)} className="block text-sm font-medium py-2 px-3 rounded-xl hover:bg-surf2 transition-colors">מחירים</a>
             <button
-              onClick={() => { setMobileMenu(false); router.push('/signup'); }}
+              onClick={() => { setMobileMenu(false); router.push('/login'); }}
               className="w-full py-2.5 bg-accent text-white text-sm font-medium rounded-xl hover:bg-accent-hover transition-all"
             >
               כניסה למערכת
@@ -993,7 +993,7 @@ export default function LandingPage() {
             <span className="text-xs text-muted">סורק. מתאים. כותב הגשות.</span>
           </div>
           <button
-            onClick={() => router.push('/signup')}
+            onClick={() => router.push('/login')}
             className="px-6 py-2.5 bg-accent text-white text-sm font-semibold rounded-xl hover:bg-accent-hover transition-all hover:scale-105 active:scale-95 whitespace-nowrap shadow-lg shadow-accent/20"
           >
             כניסה למערכת
