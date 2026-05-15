@@ -3,6 +3,8 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { withAuth } from '@/lib/api-auth';
 import pdfParse from 'pdf-parse';
 import { geminiAnalyzeDocument, geminiDeepAnalysis, geminiOcrPdf, geminiParseXlsx } from '@/lib/ai/gemini';
+import { embedBatch } from '@/lib/ai/rag';
+import { stripHtml, chunkText } from '@/lib/utils/text';
 
 // ===== PDF Parsing =====
 
@@ -36,6 +38,45 @@ async function parseDocx(buffer: Buffer): Promise<string> {
   return result.value || '';
 }
 
+// ===== ZIP Parsing =====
+
+async function parseZip(buffer: Buffer): Promise<string> {
+  try {
+    const JSZip = (await import('jszip')).default;
+    const zip = await JSZip.loadAsync(buffer);
+    const texts: string[] = [];
+
+    for (const [filename, file] of Object.entries(zip.files)) {
+      if (file.dir) continue;
+      const ext = filename.split('.').pop()?.toLowerCase();
+      if (!ext || ['png', 'jpg', 'jpeg', 'gif', 'svg', 'ico', 'mp4', 'mp3', 'zip'].includes(ext)) continue;
+
+      try {
+        const fileBuffer = Buffer.from(await file.async('arraybuffer'));
+
+        if (ext === 'pdf') {
+          const text = await parsePDF(fileBuffer);
+          if (text.length > 20) texts.push(`=== ${filename} ===\n${text}`);
+        } else if (ext === 'docx' || ext === 'doc') {
+          const text = await parseDocx(fileBuffer);
+          if (text.length > 20) texts.push(`=== ${filename} ===\n${text}`);
+        } else if (ext === 'xlsx' || ext === 'xls') {
+          const text = await parseXlsx(fileBuffer);
+          if (text.length > 20) texts.push(`=== ${filename} ===\n${text}`);
+        } else if (['txt', 'md', 'csv', 'html', 'htm'].includes(ext)) {
+          const text = fileBuffer.toString('utf-8');
+          if (text.length > 20) texts.push(`=== ${filename} ===\n${text.slice(0, 10000)}`);
+        }
+      } catch { /* skip unreadable file */ }
+    }
+
+    return texts.join('\n\n').slice(0, 50000);
+  } catch (e) {
+    console.error('ZIP parse error:', e);
+    return '';
+  }
+}
+
 // ===== XLSX Parsing =====
 
 async function parseXlsx(buffer: Buffer): Promise<string> {
@@ -49,22 +90,6 @@ async function parseXlsx(buffer: Buffer): Promise<string> {
 }
 
 // ===== URL Fetching =====
-
-function stripHtml(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<nav[\s\S]*?<\/nav>/gi, '')
-    .replace(/<footer[\s\S]*?<\/footer>/gi, '')
-    .replace(/<header[\s\S]*?<\/header>/gi, '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
 
 function isLinkedInUrl(url: string): boolean {
   return /linkedin\.com\/(company|in|posts|pulse|feed)/i.test(url);
@@ -213,8 +238,16 @@ async function fetchUrlSmart(url: string): Promise<{ text: string; source: strin
       return { text: '', source: 'xlsx_parse_failed' };
     }
 
+    // ZIP — extract and parse contents
+    if (contentType.includes('zip') || contentType.includes('compressed') || url.match(/\.zip(\?|$|#)/i)) {
+      const buffer = Buffer.from(await res.arrayBuffer());
+      const text = await parseZip(buffer);
+      if (text) return { text, source: 'zip_url' };
+      return { text: '', source: 'zip_empty' };
+    }
+
     // Skip other binary types
-    if (contentType.match(/image|video|audio|octet-stream|zip/)) {
+    if (contentType.match(/image|video|audio|octet-stream/)) {
       return { text: '', source: 'binary_unsupported' };
     }
 
@@ -254,25 +287,6 @@ async function classifyAndExtract(text: string, orgName?: string): Promise<{
   return geminiAnalyzeDocument(text, orgName);
 }
 
-// ===== Chunking =====
-
-function chunkText(text: string, maxChars: number = 2000): string[] {
-  const paragraphs = text.split(/\n\n+/);
-  const chunks: string[] = [];
-  let current = '';
-
-  for (const para of paragraphs) {
-    if ((current + para).length > maxChars && current.length > 0) {
-      chunks.push(current.trim());
-      current = para;
-    } else {
-      current += (current ? '\n\n' : '') + para;
-    }
-  }
-  if (current.trim()) chunks.push(current.trim());
-  return chunks.length > 0 ? chunks : [text.slice(0, maxChars)];
-}
-
 // ===== Save to RAG =====
 
 async function saveToRag(
@@ -306,11 +320,19 @@ async function saveToRag(
 
   if (doc) {
     const chunks = chunkText(text);
-    for (const chunk of chunks) {
+    // Embed all chunks in batch for RAG search
+    let embeddings: number[][] = [];
+    try {
+      embeddings = await embedBatch(chunks);
+    } catch (e) {
+      console.error('[smart-reader] embedBatch failed, saving chunks without vectors:', e);
+    }
+    for (let i = 0; i < chunks.length; i++) {
       await supabase.from('document_chunks').insert({
         document_id: doc.id,
         org_id: orgId,
-        content: chunk,
+        content: chunks[i],
+        embedding: embeddings[i] ?? null,
         metadata: { category, source: `smart_reader_${source}`, filename },
       });
     }
@@ -438,6 +460,10 @@ export const POST = withAuth(async (request, auth) => {
       case 'xls':
         parsedText = await parseXlsx(buffer);
         fileType = 'xlsx';
+        break;
+      case 'zip':
+        parsedText = await parseZip(buffer);
+        fileType = 'zip';
         break;
       case 'html':
       case 'htm':

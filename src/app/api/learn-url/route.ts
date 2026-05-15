@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { withAuth } from '@/lib/api-auth';
 import { geminiClassify, geminiExtract, geminiSummarize } from '@/lib/ai/gemini';
+import { embedBatch } from '@/lib/ai/rag';
+import { stripHtml, chunkText, isGenericOrgName } from '@/lib/utils/text';
 
 // ===== URL Type Detection =====
 
@@ -16,25 +18,6 @@ function detectUrlType(url: string): UrlType {
   if (u.includes('instagram.com') || u.includes('instagr.am')) return 'instagram';
   if (u.includes('linkedin.com')) return 'linkedin';
   return 'website';
-}
-
-// ===== HTML Stripping =====
-
-function stripHtml(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<nav[\s\S]*?<\/nav>/gi, '')
-    .replace(/<footer[\s\S]*?<\/footer>/gi, '')
-    .replace(/<header[\s\S]*?<\/header>/gi, '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&#\d+;/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
 }
 
 // ===== Extract OG/Meta tags for social pages =====
@@ -98,24 +81,7 @@ async function smartFetch(url: string): Promise<{ html: string; ok: boolean; sta
     }
   } catch { /* try next */ }
 
-  // Fallback 2: Google Cache
-  try {
-    const cacheController = new AbortController();
-    const cacheTimeout = setTimeout(() => cacheController.abort(), 15000);
-    const cacheRes = await fetch(`https://webcache.googleusercontent.com/search?q=cache:${encodeURIComponent(url)}`, {
-      signal: cacheController.signal,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-      },
-    });
-    clearTimeout(cacheTimeout);
-    if (cacheRes.ok) {
-      const html = await cacheRes.text();
-      if (html.length > 200) return { html, ok: true, status: 200 };
-    }
-  } catch { /* try next */ }
-
-  // Fallback 3: Wayback Machine (latest snapshot)
+  // Fallback 2: Wayback Machine (latest snapshot)
   try {
     const wbController = new AbortController();
     const wbTimeout = setTimeout(() => wbController.abort(), 15000);
@@ -140,24 +106,6 @@ async function smartFetch(url: string): Promise<{ html: string; ok: boolean; sta
   } catch { /* all failed */ }
 
   return { html: '', ok: false, status: 0 };
-}
-
-// ===== Chunking =====
-
-function chunkText(text: string, maxChars: number = 2000): string[] {
-  const paragraphs = text.split(/\n\n+/);
-  const chunks: string[] = [];
-  let current = '';
-  for (const para of paragraphs) {
-    if ((current + para).length > maxChars && current.length > 0) {
-      chunks.push(current.trim());
-      current = para;
-    } else {
-      current += (current ? '\n\n' : '') + para;
-    }
-  }
-  if (current.trim()) chunks.push(current.trim());
-  return chunks.length > 0 ? chunks : [text.slice(0, maxChars)];
 }
 
 // ===== Google Drive Folder Handler =====
@@ -287,11 +235,18 @@ async function handleDriveFolder(
 
             if (tempDoc.data) {
               const chunks = chunkText(parsedText);
-              for (const chunk of chunks) {
+              let driveEmbeddings: number[][] = [];
+              try {
+                driveEmbeddings = await embedBatch(chunks);
+              } catch (e) {
+                console.error('[learn-url] Drive embedBatch failed:', e);
+              }
+              for (let i = 0; i < chunks.length; i++) {
                 await supabase.from('document_chunks').insert({
                   document_id: tempDoc.data.id,
                   org_id: orgId,
-                  content: chunk,
+                  content: chunks[i],
+                  embedding: driveEmbeddings[i] ?? null,
                   metadata: { source: 'drive', filename: file.name },
                 });
               }
@@ -436,7 +391,7 @@ export const POST = withAuth(async (request, auth) => {
 
     // ===== Route by URL type =====
     if (urlType === 'drive_folder' || urlType === 'drive_file') {
-      // Delegate to the dedicated Drive connect API which downloads and parses each file
+      // Delegate to drive/connect — handles both folders and single files
       const origin = request.nextUrl.origin;
       const driveRes = await fetch(`${origin}/api/drive/connect`, {
         method: 'POST',
@@ -574,10 +529,13 @@ export const POST = withAuth(async (request, auth) => {
     // ===== Content ownership check =====
     // If this URL is about a different organization (funder/partner), save as 'grant'
     // and don't pollute the org profile with their data
+    // Check if this URL belongs to the org itself (not a funder/partner page)
+    // Only use name-based matching if the org name is specific enough (not generic like "מרכז")
+    const orgNameIsSpecific = orgName && !isGenericOrgName(orgName);
     const isOwnContent = urlType === 'facebook' || urlType === 'instagram' || urlType === 'linkedin' ||
-      (orgName && text.toLowerCase().includes(orgName.toLowerCase())) ||
-      (metadata.name && typeof metadata.name === 'string' && orgName &&
-        metadata.name.toLowerCase().includes(orgName.toLowerCase().split(' ')[0]));
+      (orgNameIsSpecific && text.toLowerCase().includes(orgName!.toLowerCase())) ||
+      (orgNameIsSpecific && metadata.name && typeof metadata.name === 'string' &&
+        metadata.name.toLowerCase().includes(orgName!.toLowerCase().split(' ')[0]));
 
     const effectiveCategory = isOwnContent ? finalCategory : 'grant';
 
@@ -599,11 +557,18 @@ export const POST = withAuth(async (request, auth) => {
 
     if (doc) {
       const chunks = chunkText(text);
-      for (const chunk of chunks) {
+      let urlEmbeddings: number[][] = [];
+      try {
+        urlEmbeddings = await embedBatch(chunks);
+      } catch (e) {
+        console.error('[learn-url] embedBatch failed, saving without vectors:', e);
+      }
+      for (let i = 0; i < chunks.length; i++) {
         await supabase.from('document_chunks').insert({
           document_id: doc.id,
           org_id,
-          content: chunk,
+          content: chunks[i],
+          embedding: urlEmbeddings[i] ?? null,
           metadata: { category: effectiveCategory, source_url: url },
         });
       }

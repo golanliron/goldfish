@@ -76,6 +76,27 @@ function extractFolderId(url: string): string | null {
   return null;
 }
 
+// Extract file ID from a direct Google Drive/Docs/Sheets/Slides URL
+function extractFileId(url: string): string | null {
+  // docs.google.com/document/d/{id}/...
+  const docsMatch = url.match(/\/(?:document|spreadsheets|presentation)\/d\/([a-zA-Z0-9_-]+)/);
+  if (docsMatch) return docsMatch[1];
+  // drive.google.com/file/d/{id}/...
+  const driveMatch = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (driveMatch) return driveMatch[1];
+  // drive.google.com/open?id={id}
+  const openMatch = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (openMatch) return openMatch[1];
+  return null;
+}
+
+function detectMimeFromUrl(url: string): string {
+  if (url.includes('/document/d/')) return 'application/vnd.google-apps.document';
+  if (url.includes('/spreadsheets/d/')) return 'application/vnd.google-apps.spreadsheet';
+  if (url.includes('/presentation/d/')) return 'application/vnd.google-apps.presentation';
+  return 'application/octet-stream';
+}
+
 async function downloadAndParseDriveFile(
   fileId: string,
   fileName: string,
@@ -141,9 +162,12 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: 'Missing org_id or drive_url' }, { status: 400 });
     }
 
+    // Detect whether this is a folder or a single file
     const folderId = extractFolderId(drive_url);
-    if (!folderId) {
-      return Response.json({ error: 'לא הצלחתי לזהות תיקיית Drive. ודאו שהקישור תקין.' }, { status: 400 });
+    const fileId = !folderId ? extractFileId(drive_url) : null;
+
+    if (!folderId && !fileId) {
+      return Response.json({ error: 'לא הצלחתי לזהות קובץ או תיקיית Drive. ודאו שהקישור תקין.' }, { status: 400 });
     }
 
     const supabase = createAdminClient();
@@ -151,9 +175,11 @@ export async function POST(request: NextRequest) {
     // Save Drive link in org_profiles
     const { data: existingProfile } = await supabase.from('org_profiles').select('data').eq('org_id', org_id).single();
     const profileData = (existingProfile?.data as Record<string, unknown>) || {};
-    profileData.drive_folder_id = folderId;
-    profileData.drive_url = drive_url;
-    profileData.drive_connected_at = new Date().toISOString();
+    if (folderId) {
+      profileData.drive_folder_id = folderId;
+      profileData.drive_url = drive_url;
+      profileData.drive_connected_at = new Date().toISOString();
+    }
     await supabase.from('org_profiles').upsert({ org_id, data: profileData, last_updated: new Date().toISOString() }, { onConflict: 'org_id' });
 
     // Get valid OAuth access token
@@ -172,11 +198,16 @@ export async function POST(request: NextRequest) {
       }
 
       // Try API key (works only for public folders)
-      return await connectWithApiKey(org_id, folderId, drive_url, apiKey, supabase);
+      return await connectWithApiKey(org_id, folderId!, drive_url, apiKey, supabase);
     }
 
-    // OAuth path — full access
-    return await connectWithOAuth(org_id, folderId, drive_url, accessToken, supabase);
+    // Single file path
+    if (fileId) {
+      return await connectSingleFile(org_id, fileId, drive_url, accessToken, supabase);
+    }
+
+    // OAuth path — full access (folder)
+    return await connectWithOAuth(org_id, folderId!, drive_url, accessToken, supabase);
 
   } catch (error) {
     console.error('Drive connect error:', error);
@@ -218,6 +249,38 @@ async function listAllFiles(
 
   const subResults = await Promise.all(subFolderPromises);
   return [...files, ...subResults.flat()];
+}
+
+// ===== Single File Connection =====
+
+async function connectSingleFile(
+  orgId: string,
+  fileId: string,
+  driveUrl: string,
+  accessToken: string,
+  supabase: ReturnType<typeof createAdminClient>
+) {
+  // Check if already imported
+  const { data: existing } = await supabase.from('documents').select('id').eq('org_id', orgId).eq('storage_path', `drive://${fileId}`).limit(1);
+  if (existing?.length) {
+    return Response.json({ connected: true, files_found: 1, message: 'הקובץ כבר נקרא בעבר.' });
+  }
+
+  // Get file metadata
+  const metaRes = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!metaRes.ok) {
+    return Response.json({ connected: false, needs_auth: true, message: 'לא הצלחתי לגשת לקובץ. ייתכן שתוקף ההרשאה פג.' });
+  }
+
+  const fileMeta = await metaRes.json();
+  const mimeType = fileMeta.mimeType || detectMimeFromUrl(driveUrl);
+  const fileName = fileMeta.name || 'Google Drive File';
+
+  const file = { id: fileId, name: fileName, mimeType };
+  return await processFiles(orgId, fileId, [file], accessToken, supabase);
 }
 
 // ===== OAuth Connection (private + public folders) =====
