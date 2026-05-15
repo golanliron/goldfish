@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { fetchByRegistrationNumber, formatForProfile } from '@/lib/ai/guidestar';
 import { extractOrgDNA, extractOrgDNAWithAI, mergeOrgDNA } from '@/lib/ai/org-dna';
+import { calculateOrgScore } from '@/lib/ai/org-score';
 
 export async function GET(req: NextRequest) {
   const orgId = req.nextUrl.searchParams.get('org_id');
@@ -9,14 +10,18 @@ export async function GET(req: NextRequest) {
 
   const supabase = createAdminClient();
 
-  const [profileRes, docsRes] = await Promise.all([
+  const [profileRes, docsRes, memoriesRes] = await Promise.all([
     supabase.from('org_profiles').select('data').eq('org_id', orgId).single(),
     supabase.from('documents').select('*').eq('org_id', orgId).order('uploaded_at', { ascending: false }),
+    supabase.from('org_memory').select('category, depth, updated_at').eq('org_id', orgId),
   ]);
+
+  const score = calculateOrgScore(memoriesRes.data || []);
 
   return NextResponse.json({
     profile: profileRes.data?.data || null,
     documents: docsRes.data || [],
+    score,
   });
 }
 

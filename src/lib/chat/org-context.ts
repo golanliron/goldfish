@@ -137,8 +137,20 @@ export async function extractAndSaveMemory(
 - מספרי מוטבים, בתי ספר, ערים, עובדים חדשים שנזכרו
 - שמות אנשי מפתח (מנכ"ל/ית, יו"ר, רכזים) ופרטי קשר
 
+לכל עובדה, הוסף גם:
+- category: לאיזו שכבת ידע היא שייכת:
+  * "identity" — זהות הארגון (שם, מספר עמותה, שנת הקמה, איש קשר, אתר)
+  * "dna" — מי הם ומה הם עושים (אוכלוסיות, תחומים, Theory of Change, גישה ייחודית, מודל פעולה)
+  * "impact" — ראיות ותוצאות (מספרי מוטבים, אחוזי הצלחה, מחקרים, הישגים מוכחים)
+  * "operations" — יכולת ביצוע (תקציב, עובדים, שותפויות, פרויקטים פעילים, ערים)
+  * "submissions" — הגשות קודמות (מה אושר/נדחה, סגנון כתיבה, לקחים, יחסים עם קרנות)
+- depth: עומק העובדה:
+  * 1 = כללי ("עמותה בתחום החינוך", "מגישים לקרנות")
+  * 2 = ספציפי ("משרתת 500 נערים בגיל 14-18 בפריפריה")
+  * 3 = עמוק עם נתון/ראיה ("78% מהבוגרים הגיעו לתעסוקה תוך 6 חודשים, מחקר אונ' ת"א 2024")
+
 החזר JSON בלבד, ללא טקסט נוסף:
-{"items":[{"key":"מזהה_קצר_באנגלית","value":"הערך בעברית","confidence":"high|medium|low"}]}
+{"items":[{"key":"מזהה_קצר_באנגלית","value":"הערך בעברית","confidence":"high|medium|low","category":"identity|dna|impact|operations|submissions","depth":1}]}
 
 דוגמאות ל-key טובים: theory_of_change, unique_model, sub_populations, ceo_name, total_beneficiaries, partner_orgs, funder_relation_joint, strength_research, age_range, cities_active
 
@@ -162,6 +174,7 @@ export async function extractAndSaveMemory(
       return;
     }
 
+    const VALID_CATEGORIES = ['identity', 'dna', 'impact', 'operations', 'submissions'];
     const memoryItems = (parsed.items || []).filter(
       (item) => item.key && item.value && item.value.length > 3
     );
@@ -171,6 +184,8 @@ export async function extractAndSaveMemory(
     await maybeUpdateSubmissionOutcome(supabase, orgId, userMessage);
 
     for (const item of memoryItems) {
+      const category = VALID_CATEGORIES.includes(item.category) ? item.category : null;
+      const depth = [1, 2, 3].includes(Number(item.depth)) ? Number(item.depth) : 1;
       await supabase
         .from('org_memory')
         .upsert(
@@ -180,6 +195,8 @@ export async function extractAndSaveMemory(
             value: item.value,
             source: 'chat_ai',
             confidence: item.confidence || 'medium',
+            category,
+            depth,
             updated_at: new Date().toISOString(),
           },
           { onConflict: 'org_id,key' }

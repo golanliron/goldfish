@@ -105,6 +105,7 @@ const GEO_OPTIONS = [
 export default function OrgTab({ stage, orgId }: OrgTabProps) {
   const [profile, setProfile] = useState<OrgProfileData | null>(null);
   const [documents, setDocuments] = useState<FgDoc[]>([]);
+  const [orgScore, setOrgScore] = useState<import('@/lib/ai/org-score').OrgScore | null>(null);
   const [editing, setEditing] = useState(false);
   const [editData, setEditData] = useState<Partial<OrgProfileData>>({});
   const [editPopulations, setEditPopulations] = useState<string[]>([]);
@@ -127,11 +128,12 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
     if (!orgId) return;
     fetch(`/api/org?org_id=${orgId}`)
       .then(r => r.json())
-      .then(({ profile: p, documents: d }) => {
+      .then(({ profile: p, documents: d, score }) => {
         if (p) setProfile(p as OrgProfileData);
         // Filter out blocked documents (social pages that couldn't be read)
         const visibleDocs = (d || []).filter((doc: FgDoc) => !(doc.metadata as Record<string, unknown>)?.blocked);
         setDocuments(visibleDocs);
+        if (score) setOrgScore(score);
       })
       .catch(() => {});
   };
@@ -366,38 +368,6 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
 
   const filledCategories = Object.keys(docsByCategory).filter(k => k !== 'other');
 
-  // Each check represents a meaningful piece of knowledge Goldfish has about the org.
-  // Max possible = 20 points. Score is capped so typical orgs start low and grow with real data.
-  const checks = [
-    // Profile fields — foundational identity
-    { met: !!(profile?.mission && profile.mission.length > 50), w: 3, label: 'תיאור מטרה' },
-    { met: !!(profile?.annual_budget && profile.annual_budget > 0), w: 2, label: 'מחזור שנתי' },
-    { met: !!(profile?.beneficiaries_count && profile.beneficiaries_count > 0), w: 2, label: 'מספר מוטבים' },
-    { met: !!(profile?.focus_areas && profile.focus_areas.length > 0), w: 1, label: 'תחומי פעילות' },
-    { met: !!profile?.registration_number, w: 1, label: 'מספר עמותה' },
-    // Documents by category — real knowledge depth
-    { met: !!(docsByCategory['identity']?.length), w: 2, label: 'מסמך זהות' },
-    { met: !!(docsByCategory['programs']?.length), w: 3, label: 'תיאור תוכניות' },
-    { met: !!(docsByCategory['budget']?.length), w: 3, label: 'דוח כספי' },
-    { met: !!(docsByCategory['impact']?.length), w: 2, label: 'דוח אימפקט' },
-    { met: !!(docsByCategory['submission']?.length), w: 1, label: 'הגשה קודמת' },
-  ];
-  const totalWeight = checks.reduce((s, c) => s + c.w, 0); // = 20
-  const earnedWeight = checks.filter(c => c.met).reduce((s, c) => s + c.w, 0);
-  const completeness = Math.round((earnedWeight / totalWeight) * 100);
-
-  // Missing knowledge items (for the bottom bar)
-  const missingKnowledge: string[] = [];
-  if (!docsByCategory['budget']?.length) missingKnowledge.push('דוח כספי');
-  if (!docsByCategory['programs']?.length) missingKnowledge.push('תיאור תוכניות');
-  if (!docsByCategory['impact']?.length) missingKnowledge.push('דוח אימפקט');
-  if (!(profile?.mission && profile.mission.length > 20)) missingKnowledge.push('תיאור מטרה');
-  if (!(profile?.annual_budget && profile.annual_budget > 0)) missingKnowledge.push('מחזור שנתי');
-
-  // Readiness color + label
-  const readinessColor = completeness >= 80 ? 'text-green-600' : completeness >= 50 ? 'text-amber-500' : 'text-red-500';
-  const readinessBg = completeness >= 80 ? 'bg-green-500' : completeness >= 50 ? 'bg-amber-400' : 'bg-red-400';
-  const readinessLabel = completeness >= 80 ? 'מוכן להגשה' : completeness >= 50 ? 'כמעט מוכן' : 'צריך להשלים';
 
   return (
     <div className="space-y-4">
@@ -411,44 +381,92 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
         onChange={handleUpload}
       />
 
-      {/* ===== READINESS SCORE ===== */}
+      {/* ===== KNOWLEDGE SCORE ===== */}
       <div className="bg-surf rounded-xl border border-border p-4 slide-in-right">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <span className={`text-2xl font-bold ${readinessColor}`}>{completeness}%</span>
-            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-              completeness >= 80 ? 'bg-green-100 text-green-700' :
-              completeness >= 50 ? 'bg-amber-100 text-amber-700' :
-              'bg-red-100 text-red-600'
-            }`}>{readinessLabel}</span>
-          </div>
-          <span className="text-[10px] text-muted">מוכנות פרופיל</span>
+        {/* Header */}
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-[11px] text-muted font-medium">היכרות Goldfish עם הארגון</span>
+          {orgScore && (
+            <span className={`text-2xl font-bold ${
+              orgScore.total >= 75 ? 'text-green-600' :
+              orgScore.total >= 35 ? 'text-amber-500' : 'text-muted'
+            }`}>{orgScore.total}%</span>
+          )}
         </div>
 
-        {/* Progress bar */}
-        <div className="h-2 bg-surf2 rounded-full overflow-hidden mb-3">
-          <div
-            className={`h-full rounded-full transition-all duration-700 ${readinessBg}`}
-            style={{ width: `${completeness}%` }}
-          />
-        </div>
-
-        {/* Missing items */}
-        {missingKnowledge.length > 0 && (
-          <div className="space-y-1">
-            <p className="text-[10px] text-muted font-medium">חסר להשלמה:</p>
-            <div className="flex flex-wrap gap-1">
-              {missingKnowledge.map((item, i) => (
-                <span key={i} className="text-[10px] px-2 py-0.5 bg-surf2 border border-border rounded-full text-muted2">
-                  + {item}
-                </span>
-              ))}
-            </div>
+        {/* Main progress bar */}
+        {orgScore && (
+          <div className="h-1.5 bg-surf2 rounded-full overflow-hidden mb-4">
+            <div
+              className={`h-full rounded-full transition-all duration-700 ${
+                orgScore.total >= 75 ? 'bg-green-500' :
+                orgScore.total >= 35 ? 'bg-amber-400' : 'bg-border'
+              }`}
+              style={{ width: `${orgScore.total}%` }}
+            />
           </div>
         )}
 
-        {completeness >= 80 && (
-          <p className="text-[10px] text-green-600 mt-1">הפרופיל מוכן — ניתן לייצר טיוטות מדויקות</p>
+        {/* Breakdown per category */}
+        {orgScore && (
+          <div className="space-y-2 mb-3">
+            {orgScore.breakdown.map((b) => (
+              <div key={b.category} className="flex items-center gap-2">
+                {/* Status icon */}
+                <span className="text-xs w-4 text-center">
+                  {b.status === 'full' ? '✓' : b.status === 'partial' ? '·' : '○'}
+                </span>
+                {/* Label */}
+                <span className="text-[11px] text-text2 w-20 shrink-0">{b.label}</span>
+                {/* Bar */}
+                <div className="flex-1 h-1 bg-surf2 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      b.status === 'full' ? 'bg-green-400' :
+                      b.status === 'partial' ? 'bg-amber-300' : 'bg-transparent'
+                    }`}
+                    style={{ width: `${b.score}%` }}
+                  />
+                </div>
+                {/* Status label */}
+                <span className={`text-[10px] w-10 text-left shrink-0 ${
+                  b.status === 'full' ? 'text-green-600' :
+                  b.status === 'partial' ? 'text-amber-500' : 'text-muted2'
+                }`}>
+                  {b.status === 'full' ? 'מלא' : b.status === 'partial' ? 'חלקי' : 'חסר'}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* CTAs — top missing items */}
+        {orgScore && (() => {
+          const missing = orgScore.breakdown
+            .filter(b => b.status !== 'full' && b.cta)
+            .sort((a, b) => a.score - b.score)
+            .slice(0, 2);
+          if (missing.length === 0) return (
+            <p className="text-[10px] text-green-600">Goldfish מכיר את הארגון היטב — מוכן לכתוב הגשות מדויקות</p>
+          );
+          return (
+            <div className="space-y-1.5 pt-1 border-t border-border">
+              {missing.map((b) => (
+                <button
+                  key={b.category}
+                  onClick={() => {/* scroll to upload or open chat */}}
+                  className="w-full text-right text-[10px] text-accent hover:underline truncate"
+                >
+                  + {b.cta}
+                </button>
+              ))}
+            </div>
+          );
+        })()}
+
+        {/* Fallback when score not loaded yet */}
+        {!orgScore && (
+          <p className="text-[10px] text-muted">מחשב היכרות...</p>
         )}
       </div>
 
@@ -738,6 +756,22 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
             ) : 'קרא'}
           </button>
         </div>
+
+        {/* Google Drive OAuth connect button */}
+        <a
+          href="/api/drive/auth"
+          className="flex items-center justify-center gap-2 w-full py-1.5 text-[11px] font-medium border border-border rounded-lg hover:bg-surface transition-colors text-muted"
+        >
+          <svg width="14" height="14" viewBox="0 0 87.3 78" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3L28.6 51H0c0 1.55.4 3.1 1.2 4.5L6.6 66.85z" fill="#0066DA"/>
+            <path d="M43.65 25L28.6 51H58.7L43.65 25z" fill="#00AC47"/>
+            <path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H58.7L73.55 76.8z" fill="#EA4335"/>
+            <path d="M43.65 25L58.7 51l14.85-25.65A9.3 9.3 0 0070.2 21H17.1c-1.4 0-2.7.35-3.85.95L28.6 51 43.65 25z" fill="#00832D"/>
+            <path d="M73.55 76.8L58.7 51H28.6L13.75 76.8c1.15.6 2.45.95 3.85.95H69.7c1.4 0 2.7-.35 3.85-.95z" fill="#2684FC"/>
+            <path d="M71.45 24.35l-3.6-6.25a9.5 9.5 0 00-3.3-3.3l-3.6-6.25C59.15 7.1 57.5 6.5 55.8 6.5H31.5c-1.7 0-3.35.6-4.65 1.75l-3.6 6.25a9.5 9.5 0 00-3.3 3.3l-3.6 6.25c-.8 1.4-1.2 2.95-1.2 4.5h57.5c0-1.55-.4-3.1-1.2-4.5z" fill="#FFBA00"/>
+          </svg>
+          חבר Google Drive (גישה לתיקיות פרטיות)
+        </a>
 
         {/* Free text (collapsible) */}
         <details className="group">
