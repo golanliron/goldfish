@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { withAuth } from '@/lib/api-auth';
 import { extractOrgDNA } from '@/lib/ai/org-dna';
 import { scoreCompanyDNA, buildOrgContextFromProfile } from '@/lib/ai/scoring-service';
+import { companiesLog } from '@/lib/logger';
 
 interface OrgProfile {
   focus_areas?: string[];
@@ -51,7 +52,7 @@ export const GET = withAuth(async (req, auth) => {
   const { data: companies, error } = await query.limit(1100);
 
   if (error) {
-    console.error('[companies] DB error:', error);
+    companiesLog.error({ err: error, org_id: orgId }, 'companies DB load failed');
     return NextResponse.json({ error: 'שגיאה בטעינת הנתונים. נסי שוב.', companies: [], total: 0, typeCounts: {}, matchedCount: 0 }, { status: 502 });
   }
 
@@ -132,7 +133,7 @@ export const GET = withAuth(async (req, auth) => {
   });
 
   } catch (error) {
-    console.error('[companies] unexpected error:', error);
+    companiesLog.error({ err: error, org_id: orgId }, 'companies unexpected error');
     return NextResponse.json(
       { error: 'אירעה שגיאה בלתי צפויה. נסי שוב בעוד מספר דקות.', companies: [], total: 0, typeCounts: {}, matchedCount: 0 },
       { status: 500 },

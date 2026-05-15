@@ -4,6 +4,7 @@ import { withAuth } from '@/lib/api-auth';
 import { extractOrgDNA } from '@/lib/ai/org-dna';
 import { scoreOpportunityDNA, type FunderIntel } from '@/lib/ai/scoring-service';
 import { calculateReadiness, findUpcomingRecurrences } from '@/lib/ai/funder-learning';
+import { opportunitiesLog } from '@/lib/logger';
 
 export const GET = withAuth(async (req, auth) => {
   const orgId = auth.orgId;
@@ -205,7 +206,7 @@ export const GET = withAuth(async (req, auth) => {
   });
 
   } catch (error) {
-    console.error('[opportunities] unexpected error:', error);
+    opportunitiesLog.error({ err: error, org_id: orgId }, 'opportunities unexpected error');
     return NextResponse.json(
       {
         error: 'שגיאה בטעינת ההזדמנויות. נסי שוב בעוד מספר דקות.',

@@ -3,6 +3,8 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { withAuth } from '@/lib/api-auth';
 import { buildOrgContext } from '@/lib/ai/fishgold';
 import { scoreOpportunitiesAI, type ScoredOpportunity } from '@/lib/ai/scoring-service';
+import { enqueue } from '@/lib/queue';
+import { scanLog } from '@/lib/logger';
 
 type ScoredMatch = ScoredOpportunity;
 
@@ -15,6 +17,36 @@ function scanCacheKey(orgId: string): string {
 export const POST = withAuth(async (request, auth) => {
   const org_id = auth.orgId;
   const supabase = createAdminClient();
+  const start = Date.now();
+
+  // ?async=true → enqueue job, return 202 immediately
+  const url = new URL(request.url);
+  const asyncMode = url.searchParams.get('async') === 'true';
+
+  if (asyncMode) {
+    try {
+      const cacheKey = scanCacheKey(org_id);
+      const { data: cached } = await supabase
+        .from('scan_cache').select('payload')
+        .eq('org_id', org_id).eq('cache_type', 'opportunities').eq('cache_key', cacheKey)
+        .gt('expires_at', new Date().toISOString()).single();
+      if (cached?.payload) {
+        scanLog.info({ org_id, duration_ms: Date.now() - start }, 'scan cache hit (async path)');
+        return Response.json({ ...(cached.payload as object), from_cache: true });
+      }
+      const { job_id } = await enqueue('scan_opportunities', {}, org_id);
+      scanLog.info({ org_id, job_id }, 'scan enqueued async');
+      return Response.json(
+        { job_id, status: 'pending', message: 'הסריקה החלה ברקע — תוצאות יהיו מוכנות תוך 30 שניות' },
+        { status: 202 },
+      );
+    } catch (err) {
+      scanLog.error({ err, org_id }, 'failed to enqueue scan');
+      return Response.json({ error: 'שגיאה בהפעלת הסריקה. נסי שוב.' }, { status: 500 });
+    }
+  }
+
+  scanLog.info({ org_id }, 'scan started (sync)');
 
   try {
     // ── 0. Cache check: return stored results if scan ran today ──────────
@@ -58,7 +90,7 @@ export const POST = withAuth(async (request, auth) => {
       .limit(60);
 
     if (oppError) {
-      console.error('[scan] opportunities load error:', oppError);
+      scanLog.error({ err: oppError, org_id }, 'opportunities load error');
       return Response.json({ error: 'שגיאה בטעינת קולות קוראים. נסי שוב.', matches: [] }, { status: 502 });
     }
 
@@ -91,7 +123,7 @@ export const POST = withAuth(async (request, auth) => {
       const orgContextText = buildOrgContext(profileData, org?.name ?? null);
       matches = await scoreOpportunitiesAI(candidates, orgContextText);
     } catch (aiError) {
-      console.error('[scan] AI scoring error:', aiError);
+      scanLog.error({ err: aiError, org_id }, 'AI scoring failed');
       return Response.json({
         error: 'שגיאה בניתוח ה-AI. ייתכן שהשירות זמנית לא זמין — נסי שוב בעוד מספר דקות.',
         matches: [],
@@ -133,10 +165,11 @@ export const POST = withAuth(async (request, auth) => {
       { onConflict: 'org_id,cache_type,cache_key' },
     );
 
+    scanLog.info({ org_id, matches: matches.length, duration_ms: Date.now() - start }, 'scan complete');
     return Response.json(responsePayload);
 
   } catch (error) {
-    console.error('[scan] unexpected error:', error);
+    scanLog.error({ err: error, org_id, duration_ms: Date.now() - start }, 'scan unexpected error');
     return Response.json(
       { error: 'אירעה שגיאה בלתי צפויה. נסי שוב בעוד מספר דקות.', matches: [] },
       { status: 500 },
