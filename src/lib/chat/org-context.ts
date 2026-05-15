@@ -166,7 +166,7 @@ export async function extractAndSaveMemory(
     if (!rawText) return;
 
     const jsonText = rawText.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
-    let parsed: { items: { key: string; value: string; confidence: string }[] };
+    let parsed: { items: { key: string; value: string; confidence: string; category?: string; depth?: number }[] };
     try {
       parsed = JSON.parse(jsonText);
     } catch {
