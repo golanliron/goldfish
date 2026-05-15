@@ -14,7 +14,8 @@ import { REQUIRED_VAULT_DOCS } from '@/lib/vault-docs';
 export { REQUIRED_VAULT_DOCS };
 
 function detectDocType(filename: string, parsedText?: string | null): string | null {
-  const text = `${filename} ${parsedText?.slice(0, 200) || ''}`;
+  // Test filename + first 500 chars of parsed content for better Hebrew doc detection
+  const text = `${filename} ${parsedText?.slice(0, 500) || ''}`;
   for (const req of REQUIRED_VAULT_DOCS) {
     if (req.pattern.test(text)) return req.key;
   }
@@ -26,8 +27,9 @@ export const GET = withAuth(async (_req, auth) => {
 
   const { data: docs, error } = await supabase
     .from('documents')
-    .select('id, filename, category, file_type, uploaded_at, metadata, storage_path')
+    .select('id, filename, category, file_type, uploaded_at, metadata, storage_path, parsed_text')
     .eq('org_id', auth.orgId)
+    .eq('status', 'ready')
     .order('uploaded_at', { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -39,6 +41,13 @@ export const GET = withAuth(async (_req, auth) => {
       ? (new Date(expiry).getTime() - Date.now()) / 86400000 < 30
       : false;
 
+    // Prefer vault_key already stored in metadata (set at upload time),
+    // then fall back to pattern-matching filename + parsed_text content
+    const meta = (doc.metadata as Record<string, string>) || {};
+    const storedVaultKey = meta.vault_key || null;
+    const detectedVaultKey = storedVaultKey
+      ?? detectDocType(doc.filename, (doc as Record<string, unknown>).parsed_text as string | null);
+
     return {
       id: doc.id,
       filename: doc.filename,
@@ -48,7 +57,7 @@ export const GET = withAuth(async (_req, auth) => {
       expiry_date: expiry,
       is_expired: isExpired,
       expires_soon: expiresSoon,
-      vault_key: detectDocType(doc.filename),
+      vault_key: detectedVaultKey,
       has_storage: !!doc.storage_path && !doc.storage_path.startsWith('http'),
     };
   });

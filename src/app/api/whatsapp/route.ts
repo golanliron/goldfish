@@ -54,6 +54,135 @@ const QUICK_COMMANDS: Record<string, string> = {
   'תפריט': 'help',
 };
 
+// ===== Detect "bring me grants" intent =====
+function detectGrantsRequestIntent(text: string): number | null {
+  const t = text.trim();
+  // Match: "תביא לי X קולות קוראים" / "תן לי 3 מענקים" / "חפש לי 5 קולות" etc.
+  const match = t.match(/(?:תביא|תן|חפש|הראה).*?(\d+).*?(?:קולות קוראים|מענקים?|התאמות|הזדמנויות)/);
+  if (match) return Math.min(parseInt(match[1], 10), 10);
+  // No number but has the right words
+  if (/(?:תביא|תן|הראה|חפש).*(?:קולות קוראים|מענקים?|התאמות)/.test(t)) return 3;
+  return null;
+}
+
+// ===== Send WhatsApp Template (Meta only) =====
+// Templates must be pre-approved in Meta Business Manager.
+// Use this for proactive (push) messages to users who haven't messaged in 24h.
+export async function sendWhatsAppTemplate(
+  phone: string,
+  templateName: string,
+  languageCode: string,
+  components: Record<string, unknown>[]
+): Promise<boolean> {
+  if (!USE_META) {
+    console.warn('[WhatsApp Templates] Meta not configured, cannot send template');
+    return false;
+  }
+  const url = `https://graph.facebook.com/${META_API_VERSION}/${META_PHONE_NUMBER_ID}/messages`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${META_ACCESS_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      messaging_product: 'whatsapp',
+      to: phone,
+      type: 'template',
+      template: {
+        name: templateName,
+        language: { code: languageCode },
+        components,
+      },
+    }),
+  });
+  const body = await res.text();
+  console.log('[Meta Templates] Send result:', res.status, body);
+  return res.ok;
+}
+
+// ===== notifyUserOnMatch — push alert when match score >= threshold =====
+// Called from the match engine (e.g. /api/notify-match) when a hot opportunity is found.
+export async function notifyUserOnMatch(params: {
+  phone: string;
+  userName: string;
+  orgName: string;
+  opportunityTitle: string;
+  score: number;
+  funder: string | null;
+  url: string | null;
+  opportunityId: string;
+  orgId: string;
+}): Promise<void> {
+  const { phone, userName, orgName, opportunityTitle, score, funder, url, opportunityId, orgId } = params;
+
+  const supabase = createAdminClient();
+
+  // Prevent duplicate notifications: check if we already notified this org about this opp
+  const { data: existing } = await supabase
+    .from('whatsapp_notifications')
+    .select('id')
+    .eq('org_id', orgId)
+    .eq('opportunity_id', opportunityId)
+    .single();
+
+  if (existing) {
+    console.log('[notifyUserOnMatch] Already notified, skipping:', { orgId, opportunityId });
+    return;
+  }
+
+  const greeting = userName ? `היי ${userName}` : 'היי';
+  const funderLine = funder ? ` מ${funder}` : '';
+  const linkLine = url ? `\n\nלינק: ${url}` : '';
+
+  const message =
+    `${greeting}.\n\n` +
+    `מצאתי קול קורא שמתאים ל${orgName} ב-${score}%.\n\n` +
+    `${opportunityTitle}${funderLine}.${linkLine}\n\n` +
+    `רוצה שאנתח לעומק ואכין טיוטת הגשה? תגיד כן ואני קופץ.`;
+
+  // Try Meta template first (works outside 24h window), fallback to regular text
+  const templateSent = await sendWhatsAppTemplate(
+    phone,
+    'grant_match_alert',   // Template name — must be pre-approved in Meta
+    'he',
+    [
+      {
+        type: 'body',
+        parameters: [
+          { type: 'text', text: userName || orgName },
+          { type: 'text', text: opportunityTitle },
+          { type: 'text', text: String(score) },
+        ],
+      },
+    ]
+  );
+
+  if (!templateSent) {
+    // Fallback: regular text (works only in 24h window)
+    await sendWhatsApp(phone, message);
+  }
+
+  // Record the notification to prevent duplicates
+  await supabase.from('whatsapp_notifications').insert({
+    org_id: orgId,
+    opportunity_id: opportunityId,
+    phone,
+    score,
+    sent_at: new Date().toISOString(),
+  });
+
+  // Save to chat history so context is preserved
+  await supabase.from('whatsapp_messages').insert({
+    phone,
+    role: 'assistant',
+    content: message,
+    org_id: orgId,
+  });
+
+  console.log('[notifyUserOnMatch] Sent push notification:', { phone, orgName, score, opportunityTitle });
+}
+
 // ===== Parse incoming message from either provider =====
 function parseIncomingMessage(body: Record<string, unknown>): { phone: string; text: string; senderName: string } | null {
   // Try Meta Cloud API format
@@ -185,6 +314,13 @@ export async function POST(request: NextRequest) {
       const command = QUICK_COMMANDS[text.trim()];
       if (command) {
         await handleCommand(supabase, phone, orgId, command);
+        return Response.json({ ok: true });
+      }
+
+      // Detect "תביא לי X קולות קוראים" intent
+      const grantsCount = detectGrantsRequestIntent(text);
+      if (grantsCount !== null) {
+        await handleCommand(supabase, phone, orgId, `top_grants:${grantsCount}`);
         return Response.json({ ok: true });
       }
     }
@@ -472,9 +608,65 @@ async function handleCommand(
       await sendWhatsApp(phone,
         `אני יודע לעשות כמה דברים טובים.\n\n` +
         `תכתבו סריקה ואני מחפש קולות קוראים מותאמים. התאמות מראה מה כבר מצאתי. הגשות מראה סטטוס. סטטוס נותן סיכום מהיר.\n\n` +
+        `אפשר גם: "תביא לי 3 קולות קוראים" — ואני שולח את ה-TOP שמתאים לכם.\n\n` +
         `אבל אפשר גם פשוט לדבר איתי. שאלו "חפש לי מענקים לחינוך" או "מה הדדליין הקרוב" או תעתיקו קול קורא ואני מנתח.\n\n` +
         `אני דג, לא מכונה. תדברו, אני שומע.`
       );
+      break;
+    }
+
+    default: {
+      // Handle "top_grants:N" — pull top N matching opportunities from DB
+      if (command.startsWith('top_grants:')) {
+        const n = parseInt(command.split(':')[1], 10) || 3;
+
+        const { data: matches } = await supabase
+          .from('matches')
+          .select('score, opportunity_id')
+          .eq('org_id', orgId)
+          .gte('score', 50)
+          .order('score', { ascending: false })
+          .limit(n);
+
+        if (!matches || matches.length === 0) {
+          await sendWhatsApp(phone,
+            `עדיין אין התאמות מספיק חמות. תכתבו סריקה ואני חופר עכשיו.`
+          );
+          break;
+        }
+
+        const oppIds = matches.map(m => m.opportunity_id);
+        const { data: opps } = await supabase
+          .from('opportunities')
+          .select('id, title, funder, deadline, amount_max, url')
+          .in('id', oppIds)
+          .eq('active', true);
+
+        if (!opps || opps.length === 0) {
+          await sendWhatsApp(phone, `הקולות הקוראים שמצאתי כבר לא פעילים. תכתבו סריקה לחיפוש חדש.`);
+          break;
+        }
+
+        const scoreMap = new Map(matches.map(m => [m.opportunity_id, m.score]));
+        const sorted = [...opps].sort((a, b) => (scoreMap.get(b.id) || 0) - (scoreMap.get(a.id) || 0));
+
+        const lines = sorted.map((o, i) => {
+          const score = scoreMap.get(o.id);
+          const deadline = o.deadline ? ` | דדליין: ${new Date(o.deadline).toLocaleDateString('he-IL')}` : '';
+          const amount = o.amount_max ? ` | עד ${o.amount_max.toLocaleString('he-IL')} ₪` : '';
+          const link = o.url ? `\n   ${o.url}` : '';
+          return `${i + 1}. ${o.title} — ${score}% התאמה${deadline}${amount}${link}`;
+        });
+
+        const intro = sorted.length === 1
+          ? `מצאתי קול קורא אחד שמתאים לכם:`
+          : `מצאתי ${sorted.length} קולות קוראים שמתאימים לכם:`;
+
+        await sendWhatsApp(phone,
+          `${intro}\n\n${lines.join('\n\n')}\n\n` +
+          `תגידו מספר ואני מנתח לעומק ומכין טיוטה.`
+        );
+      }
       break;
     }
   }

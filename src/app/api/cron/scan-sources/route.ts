@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { geminiOcrPdf } from '@/lib/ai/gemini';
 import { analyzeGrantMatch } from '@/lib/ai/funder-auto-research';
+import { withRetry } from '@/lib/ai/retry';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -264,7 +265,8 @@ async function classifyGrantWithAI(
 ): Promise<GrantClassification | null> {
   const text = `${title}\n${description}\n${pageText}`.slice(0, 4000);
   try {
-    const res = await anthropic.messages.create({
+    const res = await withRetry(
+      () => anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
       system: `אתה יועץ גיוס משאבים מומחה שמסווג קולות קוראים. יש לך שני תפקידים:
 1. סיווג ישיר — מה הקול הקורא מבקש במפורש
@@ -301,7 +303,9 @@ ${VALID_REGIONS.join(', ')}
 }`,
       messages: [{ role: 'user', content: text }],
       max_tokens: 400,
-    });
+    }),
+      4, 2000, 'classifyGrantWithAI',
+    );
 
     const aiText = res.content[0].type === 'text' ? res.content[0].text : '{}';
     const jsonMatch = aiText.match(/\{[\s\S]*\}/);
@@ -718,9 +722,10 @@ async function scanAllSources() {
 // AI EXTRACTION — Haiku extracts grants from HTML
 // ============================================================
 async function extractOpportunities(html: string, sourceName: string, sourceUrl: string): Promise<ScannedItem[]> {
-  const res = await anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    system: `אתה מחלץ קולות קוראים ומענקים מדפי HTML.
+  const res = await withRetry(
+    () => anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      system: `אתה מחלץ קולות קוראים ומענקים מדפי HTML.
 חוקים קריטיים:
 1. חלץ רק קולות קוראים/מענקים/תמיכות פתוחים — לא פרופילים של קרנות, לא דפי מידע כלליים.
 2. אם הכותרת היא רק שם קרן (כמו "קרן הדסה") בלי פרטי קול קורא — דלג.
@@ -742,12 +747,14 @@ async function extractOpportunities(html: string, sourceName: string, sourceUrl:
 
 אם אין קולות קוראים בדף — החזר מערך ריק [].
 לא להמציא. רק מה שרואים בטקסט.`,
-    messages: [{
-      role: 'user',
-      content: `מקור: ${sourceName}\nURL: ${sourceUrl}\n\n${html}`,
-    }],
-    max_tokens: 4000,
-  });
+      messages: [{
+        role: 'user',
+        content: `מקור: ${sourceName}\nURL: ${sourceUrl}\n\n${html}`,
+      }],
+      max_tokens: 4000,
+    }),
+    4, 2000, `extractOpportunities[${sourceName}]`,
+  );
 
   const text = res.content[0].type === 'text' ? res.content[0].text : '[]';
   const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/) || [null, text];

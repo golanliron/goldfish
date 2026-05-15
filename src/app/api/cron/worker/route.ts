@@ -16,7 +16,8 @@ import { processNext } from '@/lib/queue';
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
-const MAX_JOBS_PER_RUN = 5;
+// Max concurrent jobs — keeps LLM rate limits safe while still parallelising
+const MAX_CONCURRENT_JOBS = 3;
 
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET || '';
@@ -26,14 +27,22 @@ export async function GET(req: NextRequest) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  // Run up to MAX_CONCURRENT_JOBS in parallel.
+  // processNext() uses an optimistic lock (status='pending' check) so two
+  // concurrent calls will never claim the same job.
+  const settled = await Promise.allSettled(
+    Array.from({ length: MAX_CONCURRENT_JOBS }, () => processNext()),
+  );
+
   const processed: string[] = [];
   const errors: string[] = [];
 
-  for (let i = 0; i < MAX_JOBS_PER_RUN; i++) {
-    const result = await processNext();
-    if (!result) break; // no more pending jobs
-
-    if (result) processed.push(`${result.job_id}(${result.type})`);
+  for (const s of settled) {
+    if (s.status === 'fulfilled' && s.value) {
+      processed.push(`${s.value.job_id}(${s.value.type})`);
+    } else if (s.status === 'rejected') {
+      errors.push(String(s.reason));
+    }
   }
 
   console.log(`[worker] Processed ${processed.length} jobs:`, processed.join(', ') || 'none');

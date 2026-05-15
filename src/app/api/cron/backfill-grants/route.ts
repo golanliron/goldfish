@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { generateRecurrenceKey } from '@/lib/ai/funder-learning';
+import { withRetry } from '@/lib/ai/retry';
 
 export const maxDuration = 300;
 
@@ -48,9 +49,10 @@ export async function GET(req: Request) {
     try {
       const text = `${grant.title}\n${grant.description || ''}`.slice(0, 3000);
 
-      const res = await anthropic.messages.create({
-        model: 'claude-haiku-4-5-20251001',
-        system: `אתה יועץ גיוס משאבים. סווג את הקול קורא והוסף "also_relevant_for" — קטגוריות/אוכלוסיות נוספות שיכולים להגיש.
+      const res = await withRetry(
+        () => anthropic.messages.create({
+          model: 'claude-haiku-4-5-20251001',
+          system: `אתה יועץ גיוס משאבים. סווג את הקול קורא והוסף "also_relevant_for" — קטגוריות/אוכלוסיות נוספות שיכולים להגיש.
 
 קטגוריות: ${VALID_CATEGORIES.join(', ')}
 אוכלוסיות: ${VALID_POPULATIONS.join(', ')}
@@ -60,9 +62,11 @@ export async function GET(req: Request) {
 
 החזר JSON:
 { "categories": [], "target_populations": [], "regions": [], "also_relevant_for": [], "relevance_reasoning": "" }`,
-        messages: [{ role: 'user', content: text }],
-        max_tokens: 400,
-      });
+          messages: [{ role: 'user', content: text }],
+          max_tokens: 400,
+        }),
+        4, 2000, `backfill-grants[${grant.id}]`,
+      );
 
       const aiText = res.content[0].type === 'text' ? res.content[0].text : '{}';
       const jsonMatch = aiText.match(/\{[\s\S]*\}/);

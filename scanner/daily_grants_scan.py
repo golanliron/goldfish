@@ -229,6 +229,22 @@ def is_valid_grant_url(url):
         'gov.il/research_and_development',              # עמוד מחקר כללי
         'gov.il/afforestation',                         # עמוד ייעור כללי
         'haifa.muni.il/city-and-muni/freedom-of-information',  # חיפה — חופש מידע
+        # van Leer — לא קולות קוראים
+        'vanleerfoundation.org/stories/',
+        'vanleerfoundation.org/publications-reports/',
+        'vanleerfoundation.org/knowledge-hub/',
+        'vanleerfoundation.org/knowledge-library/',
+        'vanleerfoundation.org/disclaimer/',
+        # Candid — לא קולות קוראים
+        'candid.org/candid-search/features/',
+        'candid.org/candid-search/look-up',
+        'candid.org/candid-search/candid-enterprise',
+        'candid.org/claim-nonprofit-profile/',
+        # Seed the Dream — לא קולות קוראים
+        'seedthedream.org/who-we-are',
+        'seedthedream.org/educational-access',
+        # L'Oreal — לא קולות קוראים
+        'fundforwomen.loreal.com/ExternalUser/Criteria',
     ]
     if any(p in url for p in generic_url_patterns):
         return False
@@ -247,6 +263,11 @@ def is_actual_grant_title(title):
         'השקעות אימפקט', 'פילנתרופיה אסטרטגית', 'שיתופי פעולה בין-מגזריים',
         'שאלות ותשובות', 'أسئلة وأجوبة', 'دعوة لتقديم',
         'menu', 'search', 'home', 'about', 'privacy policy', 'contact',
+        'view all stories', 'explore the knowledge library', 'knowledge library',
+        'disclaimer and copyright', 'view all', 'view the selection criteria',
+        'our inspiration', 'educational access', 'look up nonprofits',
+        'nonprofit compliance', 'explore solutions', 'access form 990',
+        'how to earn a candid seal of transparency',
     }
     title_stripped = title.strip(' >-–—')
     if title_stripped in skip_exact:
@@ -1306,6 +1327,9 @@ def scan_menomadin():
                 continue
             if not grant_url_kw.search(link) and not grant_url_kw.search(title):
                 continue
+            # Reject person pages, news/story pages
+            if re.search(r'חיים.טייב|בוגרי|מחזור|סיום|about|team|news|blog|story|stories', link, re.IGNORECASE):
+                continue
             seen.add(link)
             if title and len(title) > 8 and is_actual_grant_title(title) and is_valid_grant_url(link):
                 results.append({"title": title[:300], "url": link, "source": "menomadin", "funder": "Menomadin Foundation"})
@@ -1336,8 +1360,8 @@ def scan_missfixtheuniverse():
         seen.add(link)
         if title and is_actual_grant_title(title) and is_valid_grant_url(link):
             results.append({"title": title[:300], "url": link, "source": "missfixtheuniverse", "funder": "שדולת הנשים / בנק הפועלים — Miss Fix the Universe"})
-        elif is_valid_grant_url(link) and "missfixtheuniverse.com" in link:
-            for r in deep_scan_page(link, "missfixtheuniverse", "שדולת הנשים / בנק הפועלים — Miss Fix the Universe", base_url=base_url):
+        elif is_valid_grant_url(link) and "missfixtheuniverse.com" in link and re.search(r'call_202[56789]|קול', link + title):
+            for r in deep_scan_page(link, "missfixtheuniverse", "שדולת הנשים / בנק הפועלים — Miss Fix the Universe", base_url=base_url, max_deep=5):
                 if r["url"] not in seen:
                     seen.add(r["url"])
                     results.append(r)
@@ -1588,7 +1612,7 @@ def scan_intl_foundations():
             if not link or link in seen:
                 continue
             seen.add(link)
-            if title and len(title) >= 8 and is_actual_grant_title(title) and is_valid_grant_url(link):
+            if title and len(title) >= 8 and is_actual_grant_title(title) and is_valid_grant_url(link) and grant_keywords.search(title + link):
                 results.append({"title": title[:300], "url": link, "source": f["source"], "funder": f["funder"]})
             elif is_valid_grant_url(link) and (grant_keywords.search(link) or grant_keywords.search(title)) and urlparse(link).netloc == urlparse(f["base"]).netloc:
                 for r in deep_scan_page(link, f["source"], f["funder"], base_url=f["base"]):
