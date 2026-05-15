@@ -1,5 +1,7 @@
 import { NextRequest } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
+import { MODELS } from '@/lib/ai/prompts';
+import { chatLog } from '@/lib/logger';
 
 export const maxDuration = 120;
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -79,7 +81,7 @@ async function saveOrgBlocks(
         last_updated: new Date().toISOString(),
       }, { onConflict: 'org_id,block_type,COALESCE(project_id, \'__org__\')' })
       .then(undefined, (err: unknown) => {
-        console.error('Upsert failed, trying delete+insert:', err);
+        chatLog.warn({ err }, 'Upsert failed, trying delete+insert');
         return supabase
           .from('org_blocks')
           .delete()
@@ -291,7 +293,7 @@ export const POST = withAuth(async (request, auth) => {
           }, { onConflict: 'org_id' });
         }
       } catch (e) {
-        console.error('[guidestar] Error:', e);
+        chatLog.error({ err: e, org_id }, 'guidestar enrichment failed');
       }
     }
 
@@ -414,7 +416,7 @@ ${blockSummary}
         }
       }
     } catch (engineErr) {
-      console.error('Submission engine error:', engineErr);
+      chatLog.error({ err: engineErr, org_id }, 'submission engine failed');
     }
 
     // Web Search
@@ -443,7 +445,7 @@ ${blockSummary}
           }
         }
       } catch (e) {
-        console.error('Web search error:', e);
+        chatLog.error({ err: e, org_id }, 'web search failed');
       }
     }
 
@@ -455,7 +457,7 @@ ${blockSummary}
         autoResearchContext = formatFunderResearch(research);
       }
     } catch (e) {
-      console.error('Auto-research error:', e);
+      chatLog.error({ err: e, org_id }, 'auto-research failed');
     }
 
     // Funder intelligence
@@ -518,9 +520,7 @@ ${blockSummary}
     const enrichedMessage = urlContent ? message + urlContent : message;
     chatMessages.push({ role: 'user', content: enrichedMessage });
 
-    const chatModel = active_tab === 'org'
-      ? 'claude-haiku-4-5-20251001'
-      : 'claude-sonnet-4-20250514';
+    const chatModel = active_tab === 'org' ? MODELS.scoring : MODELS.chat;
     const stream = anthropic.messages.stream({
       model: chatModel,
       system: systemPrompt,
@@ -546,7 +546,7 @@ ${blockSummary}
             }
           }
         } catch (streamError) {
-          console.error('Stream error:', streamError);
+          chatLog.error({ err: streamError, org_id }, 'stream error');
           const errMsg = streamError instanceof Error ? streamError.message : 'Unknown stream error';
           if (!fullResponse) {
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: `שגיאה: ${errMsg}` })}\n\n`));
@@ -591,7 +591,7 @@ ${blockSummary}
         }
 
         extractAndSaveMemory(supabase, org_id, message, fullResponse).catch(e =>
-          console.error('Memory save failed:', e)
+          chatLog.error({ err: e, org_id }, 'memory save failed')
         );
 
         controller.enqueue(
@@ -610,7 +610,7 @@ ${blockSummary}
     });
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
-    console.error('Chat API error:', errMsg, error);
+    chatLog.error({ err: error, org_id: 'unknown' }, `chat API error: ${errMsg}`);
     return Response.json({ error: errMsg }, { status: 500 });
   }
 });
