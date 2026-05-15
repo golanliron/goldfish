@@ -966,6 +966,7 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
       {expanded && (
         <div className="border-t border-border">
           <div className="px-3 pt-3 pb-2 space-y-2.5 text-[11px]">
+
           {opp.description && (
             <ul className="space-y-1 text-text2 leading-relaxed list-none">
               {opp.description.split(/[.。\n]+/).filter(s => s.trim().length > 10).slice(0, 4).map((sentence, i) => (
@@ -1065,11 +1066,7 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
             </div>
           )}
 
-          </div>
-
-          {/* ── ACTIONS ── */}
           <div className="border-t border-border bg-surf2/40 px-3 pt-3 pb-3 space-y-2">
-          {/* PRIMARY: Prepare draft */}
           {orgId && (
             <div>
               {draftState === 'idle' && (
