@@ -22,7 +22,7 @@ export default function OnboardingPage() {
   const [urlDone, setUrlDone] = useState<string[]>([]);
   const [finishing, setFinishing] = useState(false);
   const [showWow, setShowWow] = useState(false);
-  const [wowMatches, setWowMatches] = useState<Array<{ id: string; title: string; funder: string; deadline: string | null; score: number; amount_min: number | null; amount_max: number | null }>>([]);
+  const [wowMatches, setWowMatches] = useState<Array<{ id: string; title: string; funder: string; deadline: string | null; score: number; amount_min: number | null; amount_max: number | null; type: string }>>([]);
   const [wowLoading, setWowLoading] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [orgName, setOrgName] = useState('');
@@ -265,7 +265,7 @@ export default function OnboardingPage() {
           const top = (data.opportunities || [])
             .filter((o: Record<string, unknown>) => (o.matchScore as number) >= 50)
             .sort((a: Record<string, unknown>, b: Record<string, unknown>) => (b.matchScore as number) - (a.matchScore as number))
-            .slice(0, 5)
+            .slice(0, 6)
             .map((o: Record<string, unknown>) => ({
               id: String(o.id),
               title: String(o.title),
@@ -274,6 +274,7 @@ export default function OnboardingPage() {
               score: o.matchScore as number,
               amount_min: o.amount_min as number | null,
               amount_max: o.amount_max as number | null,
+              type: String(o.type || ''),
             }));
           setWowMatches(top);
         }
@@ -330,6 +331,17 @@ export default function OnboardingPage() {
   }
 
   if (showWow) {
+    // Calculate familiarity score
+    const familiarityScore = Math.min(100, Math.round(
+      (orgName.trim() ? 15 : 0) +
+      (orgDesc.trim() ? 20 : 0) +
+      (selectedPopulations.length > 0 ? 15 : 0) +
+      (selectedDomains.length > 0 ? 10 : 0) +
+      (urlDone.includes('website') ? 20 : 0) +
+      (urlDone.includes('drive') ? 10 : 0) +
+      (files.filter(f => f.status === 'done').length * 5)
+    ));
+
     return (
       <div className="min-h-screen bg-bg flex flex-col items-center justify-center px-4 py-12" dir="rtl">
         <div className="max-w-lg w-full">
@@ -345,7 +357,7 @@ export default function OnboardingPage() {
             ) : wowMatches.length > 0 ? (
               <>
                 <div className="inline-block bg-accent/10 text-accent text-xs font-semibold px-3 py-1 rounded-full mb-4">
-                  {wowMatches.length} קולות קוראים שמתאימים לכם עכשיו
+                  {wowMatches.length} קולות קוראים וקרנות שמתאימים לכם עכשיו
                 </div>
                 <h1 className="text-2xl font-bold leading-snug">
                   מצאנו כסף<br />שמחכה לכם
@@ -363,6 +375,28 @@ export default function OnboardingPage() {
             )}
           </div>
 
+          {/* Familiarity meter */}
+          <div className="bg-bg2 border border-border rounded-2xl p-4 mb-5">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold text-text">כמה גולדפיש מכיר אתכם</span>
+              <span className="text-sm font-bold text-accent">{familiarityScore}%</span>
+            </div>
+            <div className="h-2 bg-border rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-700"
+                style={{
+                  width: `${familiarityScore}%`,
+                  background: familiarityScore >= 70 ? '#22c55e' : familiarityScore >= 40 ? '#f59e0b' : '#E8358A',
+                }}
+              />
+            </div>
+            {familiarityScore < 60 && (
+              <p className="text-[10px] text-muted mt-2">
+                הוסיפו מסמכים ואתר הארגון כדי שגולדפיש יכיר אתכם טוב יותר ויתאים הצעות מדויקות יותר
+              </p>
+            )}
+          </div>
+
           {/* Matches list */}
           {!wowLoading && wowMatches.length > 0 && (
             <div className="space-y-3 mb-8">
@@ -374,7 +408,17 @@ export default function OnboardingPage() {
                       {m.funder && (
                         <p className="text-xs text-muted">{m.funder}</p>
                       )}
-                      <div className="flex items-center gap-3 mt-2 flex-wrap">
+                      <div className="flex items-center gap-2 mt-2 flex-wrap">
+                        {m.type && (
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium border ${
+                            m.type === 'foundation' ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                            m.type === 'government' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                            m.type === 'corporate' ? 'bg-green-50 text-green-700 border-green-200' :
+                            'bg-gray-50 text-gray-600 border-gray-200'
+                          }`}>
+                            {m.type === 'foundation' ? 'קרן' : m.type === 'government' ? 'ממשלה' : m.type === 'corporate' ? 'CSR' : m.type}
+                          </span>
+                        )}
                         {m.deadline && (
                           <span className="text-[11px] text-orange-600 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full">
                             עד {new Date(m.deadline).toLocaleDateString('he-IL', { day: 'numeric', month: 'long' })}
