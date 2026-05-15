@@ -205,20 +205,44 @@ serve(async (req: Request) => {
 
   // Incoming message
   if (req.method === "POST") {
+    // Parse body first so we can respond immediately
+    let body: any;
     try {
-      const body = await req.json();
-      const entry = body.entry?.[0];
-      const changes = entry?.changes?.[0];
-      const value = changes?.value;
+      body = await req.json();
+    } catch {
+      return new Response("OK", { status: 200 });
+    }
 
-      // Skip status updates
-      if (!value?.messages) {
-        return new Response("OK", { status: 200 });
-      }
+    const entry = body.entry?.[0];
+    const changes = entry?.changes?.[0];
+    const value = changes?.value;
 
-      const message = value.messages[0];
+    // Skip status updates — respond immediately
+    if (!value?.messages) {
+      return new Response("OK", { status: 200 });
+    }
+
+    const message = value.messages[0];
+    const msgId = message.id;
+
+    // Idempotency check — abort if already processed
+    const { data: existing } = await supabase
+      .from("wa_messages")
+      .select("id")
+      .eq("wa_message_id", msgId)
+      .maybeSingle();
+
+    if (existing) {
+      return new Response("OK", { status: 200 });
+    }
+
+    // Respond 200 immediately to Meta, process in background
+    const responsePromise = new Response("OK", { status: 200 });
+
+    // Process in background (dangling promise — Deno edge keeps alive)
+    (async () => {
+    try {
       const from = message.from; // phone number
-      const msgId = message.id;
       const msgType = message.type;
 
       // Only handle text messages for now
@@ -321,11 +345,12 @@ serve(async (req: Request) => {
       // Send via WhatsApp
       await sendWhatsAppMessage(from, cleanResponse);
 
-      return new Response("OK", { status: 200 });
     } catch (error) {
       console.error("Error processing message:", error);
-      return new Response("OK", { status: 200 }); // Always return 200 to Meta
     }
+    })();
+
+    return responsePromise;
   }
 
   return new Response("Method not allowed", { status: 405 });

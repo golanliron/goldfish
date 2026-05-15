@@ -12,7 +12,7 @@ const client = new Client({
   authStrategy: new LocalAuth({ dataPath: './.wwebjs_auth' }),
   puppeteer: {
     headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
   },
 });
 
@@ -82,19 +82,23 @@ client.on('message', async (msg) => {
       // Split long messages
       const chunks = splitMessage(data.reply, 1500);
       for (const chunk of chunks) {
-        await msg.reply(chunk);
+        try {
+          await msg.reply(chunk);
+        } catch (sendErr) {
+          console.error(`  ✗ sendMessage failed (invalid number or WA error):`, sendErr.message || sendErr);
+          // Do not rethrow — continue without crashing
+        }
         if (chunks.length > 1) await sleep(800);
       }
       console.log(`  → Replied (${data.reply.length} chars)`);
     } else {
       console.log(`  → Processed (no reply — onboarding/command handled by API)`);
-      // For onboarding messages, the API sends them via its own send function
-      // But in bridge mode we disabled that. Let's check if it's a new user situation
-      // The API returns ok:true, the reply will be empty for fire-and-forget messages
     }
   } catch (error) {
     console.error(`  ✗ Error:`, error.message || error);
-    await msg.reply('שגיאה זמנית. נסו שוב בעוד רגע.');
+    try {
+      await msg.reply('שגיאה זמנית. נסו שוב בעוד רגע.');
+    } catch { /* ignore send error in error handler */ }
   }
 });
 
@@ -115,6 +119,15 @@ function splitMessage(text, maxLen) {
 }
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// Reconnect handler — destroy and exit so PM2/Docker restarts cleanly
+client.on('disconnected', async (reason) => {
+  console.error(`✗ WhatsApp disconnected: ${reason}. Restarting...`);
+  try {
+    await client.destroy();
+  } catch { /* ignore destroy errors */ }
+  process.exit(1);
+});
 
 // Start
 console.log('Starting Fishgold WhatsApp Bridge...');
