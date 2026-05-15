@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo, lazy, Suspense } from 'react';
+import { useEffect, useState, useMemo, useRef, lazy, Suspense } from 'react';
 import type { Opportunity, OpportunityType } from '@/types';
 
 const TimelineTab = lazy(() => import('./TimelineTab'));
@@ -95,6 +95,7 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
   const [expandedHotOpp, setExpandedHotOpp] = useState<string | null>(null);
   const [agentRunning, setAgentRunning] = useState(false);
   const [agentToast, setAgentToast] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
+  const agentPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const categories = useMemo(() => taxonomy.filter(t => t.type === 'category'), [taxonomy]);
   const populations = useMemo(() => taxonomy.filter(t => t.type === 'population'), [taxonomy]);
@@ -143,33 +144,74 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
 
   useEffect(() => {
     loadOpportunities();
+    return () => {
+      if (agentPollRef.current) clearInterval(agentPollRef.current);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleAgentSync = async () => {
     if (!orgId || agentRunning) return;
     setAgentRunning(true);
-    setAgentToast({ type: 'info', text: 'הסוכן התחיל לסרוק ולנתח הגשות עבורכם, זה עשוי לקחת כדקה...' });
+    setAgentToast({ type: 'info', text: 'הסוכן יצא לסרוק. העמוד יתעדכן כשיסיים...' });
 
     try {
-      const res = await fetch('/api/process-grants', {
+      // Enqueue — returns immediately with job_id
+      const res = await fetch('/api/jobs/enqueue', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ org_id: orgId, mode: 'existing' }),
+        body: JSON.stringify({ type: 'scan_opportunities', payload: { mode: 'existing' } }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'שגיאה בהפעלת הסוכן');
-      const { processed = 0, high = 0, medium = 0 } = data.result || {};
-      setAgentToast({
-        type: 'success',
-        text: `הסוכן סיים! עובדו ${processed} הגשות — ${high} גבוהות, ${medium} בינוניות`,
-      });
-      // Refresh the list so user sees updated scores & direct links
-      loadOpportunities();
+
+      const { job_id } = data;
+
+      // Poll /api/jobs/:id every 4 seconds until done or failed
+      let elapsed = 0;
+      agentPollRef.current = setInterval(async () => {
+        elapsed += 4;
+        try {
+          const statusRes = await fetch(`/api/jobs/${job_id}`, { credentials: 'include' });
+          const statusData = await statusRes.json();
+
+          if (statusData.status === 'done') {
+            clearInterval(agentPollRef.current!);
+            agentPollRef.current = null;
+            const { processed = 0, high = 0, medium = 0 } = statusData.result?.matches != null
+              ? { processed: statusData.result.matches, high: 0, medium: 0 }
+              : statusData.result || {};
+            setAgentToast({
+              type: 'success',
+              text: `הסוכן סיים! עובדו ${processed} הגשות — ${high} גבוהות, ${medium} בינוניות`,
+            });
+            loadOpportunities();
+            setAgentRunning(false);
+            setTimeout(() => setAgentToast(null), 6000);
+
+          } else if (statusData.status === 'failed') {
+            clearInterval(agentPollRef.current!);
+            agentPollRef.current = null;
+            setAgentToast({ type: 'error', text: statusData.error || 'הסוכן נכשל' });
+            setAgentRunning(false);
+            setTimeout(() => setAgentToast(null), 6000);
+
+          } else if (elapsed >= 180) {
+            // 3 minute timeout — stop polling, leave job running in background
+            clearInterval(agentPollRef.current!);
+            agentPollRef.current = null;
+            setAgentToast({ type: 'info', text: 'הסוכן עדיין עובד ברקע. ההגשות יתעדכנו בקרוב.' });
+            setAgentRunning(false);
+            setTimeout(() => setAgentToast(null), 8000);
+          }
+        } catch {
+          // network hiccup — keep polling
+        }
+      }, 4000);
+
     } catch (err) {
       setAgentToast({ type: 'error', text: err instanceof Error ? err.message : 'שגיאה לא צפויה' });
-    } finally {
       setAgentRunning(false);
       setTimeout(() => setAgentToast(null), 6000);
     }
