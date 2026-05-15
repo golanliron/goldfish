@@ -371,10 +371,12 @@ export default function ChatPanel({ orgId, userId, onStageChange }: ChatPanelPro
         : '';
 
       const docIds = succeeded.map(s => (s as Record<string, unknown>).document_id).filter(Boolean);
+      const rejections = succeeded.filter(s => !!(s as Record<string, unknown>).rejection_insight);
+      const rejectionLines = rejections.map(s => `[מכתב דחייה] ${(s as Record<string, unknown>).rejection_insight}`).join('\n');
       const chatPrompt = `[נקראו ${succeeded.length} קבצים בהצלחה]
 ${summaryLines}${failedLines}
 ${docIds.length > 0 ? `\n[document_ids: ${docIds.join(',')}]` : ''}
-תגיב בקצרה: מה למדת מהקבצים האלה? ציין 2-3 נתונים חדשים שנכנסו, מה עדיין חסר, והצע פעולה אחת.`;
+${rejectionLines ? `\n${rejectionLines}\nתנתח את הדחייה: מה היתה הסיבה העיקרית ומה לשנות בפנייה הבאה לאותו גוף?` : 'תגיב בקצרה: מה למדת מהקבצים האלה? ציין 2-3 נתונים חדשים שנכנסו, מה עדיין חסר, והצע פעולה אחת.'}`;
 
       const fishgoldMsg: ChatMessage = {
         id: crypto.randomUUID(),

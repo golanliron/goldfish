@@ -450,7 +450,7 @@ ${blockSummary}
     // Auto-Research: unknown funder detection + auto-ingestion
     let autoResearchContext = '';
     try {
-      const research = await autoResearchFunder(message);
+      const research = await autoResearchFunder(message, org_id);
       if (research?.found) {
         autoResearchContext = formatFunderResearch(research);
       }

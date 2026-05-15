@@ -5,6 +5,7 @@ import pdfParse from 'pdf-parse';
 import { geminiClassify, geminiExtract, geminiSummarize, geminiOcrPdf, geminiParseXlsx, geminiCall } from '@/lib/ai/gemini';
 import { embedBatch } from '@/lib/ai/rag';
 import { REQUIRED_VAULT_DOCS } from '@/lib/vault-docs';
+import { analyzeRejectionLetter } from '@/lib/ai/funder-learning';
 
 // PDF: use pdf-parse v1, fallback to Gemini OCR
 async function parsePDF(buffer: Buffer): Promise<string> {
@@ -382,7 +383,26 @@ export const POST = withAuth(async (request, auth) => {
     try { finalMetadata = await extractStructuredData(parsedText, category, orgName); } catch { /* keep empty */ }
     try { summary = await summarizeDocument(parsedText); } catch { /* keep filename */ }
 
-    // 6.5 Vault validation — detect type, verify genuineness, extract expiry date
+    // 6.5 Rejection letter detection — learn from failure
+    let rejectionInsight: string | null = null;
+    const isRejectionLetter = /דחייה|נדחה|נדחית|rejected|rejection|regret|unfortunately|לא נוכל לאשר|לא אושרה|לא עברתם|הבקשה לא|not approved|unable to fund/i.test(parsedText.slice(0, 1000));
+    if (isRejectionLetter || category === 'rejection') {
+      category = 'rejection';
+      try {
+        const rejection = await analyzeRejectionLetter(parsedText, orgId);
+        if (rejection.rawInsight) {
+          rejectionInsight = rejection.rawInsight;
+          finalMetadata = {
+            ...finalMetadata,
+            rejection_funder: rejection.funderName,
+            rejection_reasons: rejection.rejectionReasons,
+            improvement_tips: rejection.improvementTips,
+          };
+        }
+      } catch { /* non-fatal */ }
+    }
+
+    // 6.6 Vault validation — detect type, verify genuineness, extract expiry date
     let vaultWarning: string | null = null;
     try {
       const vault = await validateVaultDoc(parsedText, file.name);
@@ -467,6 +487,7 @@ export const POST = withAuth(async (request, auth) => {
       expiry_date: expiryDate,
       vault_key: vaultKey,
       vault_warning: vaultWarning,
+      rejection_insight: rejectionInsight,
       extracted_fields: finalMetadata,
     });
   } catch (error) {

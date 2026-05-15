@@ -21,6 +21,9 @@ export interface FunderResearchResult {
   deadlineNotes?: string;
   eligibility?: string;
   howToApply?: string;
+  pastGrantees?: string[];       // who they funded in practice
+  grantSizes?: string;           // from annual reports
+  matchAnalysis?: string;        // contextual alignment with org profile
   sources: string[];
   savedToDb: boolean;
 }
@@ -86,28 +89,26 @@ async function isFunderKnown(funderName: string): Promise<boolean> {
  * Research a funder using Tavily web search.
  */
 async function researchFunderOnWeb(funderName: string): Promise<{ results: SearchResult[]; sources: string[] }> {
-  const queries = [
-    `"${funderName}" foundation grant funding eligibility`,
-    `"${funderName}" קרן מענק ישראל`,
-    `${funderName} charitable foundation who they fund`,
-  ];
+  // Run 4 targeted queries in parallel: general, eligibility, past grantees, annual report
+  const [general, grantees, annualReport, hebrew] = await Promise.all([
+    webSearch(`"${funderName}" foundation grant funding eligibility who they fund`, { maxResults: 4, searchDepth: 'advanced' }),
+    webSearch(`"${funderName}" past grantees recipients funded organizations site:${funderName.toLowerCase().replace(/\s+/g, '')}.org OR annual report`, { maxResults: 3, searchDepth: 'advanced' }),
+    webSearch(`"${funderName}" annual report 2023 2024 grants awarded`, { maxResults: 3, searchDepth: 'basic' }),
+    webSearch(`"${funderName}" קרן מענק ישראל תורם`, { maxResults: 3, searchDepth: 'basic' }),
+  ]);
 
-  const allResults: SearchResult[] = [];
-  for (const q of queries.slice(0, 2)) {
-    const res = await webSearch(q, { maxResults: 4, searchDepth: 'advanced' });
-    allResults.push(...res);
-  }
+  const all = [...general, ...grantees, ...annualReport, ...hebrew];
 
   // Deduplicate by URL
   const seen = new Set<string>();
-  const unique = allResults.filter(r => {
-    if (seen.has(r.url)) return false;
+  const unique = all.filter(r => {
+    if (!r.url || seen.has(r.url)) return false;
     seen.add(r.url);
     return true;
   });
 
   const sources = unique.map(r => r.url).filter(Boolean);
-  return { results: unique.slice(0, 6), sources };
+  return { results: unique.slice(0, 10), sources };
 }
 
 /**
@@ -125,6 +126,7 @@ async function extractFunderProfile(
     .slice(0, 8000);
 
   const prompt = `אתה מומחה לניתוח גופים פילנתרופיים. מהטקסט הבא, חלץ מידע על "${funderName}".
+חשוב במיוחד: חלץ "מי קיבל כסף בפועל" (past grantees) ו"כמה נתנו בפועל" מדוחות שנתיים — לא מה שהגוף אומר על עצמו.
 
 טקסט מהאינטרנט:
 ---
@@ -142,7 +144,9 @@ ${rawText}
   "typical_amount_max": null,
   "deadline_notes": "הערות על דדליין או מחזוריות",
   "eligibility": "תנאי זכאות עיקריים",
-  "how_to_apply": "איך פונים"
+  "how_to_apply": "איך פונים",
+  "past_grantees": ["שם ארגון 1", "שם ארגון 2"],
+  "grant_sizes": "תיאור קצר של סכומים שנתנו בפועל לפי דוחות"
 }
 
 אם לא ידוע — הכנס null. אל תמציא נתונים.`;
@@ -164,9 +168,72 @@ ${rawText}
       deadlineNotes: parsed.deadline_notes || undefined,
       eligibility: parsed.eligibility || undefined,
       howToApply: parsed.how_to_apply || undefined,
+      pastGrantees: parsed.past_grantees?.filter(Boolean) || [],
+      grantSizes: parsed.grant_sizes || undefined,
     };
   } catch {
     return {};
+  }
+}
+
+// ===== Contextual Alignment — Match funder to org profile =====
+
+/**
+ * Compare funder profile to org profile and produce a strategic alignment line.
+ * Multi-tenant: org profile is fetched per orgId.
+ */
+export async function analyzeGrantMatch(
+  funderName: string,
+  funderProfile: Omit<FunderResearchResult, 'found' | 'funderName' | 'sources' | 'savedToDb'>,
+  orgId: string
+): Promise<string> {
+  const supabase = createAdminClient();
+
+  const [{ data: orgProfileRow }, { data: orgMemory }] = await Promise.all([
+    supabase.from('org_profiles').select('data').eq('org_id', orgId).single(),
+    supabase.from('org_memory').select('key, value').eq('org_id', orgId).limit(30),
+  ]);
+
+  const orgData = (orgProfileRow?.data as Record<string, unknown>) || {};
+  const memFacts = (orgMemory || []).map(m => `${m.key}: ${m.value}`).join('\n');
+
+  const orgSummary = [
+    orgData.name ? `שם: ${orgData.name}` : null,
+    orgData.mission ? `ייעוד: ${String(orgData.mission).slice(0, 200)}` : null,
+    orgData.focus_areas ? `תחומים: ${(orgData.focus_areas as string[]).join(', ')}` : null,
+    orgData.target_populations ? `קהלים: ${(orgData.target_populations as string[]).join(', ')}` : null,
+    orgData.beneficiaries_count ? `מוטבים: ${orgData.beneficiaries_count}` : null,
+    orgData.annual_budget ? `תקציב: ${orgData.annual_budget}` : null,
+    orgData.impact_metrics ? `אימפקט: ${String(orgData.impact_metrics).slice(0, 300)}` : null,
+    orgData.key_achievements ? `הישגים: ${String(orgData.key_achievements).slice(0, 200)}` : null,
+    memFacts ? `עובדות נוספות:\n${memFacts.slice(0, 400)}` : null,
+  ].filter(Boolean).join('\n');
+
+  if (!orgSummary) return '';
+
+  const funderSummary = [
+    funderProfile.focusAreas?.length ? `תחומים: ${funderProfile.focusAreas.join(', ')}` : null,
+    funderProfile.targetPopulations?.length ? `קהלים: ${funderProfile.targetPopulations.join(', ')}` : null,
+    funderProfile.eligibility ? `זכאות: ${funderProfile.eligibility}` : null,
+    funderProfile.pastGrantees?.length ? `מימנו בעבר: ${funderProfile.pastGrantees.join(', ')}` : null,
+    funderProfile.grantSizes ? `סכומים: ${funderProfile.grantSizes}` : null,
+  ].filter(Boolean).join('\n');
+
+  const prompt = `אתה מנהל גיוס משאבים ותיק. השווה בין פרופיל הארגון לפרופיל הקרן ותפיק שורה אסטרטגית אחת שמסבירה את נקודת ההתחברות הכי חזקה.
+
+פרופיל הקרן (${funderName}):
+${funderSummary}
+
+פרופיל הארגון:
+${orgSummary}
+
+כתוב משפט אחד עד שניים בעברית בגוף ראשון (כאילו הגולדפיש מדבר). הדגש נתון ספציפי מפרופיל הארגון שמתחבר לערך ספציפי של הקרן. לדוגמה: "הקרן מעדיפה פרויקטים של ליווי תעסוקתי, וזה מתחבר בדיוק לנתון ה-76% תעסוקה בקרב הבוגרים שמוכח במחקר שלכם." אם אין חפיפה ברורה — כתוב "לא מצאתי התאמה ישירה ברורה על סמך המידע הנוכחי."`;
+
+  try {
+    const result = await geminiCall(prompt, 200, 0.2);
+    return result.trim();
+  } catch {
+    return '';
   }
 }
 
@@ -235,7 +302,8 @@ async function saveFunderToDb(
  *   if (research) inject into systemPrompt as context
  */
 export async function autoResearchFunder(
-  message: string
+  message: string,
+  orgId?: string
 ): Promise<FunderResearchResult | null> {
   if (!process.env.TAVILY_API_KEY) return null;
 
@@ -247,16 +315,24 @@ export async function autoResearchFunder(
   const known = await isFunderKnown(funderName);
   if (known) return null; // Already in DB — no need to research
 
-  // 3. Research on web
+  // 3. Deep research on web (general + past grantees + annual reports)
   const { results, sources } = await researchFunderOnWeb(funderName);
   if (!results.length) {
     return { found: false, funderName, sources: [], savedToDb: false };
   }
 
-  // 4. Extract structured profile via Gemini
+  // 4. Extract structured profile via Gemini (incl. past grantees + grant sizes)
   const profile = await extractFunderProfile(funderName, results);
 
-  // 5. Save to DB
+  // 5. Contextual alignment — compare funder to this org's profile
+  let matchAnalysis: string | undefined;
+  if (orgId) {
+    try {
+      matchAnalysis = await analyzeGrantMatch(funderName, profile, orgId) || undefined;
+    } catch { /* non-fatal */ }
+  }
+
+  // 6. Save to DB
   let savedToDb = false;
   try {
     await saveFunderToDb(funderName, profile, sources);
@@ -269,6 +345,7 @@ export async function autoResearchFunder(
     found: true,
     funderName,
     ...profile,
+    matchAnalysis,
     sources,
     savedToDb,
   };
@@ -296,9 +373,12 @@ export function formatFunderResearch(research: FunderResearchResult): string {
   if (research.eligibility) lines.push(`תנאי זכאות: ${research.eligibility}`);
   if (research.deadlineNotes) lines.push(`מחזוריות/דדליין: ${research.deadlineNotes}`);
   if (research.howToApply) lines.push(`איך לפנות: ${research.howToApply}`);
-  if (research.sources.length) lines.push(`מקורות: ${research.sources.slice(0, 2).join(' | ')}`);
+  if (research.pastGrantees?.length) lines.push(`מימנו בפועל (past grantees): ${research.pastGrantees.join(', ')}`);
+  if (research.grantSizes) lines.push(`סכומים בפועל: ${research.grantSizes}`);
+  if (research.matchAnalysis) lines.push(`ניתוח התאמה לארגון שלך: ${research.matchAnalysis}`);
+  if (research.sources.length) lines.push(`מקורות: ${research.sources.slice(0, 3).join(' | ')}`);
 
-  lines.push(`\nהנחיה: ספר למשתמש שלא הכרת את הגוף הזה, אז חקרת עכשיו ועדכנת את המאגר. תן סיכום של מה שמצאת.`);
+  lines.push(`\nהנחיה: ספר למשתמש שלא הכרת את "${research.funderName}", אז חקרת עכשיו ועדכנת את המאגר. תן סיכום של מה שמצאת — כולל מי קיבל כסף בפועל, לא רק מה שהגוף אומר על עצמו. אם יש ניתוח התאמה לארגון — ציין אותו בפירוש.`);
 
   return lines.join('\n');
 }

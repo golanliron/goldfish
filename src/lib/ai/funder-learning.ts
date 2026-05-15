@@ -546,6 +546,134 @@ export async function findUpcomingRecurrences(): Promise<{
   return upcoming;
 }
 
+// ===== Rejection Letter Analysis =====
+
+export interface RejectionAnalysis {
+  funderName: string | null;
+  rejectionReasons: string[];
+  improvementTips: string[];
+  rawInsight: string;
+}
+
+/**
+ * Analyze a rejection letter and update funder_intelligence.writing_tips.
+ * Called from upload route when document category = 'rejection'.
+ */
+export async function analyzeRejectionLetter(
+  text: string,
+  orgId: string
+): Promise<RejectionAnalysis> {
+  // Import geminiCall lazily to avoid circular deps
+  const { geminiCall } = await import('./gemini');
+  const supabase = createAdminClient();
+
+  // Extract structured rejection data via Gemini
+  const prompt = `אתה מומחה לניתוח מכתבי דחייה מקרנות ומגופים מממנים.
+נתח את מכתב הדחייה הבא וחלץ מידע אסטרטגי.
+
+מכתב הדחייה:
+---
+${text.slice(0, 5000)}
+---
+
+ענה ONLY ב-JSON:
+{
+  "funder_name": "שם הגוף המממן שדחה (null אם לא ברור)",
+  "rejection_reasons": ["סיבה 1", "סיבה 2"],
+  "improvement_tips": ["טיפ לפנייה הבאה 1", "טיפ 2"],
+  "raw_insight": "תובנה אסטרטגית אחת קצרה למה ייתכן שנדחתה ההגשה ומה לשנות בפעם הבאה"
+}
+
+אל תמציא — רק על סמך הטקסט.`;
+
+  let analysis: RejectionAnalysis = {
+    funderName: null,
+    rejectionReasons: [],
+    improvementTips: [],
+    rawInsight: '',
+  };
+
+  try {
+    const raw = await geminiCall(prompt, 400, 0.1);
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      analysis = {
+        funderName: parsed.funder_name || null,
+        rejectionReasons: parsed.rejection_reasons?.filter(Boolean) || [],
+        improvementTips: parsed.improvement_tips?.filter(Boolean) || [],
+        rawInsight: parsed.raw_insight || '',
+      };
+    }
+  } catch { /* keep empty analysis */ }
+
+  // Update funder_intelligence.writing_tips if we know the funder
+  if (analysis.funderName) {
+    const funderName = normalizeFunderName(analysis.funderName);
+    const tipText = [
+      analysis.rawInsight,
+      analysis.improvementTips.join('. '),
+    ].filter(Boolean).join(' — ');
+
+    if (tipText) {
+      // Fetch existing tips and append
+      const { data: fi } = await supabase
+        .from('funder_intelligence')
+        .select('writing_tips, total_rejected')
+        .ilike('funder_name', `%${funderName}%`)
+        .limit(1)
+        .single();
+
+      if (fi) {
+        const existingTips = fi.writing_tips || '';
+        const updatedTips = existingTips
+          ? `${existingTips}\n[דחייה] ${tipText}`
+          : `[דחייה] ${tipText}`;
+
+        await supabase
+          .from('funder_intelligence')
+          .update({
+            writing_tips: updatedTips.slice(0, 1000),
+            total_rejected: (fi.total_rejected || 0) + 1,
+            updated_at: new Date().toISOString(),
+          })
+          .ilike('funder_name', `%${funderName}%`);
+      } else {
+        // Funder not in DB yet — create a stub
+        await supabase.from('funder_intelligence').upsert({
+          funder_name: funderName,
+          funder_style: 'foundation',
+          preferred_domains: [],
+          preferred_populations: [],
+          preferred_regions: [],
+          recurring_months: [],
+          total_submissions: 1,
+          total_approved: 0,
+          total_rejected: 1,
+          writing_tips: `[דחייה] ${tipText}`.slice(0, 1000),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'funder_name' });
+      }
+    }
+
+    // Save to org_memory so the org remembers this rejection
+    if (analysis.rawInsight) {
+      await supabase.from('org_memory').upsert({
+        org_id: orgId,
+        key: `rejection_${funderName.replace(/\s+/g, '_').slice(0, 30)}_${Date.now()}`,
+        value: `נדחינו על ידי ${funderName}: ${analysis.rawInsight}`,
+        source: 'rejection_letter',
+        confidence: 'high',
+        category: 'submissions',
+        depth: 2,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'org_id,key' });
+    }
+  }
+
+  return analysis;
+}
+
 // ===== Helpers =====
 
 function normalizeFunderName(name: string | null): string {
