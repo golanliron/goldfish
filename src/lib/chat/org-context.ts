@@ -184,7 +184,7 @@ export async function extractAndSaveMemory(
     await maybeUpdateSubmissionOutcome(supabase, orgId, userMessage);
 
     for (const item of memoryItems) {
-      const category = VALID_CATEGORIES.includes(item.category) ? item.category : null;
+      const category = item.category && VALID_CATEGORIES.includes(item.category) ? item.category : null;
       const depth = [1, 2, 3].includes(Number(item.depth)) ? Number(item.depth) : 1;
       await supabase
         .from('org_memory')
