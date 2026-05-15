@@ -11,30 +11,42 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { processStagingCalls, processExistingCalls } from '@/lib/ai/agent-pipeline';
+import { getAuthContext } from '@/lib/api-auth';
 
 export const maxDuration = 300; // 5 דקות — Vercel Pro
 
 export async function POST(req: NextRequest) {
-  // ── אימות ──
-  const auth = req.headers.get('authorization') || '';
+  // Read body ONCE — re-reading a consumed stream returns {}
+  const body = await req.json().catch(() => ({}));
+
+  const authHeader = req.headers.get('authorization') || '';
   const cronSecret = process.env.CRON_SECRET || '';
+  const isCron = !!cronSecret && authHeader === `Bearer ${cronSecret}`;
 
-  if (!cronSecret || auth !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  // ── org_id אופציונלי מה-body ──
   let orgId: string | undefined;
-  let mode: string = 'staging';
-  try {
-    const body = await req.json().catch(() => ({}));
+  let mode: string = body?.mode || 'staging';
+
+  if (isCron) {
     orgId = body?.org_id;
-    mode  = body?.mode || 'staging'; // 'staging' | 'existing'
-  } catch {
-    // body ריק — בסדר
+  } else {
+    // UI path — try cookie session, then fall back to org_id from body
+    const auth = await getAuthContext(req);
+    orgId = body?.org_id || auth?.orgId;
+    if (!orgId) {
+      console.log('[process-grants] Unauthorized — no org_id in body and no session', {
+        hasBody: !!body,
+        bodyKeys: Object.keys(body),
+        hasSession: !!auth,
+        detail: 'send org_id in POST body or ensure cookies are included',
+      });
+      return NextResponse.json({
+        error: 'Unauthorized',
+        detail: 'No session found and no org_id in request body. Include { org_id } in POST body.',
+      }, { status: 401 });
+    }
   }
 
-  console.log(`[process-grants] mode=${mode} org=${orgId || 'DEV_ORG_ID'}`);
+  console.log(`[process-grants] mode=${mode} org=${orgId} isCron=${isCron}`);
 
   try {
     const result = mode === 'existing'
