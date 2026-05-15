@@ -29,15 +29,20 @@ export async function POST(req: NextRequest) {
   const orgId: string | undefined = body?.org_id;
   const mode: string = body?.mode || 'staging';
 
-  // Security: require either a valid CRON_SECRET token OR an org_id in the body
-  if (!isCron && !orgId) {
-    console.log('[process-grants] Rejected — no org_id in body, no cron token', {
-      bodyKeys: Object.keys(body),
-    });
+  // Security: require valid CRON_SECRET token
+  if (!isCron) {
     return NextResponse.json({
       error: 'Unauthorized',
-      detail: 'Include { org_id } in POST body.',
+      detail: 'Bearer CRON_SECRET token required.',
     }, { status: 401 });
+  }
+
+  // org_id is always required — no fallback to DEV_ORG_ID
+  if (!orgId) {
+    return NextResponse.json({
+      error: 'org_id is required',
+      detail: 'Include { org_id } in POST body.',
+    }, { status: 400 });
   }
 
   console.log(`[process-grants] mode=${mode} org=${orgId} isCron=${isCron}`);

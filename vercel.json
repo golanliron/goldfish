@@ -37,6 +37,10 @@
     {
       "path": "/api/cron/social-scan",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/worker",
+      "schedule": "*/2 * * * *"
     }
   ]
 }

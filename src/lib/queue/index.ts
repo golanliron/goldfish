@@ -201,12 +201,13 @@ async function runScanOpportunities(job: Job) {
 }
 
 async function runProcessGrants(job: Job) {
+  if (!job.org_id) throw new Error('process_grants requires org_id');
   const { mode = 'staging' } = job.payload as { mode?: string };
   const { processStagingCalls, processExistingCalls } = await import('@/lib/ai/agent-pipeline');
   const result =
     mode === 'existing'
-      ? await processExistingCalls(job.org_id ?? undefined)
-      : await processStagingCalls(job.org_id ?? undefined);
+      ? await processExistingCalls(job.org_id)
+      : await processStagingCalls(job.org_id);
   return { result };
 }
 

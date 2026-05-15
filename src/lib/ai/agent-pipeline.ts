@@ -19,7 +19,6 @@ import type { OrgDNA } from './org-dna';
 const THRESHOLD_FOR_RESEARCH = 40;   // ציון בסיסי מינימלי לטיפול הסוכן
 const BATCH_SIZE             = 15;   // מקסימום קולות קוראים בריצה אחת
 const INTER_ITEM_DELAY_MS    = 2500; // השהייה בין פריטים (rate limiting Gemini/Tavily)
-const DEV_ORG_ID = process.env.DEV_ORG_ID || '';
 
 // ── Config: batch processing ──────────────────────────────────────────────────
 const EXISTING_BATCH_SIZE   = 20;   // כמה קולות קוראים קיימים לעבד בריצה אחת
@@ -81,12 +80,11 @@ export interface PipelineResult {
   errors:    number;
 }
 
-export async function processStagingCalls(orgId = DEV_ORG_ID): Promise<PipelineResult> {
+export async function processStagingCalls(orgId: string): Promise<PipelineResult> {
   const result: PipelineResult = { processed: 0, high: 0, medium: 0, low: 0, skipped: 0, errors: 0 };
 
   if (!orgId) {
-    console.error('[agent-pipeline] orgId is required');
-    return result;
+    throw new Error('[agent-pipeline] orgId is required — no fallback allowed');
   }
 
   const admin = createAdminClient();
@@ -220,12 +218,11 @@ export async function processStagingCalls(orgId = DEV_ORG_ID): Promise<PipelineR
 //
 // הפעלה: POST /api/process-grants עם body { "mode": "existing", "org_id": "..." }
 
-export async function processExistingCalls(orgId = DEV_ORG_ID): Promise<PipelineResult> {
+export async function processExistingCalls(orgId: string): Promise<PipelineResult> {
   const result: PipelineResult = { processed: 0, high: 0, medium: 0, low: 0, skipped: 0, errors: 0 };
 
   if (!orgId) {
-    console.error('[agent-pipeline] orgId is required for processExistingCalls');
-    return result;
+    throw new Error('[agent-pipeline] orgId is required — no fallback allowed');
   }
 
   const admin = createAdminClient();
