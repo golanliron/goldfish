@@ -68,7 +68,11 @@ export default function OnboardingPage() {
 
   useEffect(() => {
     const isPreviewMode = typeof window !== 'undefined' && window.location.search.includes('preview=1');
-    if (isPreviewMode) { setReady(true); return; }
+    if (isPreviewMode) {
+      setReady(true);
+      // In preview mode, skip auth and show onboarding directly
+      return;
+    }
     if (authLoading) return;
     if (!orgId) { setReady(true); return; }
 
@@ -100,19 +104,69 @@ export default function OnboardingPage() {
       setFiles(prev => prev.map((f, i) => i === index ? { ...f, status: 'error' } : f));
       return;
     }
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('org_id', orgId);
+
+    const MAX_BYTES = 50 * 1024 * 1024;
+    if (file.size > MAX_BYTES) {
+      setFiles(prev => prev.map((f, i) => i === index ? { ...f, status: 'error' } : f));
+      return;
+    }
 
     try {
-      const res = await fetch('/api/upload', { method: 'POST', body: formData });
-      const data = await res.json();
-      if (res.ok) {
+      // Step 1: Get signed upload URL + create document record (status=processing)
+      const urlRes = await fetch('/api/upload-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: file.name, fileSize: file.size }),
+      });
+      const urlData = await urlRes.json();
+
+      if (!urlRes.ok) {
+        setFiles(prev => prev.map((f, i) => i === index ? { ...f, status: 'error' } : f));
+        return;
+      }
+
+      // Already exists
+      if (urlData.already_exists) {
         setFiles(prev => prev.map((f, i) => i === index
-          ? { ...f, status: 'done', category: data.category, summary: data.summary }
+          ? { ...f, status: 'done', category: urlData.category, summary: urlData.summary }
+          : f
+        ));
+        return;
+      }
+
+      // Step 2: Upload directly to Supabase Storage via signed URL
+      const uploadRes = await fetch(urlData.signed_url, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type || 'application/octet-stream' },
+        body: file,
+      });
+
+      if (!uploadRes.ok) {
+        // Document record exists as processing — mark error via process-upload
+        await fetch('/api/process-upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ document_id: urlData.document_id }),
+        });
+        setFiles(prev => prev.map((f, i) => i === index ? { ...f, status: 'error' } : f));
+        return;
+      }
+
+      // Step 3: Trigger processing (synchronous — waits for AI enrichment)
+      const processRes = await fetch('/api/process-upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ document_id: urlData.document_id }),
+      });
+      const processData = await processRes.json();
+
+      if (processRes.ok) {
+        setFiles(prev => prev.map((f, i) => i === index
+          ? { ...f, status: 'done', category: processData.category, summary: processData.summary }
           : f
         ));
       } else {
+        // Processing failed — document exists in DB with status=error
         setFiles(prev => prev.map((f, i) => i === index ? { ...f, status: 'error' } : f));
       }
     } catch {
