@@ -877,11 +877,17 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
     const parts = [`תכתוב טיוטת הגשה לקול הקורא: "${opp.title}"`];
     if (opp.funder) parts.push(`מממן: ${opp.funder}`);
     if (opp.deadline) parts.push(`דדליין: ${new Date(opp.deadline).toLocaleDateString('he-IL')}`);
-    const linkForContext = opp.application_url || opp.url;
-    if (linkForContext) parts.push(`\nקישור${opp.application_url ? ' ישיר להגשה' : ' לקול הקורא'}: ${linkForContext}\nתקרא את הקול הקורא בלינק, תבין מה הם מבקשים, ותכתוב הצעה שעונה בדיוק על הדרישות שלהם.`);
-    if (opp.description) parts.push(`\nתיאור: ${opp.description.slice(0, 800)}`);
+    if (opp.amount_max) parts.push(`סכום מקסימלי: ${opp.amount_max.toLocaleString()} ₪`);
     if (opp.eligibility) parts.push(`תנאי סף: ${opp.eligibility}`);
     if (opp.how_to_apply) parts.push(`אופן הגשה: ${opp.how_to_apply}`);
+    if (opp.application_url) parts.push(`לינק ישיר להגשה: ${opp.application_url}`);
+    else if (opp.url) parts.push(`לינק לקול הקורא: ${opp.url}`);
+    // Include raw page content if available — this is the actual RFP text
+    if (opp.raw_text && opp.raw_text.length > 200) {
+      parts.push(`\n===== תוכן קול הקורא המלא =====\n${opp.raw_text.slice(0, 6000)}`);
+    } else if (opp.description) {
+      parts.push(`\nתיאור: ${opp.description.slice(0, 800)}`);
+    }
     const detail = parts.join('\n');
     // Close sidebar first (mobile), then send after ChatPanel mounts
     window.dispatchEvent(new CustomEvent('fishgold:closeSidebar'));
