@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { withAuth } from '@/lib/api-auth';
 import pdfParse from 'pdf-parse';
 import { geminiClassify, geminiExtract, geminiSummarize, geminiOcrPdf, geminiParseXlsx } from '@/lib/ai/gemini';
+import { embedBatch } from '@/lib/ai/rag';
 
 // PDF: use pdf-parse v1, fallback to Gemini OCR
 async function parsePDF(buffer: Buffer): Promise<string> {
@@ -173,16 +174,21 @@ export const POST = withAuth(async (request, auth) => {
         .single();
 
       if (doc) {
-        // Save chunks for RAG
+        // Save chunks for RAG with embeddings
         const chunks = chunkText(text);
-        for (const chunk of chunks) {
+        let embeddings: number[][] = [];
+        try { embeddings = await embedBatch(chunks); } catch { /* save without vectors */ }
+        for (let i = 0; i < chunks.length; i++) {
           await supabase.from('document_chunks').insert({
             document_id: doc.id,
             org_id,
-            content: chunk,
+            content: chunks[i],
+            embedding: embeddings[i] ?? null,
             metadata: { category: aiCategory, filename: filename || 'free_text' },
           });
         }
+        // Seed org_memory from extracted metadata
+        await seedMemoryFromDoc(supabase, org_id, doc.id, aiCategory, metadata);
       }
 
       // Update org profile
@@ -272,19 +278,25 @@ export const POST = withAuth(async (request, auth) => {
       return Response.json({ error: `Failed to save: ${docError?.message || docError?.code || 'unknown'} | fileType:${fileType} category:${category}` }, { status: 500 });
     }
 
-    // 5. Store chunks for RAG
+    // 5. Store chunks for RAG with embeddings
     const chunks = chunkText(parsedText);
-    for (const chunkContent of chunks) {
+    let chunkEmbeddings: number[][] = [];
+    try { chunkEmbeddings = await embedBatch(chunks); } catch { /* save without vectors */ }
+    for (let i = 0; i < chunks.length; i++) {
       await supabase.from('document_chunks').insert({
         document_id: doc.id,
         org_id: orgId,
-        content: chunkContent,
+        content: chunks[i],
+        embedding: chunkEmbeddings[i] ?? null,
         metadata: { category, filename: file.name },
       });
     }
 
     // 6. Update org profile
     await updateOrgProfile(supabase, orgId, category, finalMetadata);
+
+    // 7. Seed org_memory from extracted metadata
+    await seedMemoryFromDoc(supabase, orgId, doc.id, category, finalMetadata);
 
     return Response.json({
       document_id: doc.id,
@@ -298,6 +310,80 @@ export const POST = withAuth(async (request, auth) => {
     return Response.json({ error: `שגיאה בעיבוד: ${msg.slice(0, 200)}` }, { status: 500 });
   }
 });
+
+// ===== Seed org_memory from document metadata =====
+
+const CATEGORY_TO_MEMORY: Record<string, string> = {
+  identity: 'identity',
+  official: 'identity',
+  impact: 'impact',
+  budget: 'operations',
+  project: 'operations',
+  grant: 'submissions',
+  other: 'dna',
+};
+
+async function seedMemoryFromDoc(
+  supabase: ReturnType<typeof createAdminClient>,
+  orgId: string,
+  docId: string,
+  category: string,
+  metadata: Record<string, unknown>
+) {
+  const memCat = CATEGORY_TO_MEMORY[category] || 'dna';
+
+  // Build 1-3 memory records from extracted metadata fields
+  const records: { key: string; value: string; confidence: 'medium' | 'high'; depth: number }[] = [];
+
+  // Pick the most meaningful fields per category
+  const fieldPriority: string[] = [];
+  if (memCat === 'identity') fieldPriority.push('name', 'mission', 'registration_number', 'founded_year', 'website');
+  else if (memCat === 'impact') fieldPriority.push('impact_metrics', 'key_achievements', 'beneficiaries_count');
+  else if (memCat === 'operations') fieldPriority.push('annual_budget', 'employees_count', 'active_projects', 'revenue_sources');
+  else if (memCat === 'submissions') fieldPriority.push('funder', 'amount', 'doc_type');
+  else fieldPriority.push('focus_areas', 'target_populations', 'theory_of_change', 'unique_model');
+
+  for (const field of fieldPriority) {
+    if (records.length >= 3) break;
+    const val = metadata[field];
+    if (!val) continue;
+    const strVal = typeof val === 'string' ? val : JSON.stringify(val);
+    if (strVal.length < 3) continue;
+
+    records.push({
+      key: `doc_${docId.slice(0, 8)}_${field}`,
+      value: strVal.slice(0, 300),
+      confidence: strVal.length > 20 ? 'high' : 'medium',
+      depth: strVal.length > 50 ? 2 : 1,
+    });
+  }
+
+  // Always add at least one record: the document category fact
+  if (records.length === 0) {
+    records.push({
+      key: `doc_${docId.slice(0, 8)}_uploaded`,
+      value: `מסמך מסוג ${category} הועלה`,
+      confidence: 'medium',
+      depth: 1,
+    });
+  }
+
+  for (const rec of records) {
+    await supabase.from('org_memory').upsert(
+      {
+        org_id: orgId,
+        key: rec.key,
+        value: rec.value,
+        source: 'document_upload',
+        confidence: rec.confidence,
+        category: memCat,
+        depth: rec.depth,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'org_id,key' }
+    );
+  }
+}
 
 // ===== Org Profile Update =====
 
