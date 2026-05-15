@@ -82,7 +82,17 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
 
   const categories = useMemo(() => taxonomy.filter(t => t.type === 'category'), [taxonomy]);
   const populations = useMemo(() => taxonomy.filter(t => t.type === 'population'), [taxonomy]);
-  const matchedCount = useMemo(() => matchScores.size, [matchScores]);
+  // matchedCount = opportunities with score >= 60 (the "relevant" threshold)
+  const matchedCount = useMemo(
+    () => opportunities.filter(o => (matchScores.get(o.id)?.score ?? 0) >= 60).length,
+    [opportunities, matchScores]
+  );
+  // Per-bucket counts (exclusive ranges)
+  const bucketCount = useMemo(() => ({
+    '80': opportunities.filter(o => (matchScores.get(o.id)?.score ?? 0) >= 80).length,
+    '70': opportunities.filter(o => { const s = matchScores.get(o.id)?.score ?? 0; return s >= 70 && s < 80; }).length,
+    '60': opportunities.filter(o => { const s = matchScores.get(o.id)?.score ?? 0; return s >= 60 && s < 70; }).length,
+  }), [opportunities, matchScores]);
 
   const GEO_LABELS: Record<string, string> = {
     negev: 'נגב',
@@ -150,17 +160,18 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
   const filtered = useMemo(() => {
     let result = opportunities;
 
-    // Filter by match to org
+    // Filter by match to org (≥60 = "relevant")
     if (showOnlyMatched && matchScores.size > 0) {
-      result = result.filter(o => matchScores.has(o.id));
+      result = result.filter(o => (matchScores.get(o.id)?.score ?? 0) >= 60);
     }
 
-    // Filter by minimum match score
+    // Filter by exclusive bucket (e.g. "70%" = 70–79, "80%" = ≥80)
     if (minMatchScore) {
       const min = parseInt(minMatchScore);
+      const max = min === 80 ? Infinity : min + 10;
       result = result.filter(o => {
-        const score = matchScores.get(o.id)?.score || 0;
-        return score >= min;
+        const score = matchScores.get(o.id)?.score ?? 0;
+        return score >= min && score < max;
       });
     }
 
@@ -240,12 +251,14 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
               <span className="text-[12px] font-bold text-accent">הגשות מותאמות לארגון שלכם</span>
             </div>
           )}
-          {/* Secondary: total open + sync button */}
+          {/* Secondary: summary text + sync button */}
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-green animate-pulse" />
-              <span className="text-[11px] text-muted">
-                מתוך {opportunities.length} הגשות פתוחות במאגר
+              <div className="w-2 h-2 rounded-full bg-green animate-pulse flex-shrink-0" />
+              <span className="text-[11px] text-muted leading-tight">
+                {matchedCount > 0
+                  ? `מצאנו ${matchedCount} קולות קוראים מותאמים מתוך ${opportunities.length} פתוחות במאגר`
+                  : `${opportunities.length} הגשות פתוחות במאגר`}
               </span>
             </div>
             {orgId && (
@@ -294,30 +307,33 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
                   כל ההגשות ({opportunities.length})
                 </button>
               </div>
-              {/* Quick match % filter */}
+              {/* Quick match % filter — exclusive buckets */}
               <div className="flex gap-1">
-                {(['60', '70', '80'] as const).map(pct => {
-                  const count = opportunities.filter(o => (matchScores.get(o.id)?.score || 0) >= parseInt(pct)).length;
-                  if (count === 0) return null;
+                {(['80', '70', '60'] as const).map(pct => {
+                  const count = bucketCount[pct];
+                  const isActive = minMatchScore === pct;
                   return (
                     <button
                       key={pct}
                       onClick={() => {
-                        if (minMatchScore === pct) {
+                        if (isActive) {
                           setMinMatchScore('');
-                          setShowOnlyMatched(false);
+                          setShowOnlyMatched(true);
                         } else {
                           setMinMatchScore(pct as typeof minMatchScore);
                           setShowOnlyMatched(false);
                         }
                       }}
                       className={`flex-1 text-[9px] py-1 rounded-md font-medium transition-colors ${
-                        minMatchScore === pct
+                        isActive
                           ? 'bg-green-600 text-white'
+                          : count === 0
+                          ? 'bg-surf2 text-muted/40 border border-border/30 cursor-default'
                           : 'bg-surf2 text-muted hover:text-text border border-border/50'
                       }`}
+                      disabled={count === 0}
                     >
-                      {pct}%+ ({count})
+                      +{pct}% ({count})
                     </button>
                   );
                 })}
@@ -731,12 +747,14 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
 
   return (
     <div
-      className={`bg-surf rounded-xl border p-3 hover:border-accent/30 transition-colors cursor-pointer ${match && match.score >= 80 ? 'border-green-200' : 'border-border'}`}
+      className={`bg-surf rounded-xl border overflow-hidden hover:border-accent/30 transition-colors cursor-pointer ${match && match.score >= 80 ? 'border-green-200' : 'border-border'}`}
       onClick={() => setExpanded(!expanded)}
     >
+      {/* ── HEADER ── */}
+      <div className="p-3 pb-2">
       {/* Match score badge */}
       {match && (
-        <div className={`flex items-center gap-1.5 mb-2 px-2.5 py-1.5 rounded-lg border text-[10px] ${matchColor}`}>
+        <div className={`flex items-center gap-1.5 mb-2.5 px-2.5 py-1.5 rounded-lg border text-[10px] ${matchColor}`}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="flex-shrink-0">
             <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
           </svg>
@@ -744,16 +762,42 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
         </div>
       )}
 
-      {/* Top row: title + type badge */}
+      {/* Top row: title + type badge + source link */}
       <div className="flex items-start justify-between gap-2 mb-1.5">
-        <h4 className="text-[13px] font-semibold leading-snug flex-1 min-w-0 line-clamp-2">
+        <h4 className="text-[15px] font-bold leading-snug flex-1 min-w-0 line-clamp-2">
           {opp.title}
         </h4>
-        {opp.type && (
-          <span className={`flex-shrink-0 text-[9px] px-1.5 py-0.5 rounded-full font-medium ${TYPE_COLORS[opp.type]}`}>
-            {TYPE_LABELS[opp.type]}
-          </span>
-        )}
+        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+          {opp.type && (
+            <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${TYPE_COLORS[opp.type]}`}>
+              {TYPE_LABELS[opp.type]}
+            </span>
+          )}
+          {(opp.application_url || opp.url) && (() => {
+            const href = opp.application_url || opp.url!;
+            const isDirect = !!opp.application_url;
+            const isGov = href.includes('gov.il') || href.includes('merkava') || href.includes('taktziv') || href.includes('pras.');
+            return (
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={e => e.stopPropagation()}
+                title={isDirect ? 'מעבר לאתר ההגשה' : 'מעבר לאתר המקור'}
+                className="inline-flex items-center gap-0.5 text-[9px] text-accent hover:underline font-medium"
+              >
+                {isGov ? <span>🇮🇱</span> : (
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+                    <polyline points="15 3 21 3 21 9" />
+                    <line x1="10" y1="14" x2="21" y2="3" />
+                  </svg>
+                )}
+                {isDirect ? 'הגשה' : 'מקור'}
+              </a>
+            );
+          })()}
+        </div>
       </div>
 
       {/* Funder + intelligence */}
@@ -802,36 +846,9 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
         )}
       </div>
 
-      {/* Link to application — prefer direct application_url over general url */}
-      {(opp.application_url || opp.url) && (() => {
-        const href = opp.application_url || opp.url!;
-        const isDirect = !!opp.application_url;
-        const isGov = href.includes('gov.il') || href.includes('merkava') || href.includes('taktziv') || href.includes('pras.');
-        return (
-          <a
-            href={href}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={e => e.stopPropagation()}
-            className={`inline-flex items-center gap-1 text-[10px] mb-2 hover:underline ${isDirect ? 'text-green-600 font-medium' : 'text-accent'}`}
-          >
-            {isGov ? (
-              <span title="מערכת ממשלתית" className="text-[9px]">🇮🇱</span>
-            ) : (
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
-                <polyline points="15 3 21 3 21 9" />
-                <line x1="10" y1="14" x2="21" y2="3" />
-              </svg>
-            )}
-            {isDirect ? 'להגשה ישירה ↗' : 'לינק להגשה'}
-          </a>
-        );
-      })()}
-
       {/* Category tags */}
       {opp.categories && opp.categories.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-2">
+        <div className="flex flex-wrap gap-1">
           {opp.categories.slice(0, 3).map(cat => (
             <span key={cat} className="text-[9px] px-1.5 py-0.5 bg-surf2 text-muted rounded-md">
               {cat}
@@ -842,34 +859,58 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
           )}
         </div>
       )}
+      </div> {/* end HEADER */}
 
-      {/* Expanded details */}
+      {/* ── CONTENT (expanded) ── */}
       {expanded && (
-        <div className="mt-2 pt-2 border-t border-border space-y-2 text-[11px]">
+        <div className="border-t border-border">
+          <div className="px-3 pt-3 pb-2 space-y-2.5 text-[11px]">
           {opp.description && (
-            <p className="text-text2 leading-relaxed">{opp.description}</p>
+            <ul className="space-y-1 text-text2 leading-relaxed list-none">
+              {opp.description.split(/[.。\n]+/).filter(s => s.trim().length > 10).slice(0, 4).map((sentence, i) => (
+                <li key={i} className="flex gap-1.5">
+                  <span className="text-accent mt-0.5 flex-shrink-0">•</span>
+                  <span>{sentence.trim()}</span>
+                </li>
+              ))}
+            </ul>
           )}
           {opp.eligibility && (
             <div>
-              <span className="font-medium text-text">תנאי סף: </span>
-              <span className="text-text2">{opp.eligibility}</span>
+              <span className="font-semibold text-text">תנאי סף: </span>
+              <span className="text-text2 text-[10px]">{opp.eligibility}</span>
             </div>
           )}
           {opp.how_to_apply && (
             <div>
-              <span className="font-medium text-text">אופן הגשה: </span>
-              <span className="text-text2">{opp.how_to_apply}</span>
+              <span className="font-semibold text-text">אופן הגשה: </span>
+              <span className="text-text2 text-[10px]">{opp.how_to_apply}</span>
             </div>
           )}
           {opp.contact_info && (
             <div>
-              <span className="font-medium text-text">איש קשר: </span>
-              <span className="text-text2">{opp.contact_info}</span>
+              <span className="font-semibold text-text">איש קשר: </span>
+              <span className="text-text2 text-[10px]">{opp.contact_info}</span>
             </div>
           )}
+          {opp.target_populations && opp.target_populations.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              <span className="font-semibold text-text ml-1">אוכלוסיות:</span>
+              {opp.target_populations.map(pop => (
+                <span key={pop} className="text-[9px] px-1.5 py-0.5 bg-accent/10 text-accent rounded-md">
+                  {pop}
+                </span>
+              ))}
+            </div>
+          )}
+          </div>
+
+          {/* Doc Progress Bar */}
+          {orgId && <DocProgressBar opportunityId={opp.id} orgId={orgId} />}
+
           {/* Readiness check */}
           {orgId && (
-            <div className="pt-1">
+            <div className="px-3 pb-2">
               {!readiness && !loadingReadiness && (
                 <button
                   onClick={e => {
@@ -923,68 +964,27 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
             </div>
           )}
 
-          {opp.target_populations && opp.target_populations.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              <span className="font-medium text-text ml-1">אוכלוסיות:</span>
-              {opp.target_populations.map(pop => (
-                <span key={pop} className="text-[9px] px-1.5 py-0.5 bg-accent/10 text-accent rounded-md">
-                  {pop}
-                </span>
-              ))}
-            </div>
-          )}
+          </div> {/* end CONTENT */}
 
-          {/* Doc checklist */}
-          {orgId && <DocChecklist opportunityId={opp.id} orgId={orgId} />}
-
-          {/* Action buttons */}
-          <div className="flex gap-1.5 pt-1">
-            <button
-              onClick={handleWriteSubmission}
-              className="flex-1 py-1.5 text-[10px] font-medium bg-accent text-white rounded-lg hover:opacity-90 transition-opacity"
-            >
-              כתוב הגשה
-            </button>
-            {(opp.application_url || opp.url) && (() => {
-              const href = opp.application_url || opp.url!;
-              const isDirect = !!opp.application_url;
-              const isGov = href.includes('gov.il') || href.includes('merkava') || href.includes('taktziv') || href.includes('pras.');
-              return (
-                <a
-                  href={href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={e => e.stopPropagation()}
-                  className={`flex-1 py-1.5 text-[10px] font-medium text-center rounded-lg transition-colors inline-flex items-center justify-center gap-1 ${
-                    isDirect
-                      ? 'bg-green-50 border border-green-300 text-green-700 hover:bg-green-100'
-                      : 'border border-border hover:bg-surf2'
-                  }`}
-                >
-                  {isGov && <span className="text-[9px]">🇮🇱</span>}
-                  {isDirect ? 'הגשה ישירה' : 'פתח הגשה'}
-                </a>
-              );
-            })()}
-          </div>
-
-          {/* Prepare draft submission button */}
+          {/* ── ACTIONS ── */}
+          <div className="border-t border-border bg-surf2/40 px-3 pt-3 pb-3 space-y-2">
+          {/* PRIMARY: Prepare draft */}
           {orgId && (
-            <div className="pt-1">
+            <div>
               {draftState === 'idle' && (
                 <button
                   onClick={handlePrepareDraft}
-                  className="w-full py-2 text-[10px] font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5"
+                  className="w-full py-2.5 text-[11px] font-bold bg-orange-500 text-white rounded-xl hover:bg-orange-600 active:scale-[0.98] transition-all shadow-sm flex items-center justify-center gap-2"
                 >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                     <path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
                   </svg>
                   הכן טיוטת הגשה אוטומטית
                 </button>
               )}
               {(draftState === 'parsing' || draftState === 'analyzing' || draftState === 'generating') && (
-                <div className="w-full py-2 text-[10px] font-medium bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center gap-1.5">
-                  <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                <div className="w-full py-2.5 text-[11px] font-medium bg-orange-50 text-orange-600 rounded-xl border border-orange-200 flex items-center justify-center gap-1.5">
+                  <div className="w-3 h-3 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
                   {draftState === 'parsing' ? 'קורא את קול הקורא...' : draftState === 'analyzing' ? 'מנתח התאמה...' : 'כותב טיוטת הגשה...'}
                 </div>
               )}
@@ -1047,32 +1047,42 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
             </div>
           )}
 
-          {/* Share row */}
-          <div className="flex gap-1.5 pt-1">
+          {/* SECONDARY: Write in chat */}
+          <button
+            onClick={handleWriteSubmission}
+            className="w-full py-2 text-[10px] font-medium bg-accent/10 text-accent rounded-lg hover:bg-accent/20 transition-colors border border-accent/20"
+          >
+            כתוב הגשה בצ'אט
+          </button>
+
+          {/* Share row — icons only */}
+          <div className="flex items-center justify-end gap-1 pt-0.5">
+            <span className="text-[9px] text-muted ml-auto">שתף:</span>
             <a
               href={`mailto:?subject=${encodeURIComponent(opp.title)}&body=${encodeURIComponent(buildShareText(opp))}`}
               onClick={e => e.stopPropagation()}
-              className="flex-1 py-1.5 text-[10px] font-medium text-center border border-border rounded-lg hover:bg-surf2 transition-colors flex items-center justify-center gap-1"
+              title="שלח במייל"
+              className="w-7 h-7 flex items-center justify-center border border-border rounded-lg hover:bg-surf2 transition-colors text-muted hover:text-text"
             >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
                 <polyline points="22,6 12,13 2,6" />
               </svg>
-              שלח במייל
             </a>
             <a
               href={`https://wa.me/?text=${encodeURIComponent(buildShareText(opp))}`}
               target="_blank"
               rel="noopener noreferrer"
               onClick={e => e.stopPropagation()}
-              className="flex-1 py-1.5 text-[10px] font-medium text-center border border-green-300 text-green-700 rounded-lg hover:bg-green-50 transition-colors flex items-center justify-center gap-1"
+              title="שלח בוואטסאפ"
+              className="w-7 h-7 flex items-center justify-center border border-green-200 rounded-lg hover:bg-green-50 transition-colors text-green-600"
             >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z" />
               </svg>
-              שלח בוואטסאפ
             </a>
           </div>
+          </div> {/* end ACTIONS */}
 
         </div>
       )}
@@ -1084,6 +1094,86 @@ function formatAmount(amount: number): string {
   if (amount >= 1_000_000) return `${(amount / 1_000_000).toFixed(1)}M`;
   if (amount >= 1_000) return `${(amount / 1_000).toFixed(0)}K`;
   return amount.toLocaleString('he-IL');
+}
+
+// ── DocProgressBar ─────────────────────────────────────────────────────────────
+
+function DocProgressBar({ opportunityId, orgId }: { opportunityId: string; orgId: string }) {
+  const [data, setData] = useState<DocGapData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  const load = () => {
+    if (data || loading) return;
+    setLoading(true);
+    fetch(`/api/opportunities/doc-gap?org_id=${orgId}&opportunity_id=${opportunityId}`)
+      .then(r => r.json())
+      .then(d => { setData(d as DocGapData); setLoading(false); })
+      .catch(() => setLoading(false));
+  };
+
+  const toggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!open) load();
+    setOpen(o => !o);
+  };
+
+  const { ok = 0, missing = 0, expired = 0, total = 0 } = data?.summary || {};
+  const pct = total > 0 ? Math.round((ok / total) * 100) : 0;
+  const barColor = pct >= 80 ? 'bg-green-500' : pct >= 50 ? 'bg-amber-500' : 'bg-red-400';
+
+  return (
+    <div className="px-3 pb-2">
+      <button
+        onClick={toggle}
+        className="w-full text-right mb-1.5"
+      >
+        <div className="flex items-center justify-between text-[10px] mb-1">
+          <span className="font-medium text-text">
+            {loading ? 'טוען מסמכים...' : data ? `מסמכים: ${ok}/${total}` : 'מסמכים נדרשים'}
+          </span>
+          {data && (
+            <span className={`font-bold ${pct >= 80 ? 'text-green-600' : pct >= 50 ? 'text-amber-600' : 'text-red-500'}`}>
+              {pct}%
+            </span>
+          )}
+        </div>
+        <div className="w-full h-1.5 bg-surf2 rounded-full overflow-hidden border border-border/40">
+          {loading ? (
+            <div className="h-full w-1/3 bg-accent/40 rounded-full animate-pulse" />
+          ) : data ? (
+            <div className={`h-full rounded-full transition-all duration-500 ${barColor}`} style={{ width: `${pct}%` }} />
+          ) : (
+            <div className="h-full w-0" />
+          )}
+        </div>
+        {data && (missing > 0 || expired > 0) && (
+          <div className="flex gap-2 mt-1 text-[9px]">
+            {missing > 0 && <span className="text-red-500">❌ {missing} חסרים</span>}
+            {expired > 0 && <span className="text-amber-500">⚠️ {expired} פגי תוקף</span>}
+            {ok > 0 && <span className="text-green-600">✅ {ok} תקינים</span>}
+          </div>
+        )}
+      </button>
+      {open && data && data.checklist.length > 0 && (
+        <div className="space-y-1 border border-border rounded-lg p-2 bg-surf2/50">
+          {data.checklist.map(item => (
+            <div key={item.key} className="flex items-center gap-1.5 text-[9px]">
+              <span className="flex-shrink-0">
+                {item.status === 'ok' ? '✅' : item.status === 'missing' ? '❌' : '⚠️'}
+              </span>
+              <span className={item.status === 'ok' ? 'text-text2' : item.status === 'missing' ? 'text-red-600' : 'text-amber-600'}>
+                {item.label}
+              </span>
+              {item.expiry_date && item.status !== 'ok' && (
+                <span className="text-muted mr-auto">{new Date(item.expiry_date).toLocaleDateString('he-IL')}</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── DocChecklist ───────────────────────────────────────────────────────────────
