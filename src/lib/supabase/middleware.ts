@@ -36,9 +36,10 @@ export async function updateSession(request: NextRequest) {
   const isAuthRoute = request.nextUrl.pathname.startsWith('/login') ||
                       request.nextUrl.pathname.startsWith('/signup');
 
-  // Admin or preview mode — no redirects ever
+  // Admin or preview/edit mode — no redirects ever
   const isPreview = request.nextUrl.searchParams.has('preview');
-  if (isAdmin || isPreview) {
+  const isEdit = request.nextUrl.searchParams.has('edit');
+  if (isAdmin || isPreview || isEdit) {
     return supabaseResponse;
   }
 
@@ -49,19 +50,19 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (user && isAuthRoute) {
-    // Check if user already has an org profile — if so, go to dashboard
+    // Check if user already has an org — if so, go to dashboard
     const { data: existing } = await supabase
-      .from('organizations')
-      .select('id')
-      .eq('user_id', user.id)
+      .from('users')
+      .select('org_id')
+      .eq('id', user.id)
       .maybeSingle();
     const url = request.nextUrl.clone();
-    url.pathname = existing ? '/dashboard' : '/onboarding';
+    url.pathname = existing?.org_id ? '/dashboard' : '/onboarding';
     return NextResponse.redirect(url);
   }
 
-  // If user is logged in and goes to /onboarding without ?edit=1, and already has profile — send to dashboard
-  if (user && request.nextUrl.pathname === '/onboarding' && !request.nextUrl.searchParams.has('edit')) {
+  // If user is logged in and goes to /onboarding without ?edit=1 or ?preview=1, and already has profile — send to dashboard
+  if (user && request.nextUrl.pathname === '/onboarding' && !request.nextUrl.searchParams.has('edit') && !request.nextUrl.searchParams.has('preview')) {
     const { data: existing } = await supabase
       .from('organizations')
       .select('id')
