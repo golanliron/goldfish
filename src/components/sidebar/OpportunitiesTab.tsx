@@ -1138,6 +1138,21 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
               {draftState === 'done' && shareUrl && (
                 <div className="bg-green-50 border border-green-200 rounded-lg p-2.5 space-y-1.5">
                   <div className="text-[10px] font-semibold text-green-700">הטיוטה מוכנה!</div>
+                  {(opp.application_url || opp.url) && (
+                    <a
+                      href={opp.application_url || opp.url!}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={e => e.stopPropagation()}
+                      className="flex items-center gap-1 text-[10px] text-orange-600 hover:underline font-medium"
+                    >
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+                        <polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" />
+                      </svg>
+                      {opp.application_url ? 'לינק להגשה' : 'לינק לקול הקורא'}
+                    </a>
+                  )}
                   <a
                     href={shareUrl}
                     target="_blank"
