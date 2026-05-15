@@ -357,21 +357,24 @@ def scan_gov_il_kolkore():
         except (json.JSONDecodeError, TypeError):
             continue
 
-    # Fallback: parse HTML for specific grant links (not listing pages)
+    # Fallback: parse HTML for grant links + deep scan sub-pages
     if not results:
-        # Only match links to specific kolkore pages, not the listing itself
-        pattern = r'<a[^>]*href="(/he/[^"]*kolkor[^"]*)"[^>]*>([^<]+)</a>'
-        matches = re.findall(pattern, html, re.IGNORECASE)
-        for link, title in matches:
-            full_url = f"https://www.gov.il{link}"
-            title = clean_html(title)
-            if title and len(title) > 10 and is_valid_grant_url(full_url) and is_actual_grant_title(title):
-                results.append({
-                    "title": title,
-                    "url": full_url,
-                    "source": "gov_il",
-                    "funder": "",
-                })
+        base_url = "https://www.gov.il"
+        pattern = r'<a[^>]*href="(/he/[^"]+)"[^>]*>([^<]+)</a>'
+        seen = set()
+        for link, title in re.findall(pattern, html, re.IGNORECASE):
+            full_url = f"{base_url}{link}"
+            title = clean_html(title).strip()
+            if not full_url or full_url in seen:
+                continue
+            seen.add(full_url)
+            if title and len(title) > 10 and is_actual_grant_title(title) and is_valid_grant_url(full_url):
+                results.append({"title": title, "url": full_url, "source": "gov_il", "funder": ""})
+            elif is_valid_grant_url(full_url):
+                for r in deep_scan_page(full_url, "gov_il", "", base_url=base_url):
+                    if r["url"] not in seen:
+                        seen.add(r["url"])
+                        results.append(r)
 
     print(f"  [gov.il] {len(results)} items")
     return results
@@ -774,31 +777,37 @@ def scan_jfn():
                 title = clean_html(title).strip()
                 if not link.startswith("http"):
                     link = f"https://www.jfunders.org{link}"
-                if title and link not in seen and is_actual_grant_title(title) and is_valid_grant_url(link):
-                    seen.add(link)
-                    results.append({
-                        "title": title[:300],
-                        "url": link,
-                        "source": "jfn",
-                        "funder": "Jewish Funders Network",
-                    })
+                if not link or link in seen:
+                    continue
+                seen.add(link)
+                if title and is_actual_grant_title(title) and is_valid_grant_url(link):
+                    results.append({"title": title[:300], "url": link, "source": "jfn", "funder": "Jewish Funders Network"})
+                elif is_valid_grant_url(link) and "jfunders.org" in link:
+                    for r in deep_scan_page(link, "jfn", "Jewish Funders Network", base_url="https://www.jfunders.org"):
+                        if r["url"] not in seen:
+                            seen.add(r["url"])
+                            results.append(r)
         if results:
             break
 
-    # If no structured links, try extracting from listing text
+    # If no structured links, try extracting + deep scan external links
     if not results:
         html = fetch("https://www.jfunders.org/grants") or ""
-        # Extract any external grant links on the page
-        ext_pattern = r'<a[^>]*href="(https?://(?!jfunders)[^"]+)"[^>]*>([^<]{15,150})</a>'
+        seen = set()
+        ext_pattern = r'<a[^>]*href="(https?://[^"]+)"[^>]*>([^<]{15,150})</a>'
         for link, title in re.findall(ext_pattern, html, re.IGNORECASE):
             title = clean_html(title).strip()
-            if is_actual_grant_title(title) and is_valid_grant_url(link):
-                results.append({
-                    "title": title[:300],
-                    "url": link,
-                    "source": "jfn",
-                    "funder": "Jewish Funders Network",
-                })
+            if not link or link in seen:
+                continue
+            seen.add(link)
+            if title and is_actual_grant_title(title) and is_valid_grant_url(link):
+                results.append({"title": title[:300], "url": link, "source": "jfn", "funder": "Jewish Funders Network"})
+            elif is_valid_grant_url(link) and "jfunders.org" not in link:
+                # External grant page — deep scan it
+                for r in deep_scan_page(link, "jfn", "Jewish Funders Network"):
+                    if r["url"] not in seen:
+                        seen.add(r["url"])
+                        results.append(r)
 
     print(f"  [jfn] {len(results)} items")
     return results
@@ -933,18 +942,22 @@ def scan_candid():
             except Exception:
                 continue
 
-        # Fallback: scrape links
+        # Fallback: scrape links + deep scan
         if not results:
-            pat = r'<a[^>]*href="(https?://candid\.org/[^"]*(?:grant|fund|opport)[^"]*)"[^>]*>([^<]{10,150})</a>'
+            seen = set()
+            pat = r'<a[^>]*href="(https?://candid\.org/[^"]+)"[^>]*>([^<]{10,150})</a>'
             for link, title in re.findall(pat, html, re.IGNORECASE):
                 title = clean_html(title).strip()
-                if is_actual_grant_title(title) and is_valid_grant_url(link):
-                    results.append({
-                        "title": title[:300],
-                        "url": link,
-                        "source": "candid",
-                        "funder": "Candid",
-                    })
+                if not link or link in seen:
+                    continue
+                seen.add(link)
+                if title and is_actual_grant_title(title) and is_valid_grant_url(link):
+                    results.append({"title": title[:300], "url": link, "source": "candid", "funder": "Candid"})
+                elif is_valid_grant_url(link):
+                    for r in deep_scan_page(link, "candid", "Candid", base_url="https://candid.org"):
+                        if r["url"] not in seen:
+                            seen.add(r["url"])
+                            results.append(r)
 
     print(f"  [candid] {len(results)} items")
     return results
