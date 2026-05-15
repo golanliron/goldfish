@@ -206,6 +206,29 @@ def is_valid_grant_url(url):
     if any(g in path_lower for g in generic_paths):
         return False
 
+    # REJECT: navigation/category pages that appear in site menus but are not grants
+    # These are "parent" pages that list grants — the scanner should follow them, not save them
+    generic_url_patterns = [
+        'ezvonot.com/fundraising-for-the-association',  # ezvonot ministry guides (nav links)
+        'ezvonot.com/%d7%9e%d7%a7%d7%95%d7%a8%d7%95%d7%aa',  # ezvonot מקורות מימון
+        'mr.gov.il/ilgstorefront',                      # מרכז רכש ממשלתי — not for nonprofits
+        'thejoint.org.il/blog',                         # ג'וינט בלוג — not a grant
+        'culture.pais.co.il/pages/usefulinformation',   # מפעל הפיס — מידע כללי
+        'culture.pais.co.il/pages/grant_payment',       # מפעל הפיס — הנחיות תשלום
+        'culture.pais.co.il/media/qc3bvgoa',            # מפעל הפיס — כללים PDF
+        'culture.pais.co.il/tv/',                       # מפעל הפיס — קולנוע (קטגוריה)
+        'hadassahfoundation.org/other-funding',          # Hadassah — עמוד כללי
+        'hadassahfoundation.org/grantmaking/grantee',   # Hadassah — רשימת זוכים
+        'hadassahfoundation.org/2026-grantmaking-information',  # Hadassah — מידע כללי
+        'nif.org/about/grantmaking',                    # NIF — עמוד כללי
+        'gov.il/activity_and_help_at_emerency',         # עמוד חירום כללי
+        'gov.il/research_and_development',              # עמוד מחקר כללי
+        'gov.il/afforestation',                         # עמוד ייעור כללי
+        'haifa.muni.il/city-and-muni/freedom-of-information',  # חיפה — חופש מידע
+    ]
+    if any(p in url for p in generic_url_patterns):
+        return False
+
     return True
 
 
