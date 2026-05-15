@@ -27,10 +27,14 @@ async function parsePDF(buffer: Buffer): Promise<string> {
   return '';
 }
 
-// DOCX: mammoth works fine with dynamic import
+// DOCX: mammoth — try all known export shapes
 async function parseDocx(buffer: Buffer): Promise<string> {
   const mammoth = await import('mammoth');
-  const extract = mammoth.default?.extractRawText || mammoth.extractRawText;
+  // ESM/CJS interop: extractRawText may live on default or on the module directly
+  const extract =
+    (mammoth as unknown as { extractRawText: (opts: { buffer: Buffer }) => Promise<{ value: string }> }).extractRawText ||
+    (mammoth.default as unknown as { extractRawText: (opts: { buffer: Buffer }) => Promise<{ value: string }> })?.extractRawText;
+  if (!extract) throw new Error('mammoth.extractRawText not found');
   const result = await extract({ buffer });
   return result.value || '';
 }
@@ -431,13 +435,37 @@ export const POST = withAuth(async (request, auth) => {
     // 10. Seed org_memory (non-fatal)
     try { await seedMemoryFromDoc(supabase, orgId, doc.id, category, finalMetadata); } catch { /* non-blocking */ }
 
+    // Build human-readable message for immediate UI display
+    const vaultKey = (finalMetadata.vault_key as string) || null;
+    const expiryDate = (finalMetadata.expiry_date as string) || null;
+    const VAULT_LABELS: Record<string, string> = {
+      nihul_takin: 'ניהול תקין', seif_46: 'סעיף 46', nikuy_mas: 'ניכוי מס במקור',
+      'teudат_rіshum': 'תעודת רישום', 'doch_kaspі': 'דוח כספי', nihul_sfarim: 'ניהול ספרים',
+      vaad_mnahel: 'חברי ועד', "ba'al_heshbon": 'אישור בנק',
+    };
+    let message: string;
+    if (vaultWarning) {
+      message = `⚠️ ${vaultWarning}`;
+    } else if (vaultKey) {
+      const label = VAULT_LABELS[vaultKey] || vaultKey;
+      if (expiryDate) {
+        const formatted = new Date(expiryDate).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        message = `✅ זוהה כ"${label}", בתוקף עד ${formatted}`;
+      } else {
+        message = `✅ זוהה כ"${label}"`;
+      }
+    } else {
+      message = summary || `הקובץ נקלט`;
+    }
+
     return Response.json({
       status: 'ready',
       document_id: doc.id,
       category,
       summary,
-      expiry_date: (finalMetadata.expiry_date as string) || null,
-      vault_key: (finalMetadata.vault_key as string) || null,
+      message,
+      expiry_date: expiryDate,
+      vault_key: vaultKey,
       vault_warning: vaultWarning,
       extracted_fields: finalMetadata,
     });
