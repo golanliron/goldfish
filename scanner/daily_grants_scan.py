@@ -516,13 +516,25 @@ def scan_gov_ministry(url, source_name, funder_name):
     return results
 
 
-def deep_scan_page(url, source_name, funder_name, base_url=None, depth=1):
+SCANNER_START_TIME = None
+SCANNER_TIMEOUT_SECONDS = 45 * 60  # 45 minutes total
+
+def is_scanner_timed_out():
+    """Returns True if the scanner has been running for more than SCANNER_TIMEOUT_SECONDS."""
+    if SCANNER_START_TIME is None:
+        return False
+    import time as _time
+    return (_time.time() - SCANNER_START_TIME) > SCANNER_TIMEOUT_SECONDS
+
+
+def deep_scan_page(url, source_name, funder_name, base_url=None, depth=1, max_deep=15):
     """
     Deep scan: visit a page and follow links that look like specific grant pages.
     Used for "parent" pages that list multiple calls — we enter each and extract grants.
-    depth=1 means we go one level deeper than the parent.
+    - depth=1: goes one level deeper than the parent
+    - max_deep: max number of sub-page HTTP requests (prevents runaway scanning)
     """
-    if depth == 0:
+    if depth == 0 or is_scanner_timed_out():
         return []
 
     html = fetch(url)
@@ -533,11 +545,17 @@ def deep_scan_page(url, source_name, funder_name, base_url=None, depth=1):
     seen = set()
     parsed_base = urlparse(url)
     base = base_url or f"{parsed_base.scheme}://{parsed_base.netloc}"
+    deep_count = 0  # count of sub-page requests made
 
     # Find all links on the page
     all_links = re.findall(r'<a[^>]*href="([^"#]+)"[^>]*>(.*?)</a>', html, re.DOTALL)
 
     for link, title_html in all_links:
+        if is_scanner_timed_out():
+            break
+        if deep_count >= max_deep:
+            break
+
         title = clean_html(title_html).strip()
 
         # Build absolute URL
@@ -565,7 +583,7 @@ def deep_scan_page(url, source_name, funder_name, base_url=None, depth=1):
 
         seen.add(full_url)
 
-        # If title already looks like a grant — save it directly
+        # If title already looks like a grant — save it directly (no HTTP needed)
         if title and is_actual_grant_title(title):
             results.append({
                 "title": title[:300],
@@ -575,10 +593,10 @@ def deep_scan_page(url, source_name, funder_name, base_url=None, depth=1):
             })
         else:
             # Visit the sub-page and look for a grant title in its content
+            deep_count += 1
             sub_html = fetch(full_url, timeout=15)
             if not sub_html:
                 continue
-            # Try to get page title
             h1_match = re.search(r'<h1[^>]*>(.*?)</h1>', sub_html, re.DOTALL)
             title_tag = re.search(r'<title[^>]*>([^<]+)</title>', sub_html)
             page_title = ""
@@ -1805,10 +1823,15 @@ def cleanup_expired():
 # ============================================================
 
 def main():
+    import time as _time
+    global SCANNER_START_TIME
+    SCANNER_START_TIME = _time.time()
+
     print(f"{'='*60}")
-    print(f"  HOPA GRANTS SCANNER v3.0 — {date.today()}")
+    print(f"  HOPA GRANTS SCANNER v3.1 — {date.today()}")
     print(f"  Target: Goldfish DB (touqczopfjxcpmbxzdjr)")
     print(f"  Rule: ONLY actual open RFPs with direct URLs")
+    print(f"  Timeout: {SCANNER_TIMEOUT_SECONDS//60} minutes | Deep scan max: 15/source")
     print(f"{'='*60}\n")
 
     all_results = []
@@ -1827,41 +1850,52 @@ def main():
         ("data.gov.il — מאגרי נתונים פתוחים", scan_data_gov_il),
     ]
     for name, scanner in il_gov_scanners:
+        if is_scanner_timed_out():
+            print(f"  ⏱ Timeout reached — skipping {name}")
+            break
         print(f"  Scanning {name}...")
         all_results.extend(scanner())
 
     # === LAYER 2: ישראל — מגזר שלישי ורשויות מקומיות ===
     print("\n--- [ישראל — מגזר שלישי] NGOs, foundations, local councils ---")
-    print("  Scanning שתיל...")
-    all_results.extend(scan_shatil())
-    print("  Scanning רשויות מקומיות (ת\"א, ירושלים, חיפה, ב\"ש)...")
-    all_results.extend(scan_municipal())
-    print("  Scanning Menomadin Foundation...")
-    all_results.extend(scan_menomadin())
-    print("  Scanning Miss Fix the Universe...")
-    all_results.extend(scan_missfixtheuniverse())
-    print("  Scanning הקרן לעידוד יוזמות חינוכיות...")
-    all_results.extend(scan_keren_yozmot())
-    print("  Scanning הרשות לפיתוח הנגב + הגליל...")
-    all_results.extend(scan_negev_galil())
-    print("  Scanning קרנות ישראליות (גוטווירט, קסירר, רוטשילד, רשי, יד הנדיב...)...")
-    all_results.extend(scan_israeli_foundations())
+    layer2_scanners = [
+        ("שתיל", scan_shatil),
+        ("רשויות מקומיות", scan_municipal),
+        ("Menomadin Foundation", scan_menomadin),
+        ("Miss Fix the Universe", scan_missfixtheuniverse),
+        ("הקרן לעידוד יוזמות חינוכיות", scan_keren_yozmot),
+        ("הרשות לפיתוח הנגב + הגליל", scan_negev_galil),
+        ("קרנות ישראליות", scan_israeli_foundations),
+    ]
+    for name, scanner in layer2_scanners:
+        if is_scanner_timed_out():
+            print(f"  ⏱ Timeout reached — skipping {name}")
+            break
+        print(f"  Scanning {name}...")
+        all_results.extend(scanner())
 
     # === LAYER 3: ישראל — משרדי ממשלה ספציפיים ===
-    print("\n--- [ישראל — משרדי ממשלה] Government ministries ---")
-    ministry_results = scan_gov_ministries()
-    all_results.extend(ministry_results)
+    if not is_scanner_timed_out():
+        print("\n--- [ישראל — משרדי ממשלה] Government ministries ---")
+        ministry_results = scan_gov_ministries()
+        all_results.extend(ministry_results)
+    else:
+        print("\n  ⏱ Timeout — skipping ministries layer")
 
     # === LAYER 4: בינלאומי — קרנות יהודיות ופדרליות ===
     print("\n--- [בינלאומי] International Jewish & US federal sources ---")
-    print("  Scanning Grants.gov (USAID/State Dept)...")
-    all_results.extend(scan_grants_gov())
-    print("  Scanning Jewish Funders Network (JFN)...")
-    all_results.extend(scan_jfn())
-    print("  Scanning Candid.org (Israel filter)...")
-    all_results.extend(scan_candid())
-    print("  Scanning קרנות בינלאומיות (Seed the Dream, Schusterman, L'Oréal, Van Leer...)...")
-    all_results.extend(scan_intl_foundations())
+    intl_scanners = [
+        ("Grants.gov (USAID/State Dept)", scan_grants_gov),
+        ("Jewish Funders Network (JFN)", scan_jfn),
+        ("Candid.org (Israel filter)", scan_candid),
+        ("קרנות בינלאומיות (Seed the Dream, Schusterman, L'Oréal, Van Leer...)", scan_intl_foundations),
+    ]
+    for name, scanner in intl_scanners:
+        if is_scanner_timed_out():
+            print(f"  ⏱ Timeout reached — skipping {name}")
+            break
+        print(f"  Scanning {name}...")
+        all_results.extend(scanner())
 
     # === Tamir newsletter ===
     print("\n--- Tamir Newsletter ---")
