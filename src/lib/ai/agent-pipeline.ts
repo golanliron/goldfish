@@ -12,7 +12,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { runResearchAgent, type RawCall, type EnrichedCall } from './research-agent';
-import { resolveOrgDNA } from './org-dna';
+import type { OrgDNA } from './org-dna';
 
 // ── Config ─────────────────────────────────────────────────────────────────────
 
@@ -29,6 +29,12 @@ const DEADLINE_CUTOFF_DAYS  = 3;    // קולות קוראים שהדדליין 
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+function emptyDNA(): OrgDNA {
+  return { populations: [], domains: [], subDomains: [], interventionTypes: [], geography: [], ageGroups: [], orgType: 'small', themes: [], excludePopulations: [], excludeDomains: [] };
+}
+
 // ── resolveOrgDNAForPipeline ───────────────────────────────────────────────────
 // מנסה לקרוא DNA ארגוני מה-DB; fallback ל-resolveOrgDNA מהמודול
 
@@ -41,7 +47,7 @@ async function resolveOrgDNAForPipeline(orgId: string) {
       .eq('org_id', orgId)
       .in('key', ['populations', 'domains', 'geography', 'intervention_types', 'themes', 'org_type']);
 
-    if (!data?.length) return resolveOrgDNA('');
+    if (!data?.length) return emptyDNA();
 
     const mem: Record<string, string> = {};
     for (const row of data) mem[row.key] = row.value;
@@ -60,7 +66,7 @@ async function resolveOrgDNAForPipeline(orgId: string) {
     };
   } catch (e) {
     console.warn('[agent-pipeline] Could not load org DNA from DB, using fallback:', e);
-    return resolveOrgDNA('');
+    return emptyDNA();
   }
 }
 
