@@ -13,6 +13,7 @@ export interface FunderResearchResult {
   funderName: string;
   description?: string;
   website?: string;
+  applicationUrl?: string;       // Direct link to the application form
   focusAreas?: string[];
   targetPopulations?: string[];
   regions?: string[];
@@ -89,15 +90,16 @@ async function isFunderKnown(funderName: string): Promise<boolean> {
  * Research a funder using Tavily web search.
  */
 async function researchFunderOnWeb(funderName: string): Promise<{ results: SearchResult[]; sources: string[] }> {
-  // Run 4 targeted queries in parallel: general, eligibility, past grantees, annual report
-  const [general, grantees, annualReport, hebrew] = await Promise.all([
+  // Run 5 targeted queries in parallel: general, eligibility, past grantees, annual report, application form
+  const [general, grantees, annualReport, hebrew, applyForm] = await Promise.all([
     webSearch(`"${funderName}" foundation grant funding eligibility who they fund`, { maxResults: 4, searchDepth: 'advanced' }),
     webSearch(`"${funderName}" past grantees recipients funded organizations site:${funderName.toLowerCase().replace(/\s+/g, '')}.org OR annual report`, { maxResults: 3, searchDepth: 'advanced' }),
     webSearch(`"${funderName}" annual report 2023 2024 grants awarded`, { maxResults: 3, searchDepth: 'basic' }),
     webSearch(`"${funderName}" קרן מענק ישראל תורם`, { maxResults: 3, searchDepth: 'basic' }),
+    webSearch(`"${funderName}" apply grant application form submit proposal online`, { maxResults: 3, searchDepth: 'advanced' }),
   ]);
 
-  const all = [...general, ...grantees, ...annualReport, ...hebrew];
+  const all = [...general, ...grantees, ...annualReport, ...hebrew, ...applyForm];
 
   // Deduplicate by URL
   const seen = new Set<string>();
@@ -127,6 +129,7 @@ async function extractFunderProfile(
 
   const prompt = `אתה מומחה לניתוח גופים פילנתרופיים. מהטקסט הבא, חלץ מידע על "${funderName}".
 חשוב במיוחד: חלץ "מי קיבל כסף בפועל" (past grantees) ו"כמה נתנו בפועל" מדוחות שנתיים — לא מה שהגוף אומר על עצמו.
+חשוב מאוד: חלץ application_url — כתובת ישירה לדף ההגשה/טופס הבקשה (לא עמוד הבית של הקרן, אלא הלינק הספציפי שבו מגישים בקשות).
 
 טקסט מהאינטרנט:
 ---
@@ -136,7 +139,8 @@ ${rawText}
 ענה ONLY ב-JSON, ללא הסבר נוסף:
 {
   "description": "תיאור קצר של הגוף (2-3 משפטים)",
-  "website": "כתובת האתר אם מוזכרת",
+  "website": "כתובת האתר הראשית",
+  "application_url": "כתובת ישירה לדף ההגשה/טופס — לא עמוד הבית. null אם לא נמצא.",
   "focus_areas": ["תחום1", "תחום2"],
   "target_populations": ["אוכלוסייה1", "אוכלוסייה2"],
   "regions": ["ישראל", "ארה\"ב"],
@@ -157,9 +161,19 @@ ${rawText}
     if (!jsonMatch) return {};
     const parsed = JSON.parse(jsonMatch[0]);
 
+    // Validate application_url — must be https, not just homepage
+    let applicationUrl: string | undefined;
+    if (parsed.application_url && typeof parsed.application_url === 'string') {
+      const appUrl = parsed.application_url.trim();
+      if (appUrl.startsWith('https://') || appUrl.startsWith('http://')) {
+        applicationUrl = appUrl;
+      }
+    }
+
     return {
       description: parsed.description || undefined,
       website: parsed.website || undefined,
+      applicationUrl,
       focusAreas: parsed.focus_areas?.filter(Boolean) || [],
       targetPopulations: parsed.target_populations?.filter(Boolean) || [],
       regions: parsed.regions?.filter(Boolean) || [],
@@ -267,12 +281,13 @@ async function saveFunderToDb(
         profile.eligibility ? `זכאות: ${profile.eligibility}` : null,
         profile.deadlineNotes ? `מחזוריות: ${profile.deadlineNotes}` : null,
         profile.howToApply ? `איך לפנות: ${profile.howToApply}` : null,
+        profile.applicationUrl ? `קישור להגשה: ${profile.applicationUrl}` : null,
         sources.length ? `מקורות: ${sources.slice(0, 2).join(', ')}` : null,
       ].filter(Boolean).join('\n') || null,
     });
   }
 
-  // 2. Save to funder_intelligence table
+  // 2. Save to funder_intelligence table (including application_url for cross-org reuse)
   await supabase.from('funder_intelligence').upsert({
     funder_name: funderName,
     funder_style: 'foundation',
@@ -282,6 +297,7 @@ async function saveFunderToDb(
     typical_amount_min: profile.typicalAmountMin || null,
     typical_amount_max: profile.typicalAmountMax || null,
     cycle_notes: profile.deadlineNotes || null,
+    application_url: profile.applicationUrl || null,
     recurring_months: [],
     total_submissions: 0,
     total_approved: 0,
@@ -364,6 +380,7 @@ export function formatFunderResearch(research: FunderResearchResult): string {
 
   if (research.description) lines.push(`תיאור: ${research.description}`);
   if (research.website) lines.push(`אתר: ${research.website}`);
+  if (research.applicationUrl) lines.push(`קישור ישיר להגשה: ${research.applicationUrl}`);
   if (research.focusAreas?.length) lines.push(`תחומים: ${research.focusAreas.join(', ')}`);
   if (research.targetPopulations?.length) lines.push(`אוכלוסיות: ${research.targetPopulations.join(', ')}`);
   if (research.regions?.length) lines.push(`אזורים: ${research.regions.join(', ')}`);

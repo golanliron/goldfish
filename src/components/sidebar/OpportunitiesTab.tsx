@@ -126,6 +126,7 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
     try {
       const res = await fetch('/api/process-grants', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ org_id: orgId, mode: 'existing' }),
       });
@@ -524,7 +525,8 @@ function buildShareText(opp: Opportunity): string {
     parts.push(`דדליין: ${d.toLocaleDateString('he-IL')}`);
   }
   if (opp.description) parts.push(`\n${opp.description.slice(0, 200)}${opp.description.length > 200 ? '...' : ''}`);
-  if (opp.url) parts.push(`\nקישור: ${opp.url}`);
+  if (opp.application_url) parts.push(`\nקישור ישיר להגשה: ${opp.application_url}`);
+  else if (opp.url) parts.push(`\nקישור: ${opp.url}`);
   parts.push('\n-- נשלח מ-Goldfish');
   return parts.join('\n');
 }
@@ -626,8 +628,8 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           org_id: orgId,
-          url: opp.url || null,
-          text: !opp.url ? [opp.title, opp.description, opp.eligibility, opp.how_to_apply].filter(Boolean).join('\n') : null,
+          url: opp.application_url || opp.url || null,
+          text: !(opp.application_url || opp.url) ? [opp.title, opp.description, opp.eligibility, opp.how_to_apply].filter(Boolean).join('\n') : null,
           opportunity_id: opp.id,
         }),
       });
@@ -716,7 +718,8 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
     const parts = [`תכתוב טיוטת הגשה לקול הקורא: "${opp.title}"`];
     if (opp.funder) parts.push(`מממן: ${opp.funder}`);
     if (opp.deadline) parts.push(`דדליין: ${new Date(opp.deadline).toLocaleDateString('he-IL')}`);
-    if (opp.url) parts.push(`\nקישור לקול הקורא: ${opp.url}\nתקרא את הקול הקורא בלינק, תבין מה הם מבקשים, ותכתוב הצעה שעונה בדיוק על הדרישות שלהם.`);
+    const linkForContext = opp.application_url || opp.url;
+    if (linkForContext) parts.push(`\nקישור${opp.application_url ? ' ישיר להגשה' : ' לקול הקורא'}: ${linkForContext}\nתקרא את הקול הקורא בלינק, תבין מה הם מבקשים, ותכתוב הצעה שעונה בדיוק על הדרישות שלהם.`);
     if (opp.description) parts.push(`\nתיאור: ${opp.description.slice(0, 800)}`);
     if (opp.eligibility) parts.push(`תנאי סף: ${opp.eligibility}`);
     if (opp.how_to_apply) parts.push(`אופן הגשה: ${opp.how_to_apply}`);
@@ -799,23 +802,32 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
         )}
       </div>
 
-      {/* Link to original — direct URL only */}
-      {opp.url && (
-        <a
-          href={opp.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={e => e.stopPropagation()}
-          className="inline-flex items-center gap-1 text-[10px] mb-2 text-accent hover:underline"
-        >
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
-            <polyline points="15 3 21 3 21 9" />
-            <line x1="10" y1="14" x2="21" y2="3" />
-          </svg>
-          לינק להגשה
-        </a>
-      )}
+      {/* Link to application — prefer direct application_url over general url */}
+      {(opp.application_url || opp.url) && (() => {
+        const href = opp.application_url || opp.url!;
+        const isDirect = !!opp.application_url;
+        const isGov = href.includes('gov.il') || href.includes('merkava') || href.includes('taktziv') || href.includes('pras.');
+        return (
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={e => e.stopPropagation()}
+            className={`inline-flex items-center gap-1 text-[10px] mb-2 hover:underline ${isDirect ? 'text-green-600 font-medium' : 'text-accent'}`}
+          >
+            {isGov ? (
+              <span title="מערכת ממשלתית" className="text-[9px]">🇮🇱</span>
+            ) : (
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+                <polyline points="15 3 21 3 21 9" />
+                <line x1="10" y1="14" x2="21" y2="3" />
+              </svg>
+            )}
+            {isDirect ? 'להגשה ישירה ↗' : 'לינק להגשה'}
+          </a>
+        );
+      })()}
 
       {/* Category tags */}
       {opp.categories && opp.categories.length > 0 && (
@@ -933,17 +945,27 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
             >
               כתוב הגשה
             </button>
-            {opp.url && (
-              <a
-                href={opp.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={e => e.stopPropagation()}
-                className="flex-1 py-1.5 text-[10px] font-medium text-center border border-border rounded-lg hover:bg-surf2 transition-colors"
-              >
-                פתח הגשה
-              </a>
-            )}
+            {(opp.application_url || opp.url) && (() => {
+              const href = opp.application_url || opp.url!;
+              const isDirect = !!opp.application_url;
+              const isGov = href.includes('gov.il') || href.includes('merkava') || href.includes('taktziv') || href.includes('pras.');
+              return (
+                <a
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={e => e.stopPropagation()}
+                  className={`flex-1 py-1.5 text-[10px] font-medium text-center rounded-lg transition-colors inline-flex items-center justify-center gap-1 ${
+                    isDirect
+                      ? 'bg-green-50 border border-green-300 text-green-700 hover:bg-green-100'
+                      : 'border border-border hover:bg-surf2'
+                  }`}
+                >
+                  {isGov && <span className="text-[9px]">🇮🇱</span>}
+                  {isDirect ? 'הגשה ישירה' : 'פתח הגשה'}
+                </a>
+              );
+            })()}
           </div>
 
           {/* Prepare draft submission button */}

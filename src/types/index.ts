@@ -117,6 +117,7 @@ export interface Opportunity {
   type: OpportunityType | null;
   funder: string | null;
   url: string | null;
+  application_url: string | null;  // Direct link to the application form (more specific than url)
   eligibility: string | null;
   how_to_apply: string | null;
   contact_info: string | null;
