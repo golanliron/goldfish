@@ -52,7 +52,7 @@ export interface AgentResult {
   iterations_used: number;
 }
 
-export interface EnrichedCall extends RawCall, AgentResult {}
+export interface EnrichedCall extends Omit<RawCall, 'match_score'>, AgentResult {}
 
 // ── Internal types ─────────────────────────────────────────────────────────────
 
