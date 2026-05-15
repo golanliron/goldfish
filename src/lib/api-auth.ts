@@ -15,6 +15,30 @@ const UNAUTHORIZED = NextResponse.json({ error: 'Unauthorized' }, { status: 401 
  * Returns null if neither session nor org_id header is present.
  */
 export async function getAuthContext(req: NextRequest): Promise<AuthContext | null> {
+  // Primary: try Supabase session (cookie-based auth)
+  try {
+    const supabase = await createClient();
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (!error && user) {
+      // Get org_id from users table
+      const { data: userData } = await supabase
+        .from('users')
+        .select('org_id')
+        .eq('id', user.id)
+        .single();
+
+      if (userData?.org_id) {
+        return {
+          userId: user.id,
+          orgId: userData.org_id,
+          email: user.email || '',
+        };
+      }
+    }
+  } catch {
+    // Session check failed — fall through to header fallback
+  }
+
   // Fallback: allow requests with x-org-id header (no Supabase session needed)
   const headerOrgId = req.headers.get('x-org-id');
   if (headerOrgId) {
@@ -25,28 +49,7 @@ export async function getAuthContext(req: NextRequest): Promise<AuthContext | nu
     };
   }
 
-  try {
-    const supabase = await createClient();
-    const { data: { user }, error } = await supabase.auth.getUser();
-    if (error || !user) return null;
-
-    // Get org_id from users table
-    const { data: userData } = await supabase
-      .from('users')
-      .select('org_id')
-      .eq('id', user.id)
-      .single();
-
-    if (!userData?.org_id) return null;
-
-    return {
-      userId: user.id,
-      orgId: userData.org_id,
-      email: user.email || '',
-    };
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 /**
