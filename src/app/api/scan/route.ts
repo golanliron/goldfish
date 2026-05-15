@@ -64,13 +64,15 @@ export const POST = withAuth(async (request, auth) => {
       return Response.json({ ...(cached.payload as object), from_cache: true });
     }
 
-    // ── 1. Load org profile ───────────────────────────────────────────────
-    const [{ data: profile }, { data: org }] = await Promise.all([
+    // ── 1. Load org profile + memory ──────────────────────────────────────
+    const [{ data: profile }, { data: org }, { data: memories }] = await Promise.all([
       supabase.from('org_profiles').select('data').eq('org_id', org_id).single(),
       supabase.from('organizations').select('name').eq('id', org_id).single(),
+      supabase.from('org_memory').select('key, value').eq('org_id', org_id).limit(50),
     ]);
 
     const profileData = profile?.data as Record<string, unknown> | null;
+    const orgMemories = (memories || []) as { key: string; value: string }[];
 
     if (!profileData || Object.keys(profileData).length === 0) {
       return Response.json({
@@ -120,7 +122,7 @@ export const POST = withAuth(async (request, auth) => {
     // ── 4. AI Scoring via centralized scoring-service ─────────────────────
     let matches: ScoredMatch[];
     try {
-      const orgContextText = buildOrgContext(profileData, org?.name ?? null);
+      const orgContextText = buildOrgContext(profileData, org?.name ?? null, orgMemories);
       matches = await scoreOpportunitiesAI(candidates, orgContextText);
     } catch (aiError) {
       scanLog.error({ err: aiError, org_id }, 'AI scoring failed');

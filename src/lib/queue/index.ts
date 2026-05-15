@@ -162,13 +162,15 @@ async function runScanOpportunities(job: Job) {
   const { buildOrgContext } = await import('@/lib/ai/fishgold');
   const supabase = createAdminClient();
 
-  const [{ data: profile }, { data: org }] = await Promise.all([
+  const [{ data: profile }, { data: org }, { data: memories }] = await Promise.all([
     supabase.from('org_profiles').select('data').eq('org_id', org_id).single(),
     supabase.from('organizations').select('name').eq('id', org_id).single(),
+    supabase.from('org_memory').select('key, value').eq('org_id', org_id).limit(50),
   ]);
 
   const profileData = profile?.data as Record<string, unknown> | null;
   if (!profileData) return { matches: 0, reason: 'no_profile' };
+  const orgMemories = (memories || []) as { key: string; value: string }[];
 
   const today = new Date().toISOString().split('T')[0];
   const { data: opportunities } = await supabase
@@ -181,7 +183,7 @@ async function runScanOpportunities(job: Job) {
 
   if (!opportunities?.length) return { matches: 0, reason: 'no_opportunities' };
 
-  const orgContextText = buildOrgContext(profileData, org?.name ?? null);
+  const orgContextText = buildOrgContext(profileData, org?.name ?? null, orgMemories);
   const matches = await scoreOpportunitiesAI(opportunities, orgContextText);
 
   for (const m of matches) {
