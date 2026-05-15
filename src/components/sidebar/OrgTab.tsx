@@ -120,6 +120,14 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
   const [loadingLink, setLoadingLink] = useState(false);
   const [docFilter, setDocFilter] = useState('all');
   const [dragging, setDragging] = useState(false);
+  const [vaultData, setVaultData] = useState<{
+    vault_score: number;
+    total_covered: number;
+    total_required: number;
+    missing: { key: string; label: string; hint: string; ttl_months?: number }[];
+    expiring: { id: string; filename: string; expiry_date: string | null; is_expired: boolean }[];
+  } | null>(null);
+  const [showVault, setShowVault] = useState(false);
   const [editingDocId, setEditingDocId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
@@ -135,6 +143,11 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
         setDocuments(visibleDocs);
         if (score) setOrgScore(score);
       })
+      .catch(() => {});
+    // Load vault status in parallel
+    fetch(`/api/documents/vault`)
+      .then(r => r.json())
+      .then(v => setVaultData(v))
       .catch(() => {});
   };
 
@@ -844,6 +857,84 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
             <p className="text-[10px] text-muted mt-2 leading-relaxed">
               מסמכים חסרים עלולים לעצור הגשה. העלי אותם דרך "הוספת מסמך" למטה.
             </p>
+          )}
+        </div>
+      )}
+
+      {/* ===== VAULT: תיק מסמכים רשמיים ===== */}
+      {vaultData && (
+        <div className="rounded-xl border border-border bg-surf p-3">
+          <button
+            onClick={() => setShowVault(v => !v)}
+            className="w-full flex items-center justify-between"
+          >
+            <div className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-accent">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                <path d="M7 11V7a5 5 0 0110 0v4" />
+              </svg>
+              <h4 className="text-xs font-semibold">תיק מסמכים רשמיים</h4>
+            </div>
+            <div className="flex items-center gap-2">
+              {/* Score pill */}
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                vaultData.vault_score >= 70 ? 'bg-green-100 text-green-700' :
+                vaultData.vault_score >= 40 ? 'bg-amber-100 text-amber-700' :
+                'bg-red-100 text-red-600'
+              }`}>
+                {vaultData.total_covered}/{vaultData.total_required} מסמכים
+              </span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`text-muted transition-transform ${showVault ? 'rotate-180' : ''}`}>
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </div>
+          </button>
+
+          {showVault && (
+            <div className="mt-3 space-y-1.5">
+              {/* Expiring soon */}
+              {vaultData.expiring.length > 0 && (
+                <div className="mb-2">
+                  <div className="text-[10px] font-semibold text-amber-700 mb-1">עומדים לפוג / פגי תוקף</div>
+                  {vaultData.expiring.map(doc => (
+                    <div key={doc.id} className={`flex items-center gap-2 text-[10px] px-2 py-1.5 rounded-lg ${doc.is_expired ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-700'}`}>
+                      <span>{doc.is_expired ? '✗' : '⚠'}</span>
+                      <span className="flex-1 truncate">{doc.filename}</span>
+                      {doc.expiry_date && (
+                        <span className="text-[9px] opacity-70">{new Date(doc.expiry_date).toLocaleDateString('he-IL')}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Missing docs */}
+              {vaultData.missing.length > 0 ? (
+                <>
+                  <div className="text-[10px] font-semibold text-text mb-1">מסמכים חסרים</div>
+                  {vaultData.missing.map(doc => (
+                    <div key={doc.key} className="flex items-start gap-2 px-2 py-1.5 rounded-lg bg-gray-50 border border-border/50">
+                      <span className="text-[12px] text-gray-400 mt-0.5">○</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[10px] font-medium text-text">{doc.label}</div>
+                        <div className="text-[9px] text-muted mt-0.5">{doc.hint}</div>
+                        {doc.ttl_months && (
+                          <div className="text-[9px] text-muted2">מתחדש כל {doc.ttl_months} חודשים</div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  <p className="text-[9px] text-muted mt-1.5">
+                    העלי את המסמכים החסרים דרך כפתור "הוספת מסמך" למטה
+                  </p>
+                </>
+              ) : (
+                <div className="flex items-center gap-2 text-[11px] text-green-700 bg-green-50 rounded-lg px-3 py-2">
+                  <span>✓</span>
+                  <span className="font-medium">כל מסמכי התשתית הרשמיים קיימים במערכת</span>
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}
