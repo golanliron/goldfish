@@ -33,6 +33,10 @@
     {
       "path": "/api/cron/sector-knowledge",
       "schedule": "0 3 1 * *"
+    },
+    {
+      "path": "/api/cron/social-scan",
+      "schedule": "0 9 * * *"
     }
   ]
 }

@@ -60,6 +60,20 @@ interface ReadinessData {
   timeWarning?: string;
 }
 
+interface HotOpportunity {
+  id: string;
+  source_type: string;
+  source_name: string;
+  source_url: string | null;
+  title: string;
+  description: string;
+  pain_point: string;
+  strategic_insight: string;
+  amount_hint: string | null;
+  deadline_hint: string | null;
+  discovered_at: string;
+}
+
 export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps) {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [taxonomy, setTaxonomy] = useState<TaxItem[]>([]);
@@ -77,6 +91,8 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
   const [profileCompleteness, setProfileCompleteness] = useState<number | null>(null);
   const [funderInfo, setFunderInfo] = useState<FunderInfoMap>({});
   const [upcomingRecurrences, setUpcomingRecurrences] = useState<UpcomingRecurrence[]>([]);
+  const [hotOpportunities, setHotOpportunities] = useState<HotOpportunity[]>([]);
+  const [expandedHotOpp, setExpandedHotOpp] = useState<string | null>(null);
   const [agentRunning, setAgentRunning] = useState(false);
   const [agentToast, setAgentToast] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
 
@@ -107,7 +123,8 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
   const loadOpportunities = () => {
     fetch(`/api/opportunities${orgId ? `?org_id=${orgId}` : ''}`)
       .then(r => r.json())
-      .then(({ taxonomy: tax, opportunities: opps, matches: m, profileCompleteness: pc, funderInfo: fi, upcomingRecurrences: ur }) => {
+      .then((data) => {
+        const { taxonomy: tax, opportunities: opps, matches: m, profileCompleteness: pc, funderInfo: fi, upcomingRecurrences: ur } = data;
         if (tax) setTaxonomy(tax as TaxItem[]);
         if (opps) setOpportunities(opps as Opportunity[]);
         if (m && m.length > 0) {
@@ -118,6 +135,7 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
         if (typeof pc === 'number') setProfileCompleteness(pc);
         if (fi) setFunderInfo(fi as FunderInfoMap);
         if (ur && Array.isArray(ur)) setUpcomingRecurrences(ur as UpcomingRecurrence[]);
+        if (data.hotOpportunities && Array.isArray(data.hotOpportunities)) setHotOpportunities(data.hotOpportunities as HotOpportunity[]);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -519,6 +537,89 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
 
       {/* Opportunities list */}
       <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
+
+        {/* HOT OPPORTUNITIES — from the field */}
+        {hotOpportunities.length > 0 && (
+          <div className="mb-3">
+            <div className="flex items-center gap-2 mb-2 px-0.5">
+              <span className="text-[10px] font-bold text-orange-600 uppercase tracking-wide">הזדמנות חמה מהשטח</span>
+              <span className="bg-orange-100 text-orange-700 text-[9px] font-bold px-1.5 py-0.5 rounded-full">{hotOpportunities.length}</span>
+              <div className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />
+            </div>
+            <div className="space-y-2">
+              {hotOpportunities.map(hot => (
+                <div
+                  key={hot.id}
+                  className="bg-orange-50 border border-orange-200 rounded-xl p-3 cursor-pointer hover:border-orange-400 transition-colors"
+                  onClick={() => setExpandedHotOpp(expandedHotOpp === hot.id ? null : hot.id)}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className="text-[9px] font-medium text-orange-600 bg-orange-100 px-1.5 py-0.5 rounded-full capitalize">
+                          {hot.source_type === 'linkedin' ? 'LinkedIn' :
+                           hot.source_type === 'news' ? 'חדשות' :
+                           hot.source_type === 'newsletter' ? 'ניוזלטר' :
+                           hot.source_type === 'twitter' ? 'X/Twitter' : hot.source_type}
+                        </span>
+                        {hot.amount_hint && (
+                          <span className="text-[9px] text-green-700 bg-green-100 px-1.5 py-0.5 rounded-full">{hot.amount_hint}</span>
+                        )}
+                        {hot.deadline_hint && (
+                          <span className="text-[9px] text-red-700 bg-red-100 px-1.5 py-0.5 rounded-full">{hot.deadline_hint}</span>
+                        )}
+                      </div>
+                      <p className="text-[12px] font-semibold text-gray-800 leading-snug line-clamp-2">{hot.title}</p>
+                      <p className="text-[10px] text-gray-500 mt-0.5">{hot.source_name}</p>
+                    </div>
+                    <svg
+                      width="14" height="14"
+                      className={`flex-shrink-0 text-orange-400 transition-transform mt-0.5 ${expandedHotOpp === hot.id ? 'rotate-180' : ''}`}
+                      viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                    >
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </div>
+
+                  {expandedHotOpp === hot.id && (
+                    <div className="mt-2 pt-2 border-t border-orange-200 space-y-1.5">
+                      {hot.description && (
+                        <p className="text-[11px] text-gray-700 leading-relaxed">{hot.description}</p>
+                      )}
+                      {hot.pain_point && (
+                        <div className="bg-orange-100/60 rounded-lg px-2.5 py-1.5">
+                          <span className="text-[9px] font-semibold text-orange-700 block mb-0.5">הצורך שהגוף מנסה לפתור:</span>
+                          <p className="text-[11px] text-orange-900">{hot.pain_point}</p>
+                        </div>
+                      )}
+                      {hot.strategic_insight && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                          <span className="text-[9px] font-semibold text-amber-700 block mb-0.5">תובנה אסטרטגית:</span>
+                          <p className="text-[11px] text-amber-900 font-medium">{hot.strategic_insight}</p>
+                        </div>
+                      )}
+                      {hot.source_url && (
+                        <a
+                          href={hot.source_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-[10px] text-orange-600 hover:text-orange-800 font-medium mt-1"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" />
+                          </svg>
+                          פתח מקור
+                        </a>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {filtered.length === 0 ? (
           <div className="text-center py-8">
             <p className="text-sm text-muted">לא נמצאו תוצאות</p>

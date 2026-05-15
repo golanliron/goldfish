@@ -9,7 +9,7 @@ export const GET = withAuth(async (req, auth) => {
   const supabase = createAdminClient();
   const today = new Date().toISOString().split('T')[0];
 
-  const [taxRes, oppRes, matchRes, profileRes, docsRes] = await Promise.all([
+  const [taxRes, oppRes, matchRes, profileRes, docsRes, hotOppsRes] = await Promise.all([
     supabase.from('grant_taxonomy').select('*').order('label_he'),
     supabase
       .from('opportunities')
@@ -26,6 +26,21 @@ export const GET = withAuth(async (req, auth) => {
     orgId
       ? supabase.from('documents').select('parsed_text').eq('org_id', orgId)
       : Promise.resolve({ data: [] }),
+    // Hot opportunities: org-specific + global (org_id is null)
+    orgId
+      ? supabase
+          .from('hot_opportunities')
+          .select('id, source_type, source_name, source_url, title, description, pain_point, strategic_insight, amount_hint, deadline_hint, match_orgs, discovered_at')
+          .eq('active', true)
+          .or(`org_id.is.null,match_orgs->>${orgId}.not.is.null`)
+          .order('discovered_at', { ascending: false })
+          .limit(20)
+      : supabase
+          .from('hot_opportunities')
+          .select('id, source_type, source_name, source_url, title, description, pain_point, strategic_insight, amount_hint, deadline_hint, discovered_at')
+          .eq('active', true)
+          .order('discovered_at', { ascending: false })
+          .limit(20),
   ]);
 
   const opportunities = (oppRes.data || []).filter(
@@ -205,6 +220,13 @@ export const GET = withAuth(async (req, auth) => {
     } catch { /* non-critical */ }
   }
 
+  // Filter hot opportunities: for org-specific ones, only include if score >= 50
+  const hotOpportunities = (hotOppsRes.data || []).filter((h: Record<string, unknown>) => {
+    if (!orgId || !h.match_orgs) return true; // global or no matching data
+    const score = (h.match_orgs as Record<string, number>)[orgId];
+    return score === undefined || score >= 50;
+  });
+
   return NextResponse.json({
     taxonomy: taxRes.data || [],
     opportunities,
@@ -212,5 +234,6 @@ export const GET = withAuth(async (req, auth) => {
     profileCompleteness,
     funderInfo,
     upcomingRecurrences,
+    hotOpportunities,
   });
 });
