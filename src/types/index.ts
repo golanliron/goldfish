@@ -71,6 +71,7 @@ export interface OrgProfileData {
   focus_areas?: string[];
   target_populations?: string[];
   annual_budget?: number;
+  data_as_of?: number;           // year the financial/operational data refers to (e.g. 2024)
   employees_count?: number;
   beneficiaries_count?: number;
   regions?: string[];
