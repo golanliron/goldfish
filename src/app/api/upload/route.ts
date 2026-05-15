@@ -229,35 +229,15 @@ export const POST = withAuth(async (request, auth) => {
       });
     }
 
-    // 1. Extract text from file
-    const { text: parsedText, fileType } = await extractTextFromFile(file);
+    // 1. Determine fileType from extension (before any processing)
+    const fileType = file.name.split('.').pop()?.toLowerCase() || 'txt';
 
-    if (parsedText.length < 20) {
-      return Response.json({
-        error: 'לא הצלחתי לחלץ טקסט מהקובץ. נסי PDF, Word, Excel, CSV או TXT.',
-      }, { status: 400 });
-    }
-
-    // 2. Classify + Extract + Summarize — sequential to avoid Gemini 429
-    let category = 'other';
-    let metadata: Record<string, unknown> = {};
-    let summary = `קובץ: ${file.name}`;
-    try { category = await classifyDocument(parsedText); } catch { /* keep 'other' */ }
-    try { metadata = await extractStructuredData(parsedText, category, orgName); } catch { /* keep empty */ }
-    try { summary = await summarizeDocument(parsedText); } catch { /* keep filename */ }
-
-    let finalMetadata = metadata;
-
-    // 3. Upload to storage (non-blocking)
+    // 2. Build final storagePath once
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    let storagePath = `${orgId}/${Date.now()}_${safeName}`;
-    try {
-      await supabase.storage.from('documents').upload(storagePath, file);
-    } catch {
-      storagePath = `local/${safeName}`;
-    }
+    const storagePath = `${orgId}/${Date.now()}_${safeName}`;
 
-    // 4. Save document record
+    // 3. Create document record immediately — status=processing
+    // This ensures the document appears in the dashboard even if enrichment fails
     const { data: doc, error: docError } = await supabase
       .from('documents')
       .insert({
@@ -265,38 +245,89 @@ export const POST = withAuth(async (request, auth) => {
         filename: file.name,
         file_type: fileType,
         storage_path: storagePath,
-        category,
-        parsed_text: parsedText.slice(0, 50000),
-        metadata: { ...finalMetadata, summary },
-        status: 'ready',
+        category: 'other',
+        parsed_text: null,
+        metadata: {},
+        status: 'processing',
       })
       .select('id')
       .single();
 
     if (docError || !doc) {
-      console.error('Doc insert error FULL:', JSON.stringify(docError), 'fileType:', fileType, 'category:', category, 'orgId:', orgId);
-      return Response.json({ error: `Failed to save: ${docError?.message || docError?.code || 'unknown'} | fileType:${fileType} category:${category}` }, { status: 500 });
+      console.error('Doc insert error:', JSON.stringify(docError));
+      return Response.json({ error: `Failed to create document: ${docError?.message || 'unknown'}` }, { status: 500 });
     }
 
-    // 5. Store chunks for RAG with embeddings
-    const chunks = chunkText(parsedText);
-    let chunkEmbeddings: number[][] = [];
-    try { chunkEmbeddings = await embedBatch(chunks); } catch { /* save without vectors */ }
-    for (let i = 0; i < chunks.length; i++) {
-      await supabase.from('document_chunks').insert({
-        document_id: doc.id,
-        org_id: orgId,
-        content: chunks[i],
-        embedding: chunkEmbeddings[i] ?? null,
-        metadata: { category, filename: file.name },
-      });
+    // Helper to mark doc as error
+    const markError = async (msg: string) => {
+      await supabase.from('documents').update({
+        status: 'error',
+        metadata: { error: msg.slice(0, 200) },
+      }).eq('id', doc.id);
+    };
+
+    // 4. Upload to storage
+    try {
+      await supabase.storage.from('documents').upload(storagePath, file);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      await markError(`storage upload failed: ${msg}`);
+      return Response.json({ error: 'שגיאה בהעלאת הקובץ לאחסון' }, { status: 500 });
     }
 
-    // 6. Update org profile
-    await updateOrgProfile(supabase, orgId, category, finalMetadata);
+    // 5. Extract text
+    let parsedText = '';
+    try {
+      const extracted = await extractTextFromFile(file);
+      parsedText = extracted.text;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      await markError(`text extraction failed: ${msg}`);
+      return Response.json({ error: 'לא הצלחתי לחלץ טקסט מהקובץ' }, { status: 400 });
+    }
 
-    // 7. Seed org_memory from extracted metadata
-    await seedMemoryFromDoc(supabase, orgId, doc.id, category, finalMetadata);
+    if (parsedText.length < 20) {
+      await markError('extracted text too short');
+      return Response.json({ error: 'לא הצלחתי לחלץ טקסט מהקובץ. נסי PDF, Word, Excel, CSV או TXT.' }, { status: 400 });
+    }
+
+    // 6. Gemini classify + extract + summarize (each in try/catch)
+    let category = 'other';
+    let finalMetadata: Record<string, unknown> = {};
+    let summary = `קובץ: ${file.name}`;
+    try { category = await classifyDocument(parsedText); } catch { /* keep 'other' */ }
+    try { finalMetadata = await extractStructuredData(parsedText, category, orgName); } catch { /* keep empty */ }
+    try { summary = await summarizeDocument(parsedText); } catch { /* keep filename */ }
+
+    // 7. Update document with enriched data — status=ready
+    await supabase.from('documents').update({
+      category,
+      parsed_text: parsedText.slice(0, 50000),
+      metadata: { ...finalMetadata, summary },
+      status: 'ready',
+    }).eq('id', doc.id);
+
+    // 8. Store chunks for RAG with embeddings (non-fatal)
+    try {
+      const chunks = chunkText(parsedText);
+      let chunkEmbeddings: number[][] = [];
+      try { chunkEmbeddings = await embedBatch(chunks); } catch { /* save without vectors */ }
+      for (let i = 0; i < chunks.length; i++) {
+        await supabase.from('document_chunks').insert({
+          document_id: doc.id,
+          org_id: orgId,
+          content: chunks[i],
+          embedding: chunkEmbeddings[i] ?? null,
+          metadata: { category, filename: file.name },
+        });
+      }
+    } catch { /* chunks failure does not affect document status */ }
+
+    // 9. Update org profile (non-fatal)
+    try { await updateOrgProfile(supabase, orgId, category, finalMetadata); } catch { /* non-blocking */ }
+
+    // 10. Seed org_memory (non-fatal)
+    try { await seedMemoryFromDoc(supabase, orgId, doc.id, category, finalMetadata); } catch { /* non-blocking */ }
 
     return Response.json({
       document_id: doc.id,
