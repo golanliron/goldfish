@@ -21,6 +21,9 @@ export default function OnboardingPage() {
   const [urlLoading, setUrlLoading] = useState<string | null>(null);
   const [urlDone, setUrlDone] = useState<string[]>([]);
   const [finishing, setFinishing] = useState(false);
+  const [showWow, setShowWow] = useState(false);
+  const [wowMatches, setWowMatches] = useState<Array<{ id: string; title: string; funder: string; deadline: string | null; score: number; amount_min: number | null; amount_max: number | null }>>([]);
+  const [wowLoading, setWowLoading] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [orgName, setOrgName] = useState('');
   const [orgDesc, setOrgDesc] = useState('');
@@ -197,7 +200,37 @@ export default function OnboardingPage() {
     } catch (e) {
       console.error('Onboarding finish error:', e);
     }
-    window.location.href = '/dashboard?tab=org';
+
+    // Fetch top matches for WOW screen
+    if (orgId) {
+      setWowLoading(true);
+      try {
+        const res = await fetch(`/api/opportunities?org_id=${orgId}`);
+        if (res.ok) {
+          const data = await res.json();
+          const top = (data.opportunities || [])
+            .filter((o: Record<string, unknown>) => (o.matchScore as number) >= 50)
+            .sort((a: Record<string, unknown>, b: Record<string, unknown>) => (b.matchScore as number) - (a.matchScore as number))
+            .slice(0, 5)
+            .map((o: Record<string, unknown>) => ({
+              id: String(o.id),
+              title: String(o.title),
+              funder: String(o.funder || ''),
+              deadline: o.deadline ? String(o.deadline) : null,
+              score: o.matchScore as number,
+              amount_min: o.amount_min as number | null,
+              amount_max: o.amount_max as number | null,
+            }));
+          setWowMatches(top);
+        }
+      } catch {
+        // silently ignore — will still show WOW with 0 matches
+      }
+      setWowLoading(false);
+    }
+
+    setFinishing(false);
+    setShowWow(true);
   };
 
   const categoryLabels: Record<string, string> = {
@@ -238,6 +271,106 @@ export default function OnboardingPage() {
         >
           חזרה להרשמה
         </button>
+      </div>
+    );
+  }
+
+  if (showWow) {
+    return (
+      <div className="min-h-screen bg-bg flex flex-col items-center justify-center px-4 py-12" dir="rtl">
+        <div className="max-w-lg w-full">
+
+          {/* Header */}
+          <div className="text-center mb-8">
+            <div className="flex items-center justify-center gap-2 mb-5">
+              <FishLogo size={40} className="swim" />
+              <span className="font-bold text-xl tracking-tight">Goldfish</span>
+            </div>
+            {wowLoading ? (
+              <p className="text-sm text-muted animate-pulse">דג לכם הזדמנויות...</p>
+            ) : wowMatches.length > 0 ? (
+              <>
+                <div className="inline-block bg-accent/10 text-accent text-xs font-semibold px-3 py-1 rounded-full mb-4">
+                  {wowMatches.length} קולות קוראים שמתאימים לכם עכשיו
+                </div>
+                <h1 className="text-2xl font-bold leading-snug">
+                  מצאנו כסף<br />שמחכה לכם
+                </h1>
+              </>
+            ) : (
+              <>
+                <div className="inline-block bg-green-100 text-green-700 text-xs font-semibold px-3 py-1 rounded-full mb-4">
+                  הפרופיל נשמר בהצלחה
+                </div>
+                <h1 className="text-2xl font-bold leading-snug">
+                  גולדפיש כבר<br />מחפש בשבילכם
+                </h1>
+              </>
+            )}
+          </div>
+
+          {/* Matches list */}
+          {!wowLoading && wowMatches.length > 0 && (
+            <div className="space-y-3 mb-8">
+              {wowMatches.map((m) => (
+                <div key={m.id} className="bg-bg2 border border-border rounded-2xl p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm leading-snug mb-1 line-clamp-2">{m.title}</p>
+                      {m.funder && (
+                        <p className="text-xs text-muted">{m.funder}</p>
+                      )}
+                      <div className="flex items-center gap-3 mt-2 flex-wrap">
+                        {m.deadline && (
+                          <span className="text-[11px] text-orange-600 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full">
+                            עד {new Date(m.deadline).toLocaleDateString('he-IL', { day: 'numeric', month: 'long' })}
+                          </span>
+                        )}
+                        {(m.amount_min || m.amount_max) && (
+                          <span className="text-[11px] text-muted">
+                            {m.amount_max
+                              ? `עד ₪${m.amount_max.toLocaleString()}`
+                              : m.amount_min
+                              ? `מ-₪${m.amount_min.toLocaleString()}`
+                              : ''}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex-shrink-0 text-center">
+                      <div className="w-10 h-10 rounded-full bg-accent/10 border-2 border-accent flex items-center justify-center">
+                        <span className="text-accent font-bold text-sm">{m.score}%</span>
+                      </div>
+                      <p className="text-[9px] text-muted mt-1">התאמה</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Loading state */}
+          {wowLoading && (
+            <div className="flex flex-col items-center gap-3 py-10 mb-8">
+              <FishLogo size={32} className="swim" />
+              <p className="text-sm text-muted">סורק {223} קולות קוראים פעילים...</p>
+            </div>
+          )}
+
+          {/* CTA */}
+          <button
+            onClick={() => { window.location.href = '/dashboard?tab=opportunities'; }}
+            className="w-full py-3.5 bg-accent text-white font-semibold rounded-xl hover:bg-accent-hover transition-all hover:scale-[1.02] active:scale-[0.98] text-sm"
+          >
+            {wowMatches.length > 0 ? 'בואו נגש לעבודה' : 'כניסה לדשבורד'}
+          </button>
+
+          {wowMatches.length > 0 && (
+            <p className="text-center text-[11px] text-muted mt-3">
+              תמיד אפשר להוסיף מסמכים ולשפר את ההתאמה
+            </p>
+          )}
+        </div>
       </div>
     );
   }
