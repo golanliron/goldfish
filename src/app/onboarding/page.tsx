@@ -115,7 +115,7 @@ export default function OnboardingPage() {
       // Step 1: Get signed upload URL + create document record (status=processing)
       const urlRes = await fetch('/api/upload-url', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(orgId ? { 'x-org-id': orgId } : {}) },
         body: JSON.stringify({ filename: file.name, fileSize: file.size }),
       });
       const urlData = await urlRes.json();

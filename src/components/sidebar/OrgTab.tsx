@@ -132,23 +132,23 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
 
-  const loadData = () => {
+  const loadData = async () => {
     if (!orgId) return;
-    fetch(`/api/org?org_id=${orgId}`)
-      .then(r => r.json())
-      .then(({ profile: p, documents: d, score }) => {
-        if (p) setProfile(p as OrgProfileData);
-        // Filter out blocked documents (social pages that couldn't be read)
-        const visibleDocs = (d || []).filter((doc: FgDoc) => !(doc.metadata as Record<string, unknown>)?.blocked);
-        setDocuments(visibleDocs);
-        if (score) setOrgScore(score);
-      })
-      .catch(() => {});
-    // Load vault status in parallel
-    fetch(`/api/documents/vault`)
-      .then(r => r.json())
-      .then(v => setVaultData(v))
-      .catch(() => {});
+    await Promise.all([
+      fetch(`/api/org?org_id=${orgId}`)
+        .then(r => r.json())
+        .then(({ profile: p, documents: d, score }) => {
+          if (p) setProfile(p as OrgProfileData);
+          const visibleDocs = (d || []).filter((doc: FgDoc) => !(doc.metadata as Record<string, unknown>)?.blocked);
+          setDocuments(visibleDocs);
+          if (score) setOrgScore(score);
+        })
+        .catch(() => {}),
+      fetch(`/api/documents/vault`)
+        .then(r => r.json())
+        .then(v => setVaultData(v))
+        .catch(() => {}),
+    ]);
   };
 
   useEffect(() => {
@@ -168,7 +168,7 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
         const formData = new FormData();
         formData.append('file', file);
         formData.append('org_id', orgId);
-        const res = await fetch('/api/upload', { method: 'POST', body: formData });
+        const res = await fetch('/api/upload', { method: 'POST', body: formData, headers: { 'x-org-id': orgId } });
         if (!res.ok) {
           const data = await res.json().catch(() => ({ error: 'שגיאה' }));
           throw new Error(data.error || 'שגיאה בהעלאה');
@@ -182,12 +182,22 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
       .map((r, i) => r.status === 'rejected' ? fileArr[i].name : null)
       .filter(Boolean);
 
-    setUploading(false);
-    loadData();
+    type UploadResult = { message?: string; vault_warning?: string; status?: string };
 
-    if (successCount > 0 && failedNames.length === 0) {
-      setFeedback(`${successCount} קבצים נקראו ונשמרו`);
-    } else if (successCount > 0 && failedNames.length > 0) {
+    const fulfilled = results
+      .filter((r): r is PromiseFulfilledResult<UploadResult> => r.status === 'fulfilled')
+      .map(r => r.value);
+
+    setUploading(false);
+    await loadData(); // wait for refresh so checklist updates immediately
+
+    // Use server-built message directly — it already contains ✅/⚠️ and all details
+    const serverMessage = fulfilled.map(r => r.message).find(Boolean);
+    if (serverMessage) {
+      setFeedback(serverMessage);
+    } else if (successCount > 0 && failedNames.length === 0) {
+      setFeedback(`${successCount === 1 ? 'קובץ' : `${successCount} קבצים`} נקראו ונשמרו`);
+    } else if (successCount > 0) {
       setFeedback(`${successCount} נקראו. נכשלו: ${failedNames.join(', ')}`);
     } else {
       setFeedback(`לא הצלחתי לקרוא: ${failedNames.join(', ')}`);
@@ -244,7 +254,7 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
     try {
       const res = await fetch('/api/upload', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
         body: JSON.stringify({
           org_id: orgId,
           text: freeText.trim(),
@@ -817,9 +827,19 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
 
         {/* Feedback message */}
         {feedback && (
-          <p className={`text-[11px] leading-relaxed ${feedback.includes('שגיאה') ? 'text-red-500' : 'text-green-600'}`}>
-            {feedback}
-          </p>
+          feedback.startsWith('⚠️') ? (
+            <div className="rounded-lg border border-amber-400 bg-amber-50 px-3 py-2 text-[12px] font-medium text-amber-800 leading-snug">
+              {feedback}
+            </div>
+          ) : feedback.startsWith('✅') ? (
+            <div className="rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-[12px] font-medium text-green-800 leading-snug">
+              {feedback}
+            </div>
+          ) : (
+            <p className={`text-[11px] leading-relaxed ${feedback.includes('שגיאה') || feedback.includes('נכשל') ? 'text-red-500' : 'text-green-600'}`}>
+              {feedback}
+            </p>
+          )
         )}
       </div>
 

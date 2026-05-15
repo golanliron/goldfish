@@ -11,9 +11,20 @@ const UNAUTHORIZED = NextResponse.json({ error: 'Unauthorized' }, { status: 401 
 
 /**
  * Authenticate an API request and return the user's org context.
- * Returns null if the user is not authenticated — caller should return 401.
+ * Falls back to x-org-id header if no Supabase session exists (e.g. mobile / SDK callers).
+ * Returns null if neither session nor org_id header is present.
  */
 export async function getAuthContext(req: NextRequest): Promise<AuthContext | null> {
+  // Fallback: allow requests with x-org-id header (no Supabase session needed)
+  const headerOrgId = req.headers.get('x-org-id');
+  if (headerOrgId) {
+    return {
+      userId: 'anonymous',
+      orgId: headerOrgId,
+      email: '',
+    };
+  }
+
   try {
     const supabase = await createClient();
     const { data: { user }, error } = await supabase.auth.getUser();

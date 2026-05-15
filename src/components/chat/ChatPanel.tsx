@@ -342,7 +342,7 @@ export default function ChatPanel({ orgId, userId, onStageChange }: ChatPanelPro
         const formData = new FormData();
         formData.append('file', file);
         formData.append('org_id', orgId);
-        const res = await fetch('/api/upload', { method: 'POST', body: formData });
+        const res = await fetch('/api/upload', { method: 'POST', body: formData, headers: { 'x-org-id': orgId } });
         const data = await res.json();
         if (!res.ok || data.error) throw new Error(data.error || 'שגיאה');
         return { name: file.name, ...data };
