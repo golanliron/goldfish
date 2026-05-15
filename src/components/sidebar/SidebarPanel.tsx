@@ -4,8 +4,8 @@ import { useState, useEffect } from 'react';
 import type { SidebarTab, AppStage } from '@/types';
 import OrgTab from './OrgTab';
 import OpportunitiesTab from './OpportunitiesTab';
-
 import BusinessTab from './BusinessTab';
+import OnboardingProgressBanner from '@/components/OnboardingProgressBanner';
 
 interface SidebarPanelProps {
   stage: AppStage;
@@ -59,6 +59,9 @@ export default function SidebarPanel({ stage, orgId, initialTab }: SidebarPanelP
           ))}
         </div>
       )}
+
+      {/* Onboarding scan progress — shown for orgs with Drive connected, auto-dismissed */}
+      {orgId && <OnboardingProgressBanner orgId={orgId} />}
 
       {/* Tab content */}
       <div className="flex-1 overflow-y-auto">
