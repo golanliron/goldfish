@@ -859,7 +859,7 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
           )}
         </div>
       )}
-      </div> {/* end HEADER */}
+      </div>
 
       {/* ── CONTENT (expanded) ── */}
       {expanded && (
@@ -964,7 +964,7 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
             </div>
           )}
 
-          </div> {/* end CONTENT */}
+          </div>
 
           {/* ── ACTIONS ── */}
           <div className="border-t border-border bg-surf2/40 px-3 pt-3 pb-3 space-y-2">
@@ -1082,7 +1082,7 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
               </svg>
             </a>
           </div>
-          </div> {/* end ACTIONS */}
+          </div>
 
         </div>
       )}
