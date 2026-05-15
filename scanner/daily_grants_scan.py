@@ -592,11 +592,13 @@ def deep_scan_page(url, source_name, funder_name, base_url=None, depth=1, max_de
                 "funder": funder_name,
             })
         else:
-            # Visit the sub-page and look for a grant title in its content
+            # Visit the sub-page
             deep_count += 1
             sub_html = fetch(full_url, timeout=15)
             if not sub_html:
                 continue
+
+            # 1. Try page title (h1 / <title>)
             h1_match = re.search(r'<h1[^>]*>(.*?)</h1>', sub_html, re.DOTALL)
             title_tag = re.search(r'<title[^>]*>([^<]+)</title>', sub_html)
             page_title = ""
@@ -606,12 +608,58 @@ def deep_scan_page(url, source_name, funder_name, base_url=None, depth=1, max_de
                 page_title = clean_html(title_tag.group(1)).strip()
 
             if page_title and is_actual_grant_title(page_title):
+                # This sub-page IS a specific grant
                 results.append({
                     "title": page_title[:300],
                     "url": full_url,
                     "source": source_name,
                     "funder": funder_name,
                 })
+            else:
+                # Sub-page is itself a listing — extract links inside it
+                sub_links = re.findall(r'<a[^>]*href="([^"#]+)"[^>]*>(.*?)</a>', sub_html, re.DOTALL)
+                for sub_link, sub_title_html in sub_links:
+                    if deep_count >= max_deep or is_scanner_timed_out():
+                        break
+                    sub_title = clean_html(sub_title_html).strip()
+                    if sub_link.startswith("http"):
+                        sub_full = sub_link
+                    elif sub_link.startswith("/"):
+                        sub_full = base + sub_link
+                    else:
+                        continue
+                    if sub_full in seen or urlparse(sub_full).netloc != parsed_base.netloc:
+                        continue
+                    if not is_valid_grant_url(sub_full):
+                        continue
+                    seen.add(sub_full)
+                    if sub_title and is_actual_grant_title(sub_title):
+                        results.append({
+                            "title": sub_title[:300],
+                            "url": sub_full,
+                            "source": source_name,
+                            "funder": funder_name,
+                        })
+                    else:
+                        # Last resort: fetch and check h1
+                        deep_count += 1
+                        leaf_html = fetch(sub_full, timeout=15)
+                        if not leaf_html:
+                            continue
+                        leaf_h1 = re.search(r'<h1[^>]*>(.*?)</h1>', leaf_html, re.DOTALL)
+                        leaf_title_tag = re.search(r'<title[^>]*>([^<]+)</title>', leaf_html)
+                        leaf_title = ""
+                        if leaf_h1:
+                            leaf_title = clean_html(leaf_h1.group(1)).strip()
+                        elif leaf_title_tag:
+                            leaf_title = clean_html(leaf_title_tag.group(1)).strip()
+                        if leaf_title and is_actual_grant_title(leaf_title):
+                            results.append({
+                                "title": leaf_title[:300],
+                                "url": sub_full,
+                                "source": source_name,
+                                "funder": funder_name,
+                            })
 
     return results
 
