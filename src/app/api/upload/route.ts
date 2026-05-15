@@ -2,6 +2,13 @@ import { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { withAuth } from '@/lib/api-auth';
 import pdfParse from 'pdf-parse';
+import { z } from 'zod';
+
+const UploadJsonSchema = z.object({
+  text: z.string().min(1, 'תוכן הוא שדה חובה'),
+  category: z.string().optional(),
+  filename: z.string().optional(),
+});
 import { geminiClassify, geminiExtract, geminiSummarize, geminiOcrPdf, geminiParseXlsx, geminiCall } from '@/lib/ai/gemini';
 import { embedBatch } from '@/lib/ai/rag';
 import { REQUIRED_VAULT_DOCS } from '@/lib/vault-docs';
@@ -221,11 +228,13 @@ export const POST = withAuth(async (request, auth) => {
 
     // ===== JSON body: free-text or URL input =====
     if (contentType.includes('application/json')) {
-      const { text, category, filename } = await request.json();
-      const org_id = auth.orgId;
-      if (!text) {
-        return Response.json({ error: 'Missing text' }, { status: 400 });
+      const rawBody = await request.json();
+      const parsed = UploadJsonSchema.safeParse(rawBody);
+      if (!parsed.success) {
+        return Response.json({ error: 'נתונים לא תקינים', details: parsed.error.flatten() }, { status: 400 });
       }
+      const { text, category, filename } = parsed.data;
+      const org_id = auth.orgId;
 
       const supabase = createAdminClient();
       const cat = category || 'identity';

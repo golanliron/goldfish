@@ -3,6 +3,12 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { withAuth } from '@/lib/api-auth';
 import Anthropic from '@anthropic-ai/sdk';
 import { randomUUID } from 'crypto';
+import { z } from 'zod';
+
+const SubmissionRequestSchema = z.object({
+  rfp_id: z.string().min(1, 'rfp_id הוא שדה חובה'),
+  opportunity_id: z.string().optional(),
+});
 
 export const maxDuration = 120; // seconds — Vercel Pro/Team plan
 
@@ -24,9 +30,13 @@ export const GET = withAuth(async (req, auth) => {
 
 // POST /api/submissions — generate draft submission from rfp_id + org profile
 export const POST = withAuth(async (req, auth) => {
-  const { rfp_id, opportunity_id } = await req.json();
+  const body = await req.json();
+  const parsed = SubmissionRequestSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: 'נתונים לא תקינים', details: parsed.error.flatten() }, { status: 400 });
+  }
+  const { rfp_id, opportunity_id } = parsed.data;
   const org_id = auth.orgId;
-  if (!rfp_id) return NextResponse.json({ error: 'Missing rfp_id' }, { status: 400 });
 
   const supabase = createAdminClient();
 

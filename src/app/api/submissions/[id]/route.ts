@@ -51,10 +51,12 @@ export async function PATCH(
   const supabase = createAdminClient();
 
   // Find by id or share_token
+  // TODO: PATCH via direct id should also verify org_id once auth is available in all PATCH callers
   const isToken = id.length === 16;
+  const auth = isToken ? null : await getAuthContext(req);
   const { data: sub } = await (isToken
     ? supabase.from('submissions').select('id, locked_by, locked_until').eq('share_token', id).single()
-    : supabase.from('submissions').select('id, locked_by, locked_until').eq('id', id).single());
+    : supabase.from('submissions').select('id, locked_by, locked_until').eq('id', id).eq('org_id', auth?.orgId ?? '').single());
 
   if (!sub) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
