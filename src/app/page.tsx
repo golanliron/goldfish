@@ -234,7 +234,7 @@ export default function LandingPage() {
       />
 
       {/* Nav */}
-      <div className={`sticky top-0 z-40 w-full transition-all duration-300 ${scrolled ? 'bg-bg/95 backdrop-blur-lg shadow-sm border-b border-border' : ''}`}>
+      <div className={`sticky top-0 z-50 w-full transition-all duration-300 ${scrolled ? 'bg-bg/95 backdrop-blur-lg shadow-sm border-b border-border' : ''}`}>
       <nav className="px-6 py-4 max-w-6xl mx-auto fade-up">
         <div className="flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
