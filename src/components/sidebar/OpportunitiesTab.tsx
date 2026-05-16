@@ -110,9 +110,9 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
 
   const categories = useMemo(() => taxonomy.filter(t => t.type === 'category'), [taxonomy]);
   const populations = useMemo(() => taxonomy.filter(t => t.type === 'population'), [taxonomy]);
-  // matchedCount = opportunities with score >= 60 (the "relevant" threshold)
+  // matchedCount = opportunities with score >= 40 (the "relevant" threshold)
   const matchedCount = useMemo(
-    () => opportunities.filter(o => (matchScores.get(o.id)?.score ?? 0) >= 60).length,
+    () => opportunities.filter(o => (matchScores.get(o.id)?.score ?? 0) >= 40).length,
     [opportunities, matchScores]
   );
   // Per-bucket counts (exclusive ranges)
@@ -231,7 +231,7 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
   const filtered = useMemo(() => {
     let result = opportunities;
 
-    // Main toggle: matched-only (score >= 60) vs all
+    // Main toggle: matched-only (score >= 40) vs all
     if (showOnlyMatched && matchScores.size > 0) {
       result = result.filter(o => (matchScores.get(o.id)?.score ?? 0) >= 60);
     }
@@ -910,7 +910,7 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
 
   const matchColor = match
     ? match.score >= 80 ? 'bg-green-100 text-green-700 border-green-200'
-    : match.score >= 60 ? 'bg-amber-100 text-amber-700 border-amber-200'
+    : match.score >= 40 ? 'bg-amber-100 text-amber-700 border-amber-200'
     : 'bg-gray-100 text-gray-600 border-gray-200'
     : '';
 
@@ -923,7 +923,7 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
     if (match && match.score >= 75) {
       return { label: 'התאמה גבוהה', cls: 'bg-green-100 text-green-700 border-green-200' };
     }
-    if (match && match.score >= 60) {
+    if (match && match.score >= 40) {
       return { label: 'שווה בדיקה', cls: 'bg-amber-100 text-amber-700 border-amber-200' };
     }
     if (!match || match.score === 0) {
