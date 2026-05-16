@@ -893,8 +893,8 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
     if (opp.application_url) parts.push(`לינק ישיר להגשה: ${opp.application_url}`);
     else if (opp.url) parts.push(`לינק לקול הקורא: ${opp.url}`);
     // Include raw page content if available — this is the actual RFP text
-    if (opp.raw_text && opp.raw_text.length > 200) {
-      parts.push(`\n===== תוכן קול הקורא המלא =====\n${opp.raw_text.slice(0, 6000)}`);
+    if (opp.full_content && opp.full_content.length > 200) {
+      parts.push(`\n===== תוכן קול הקורא המלא =====\n${opp.full_content.slice(0, 6000)}`);
     } else if (opp.description) {
       parts.push(`\nתיאור: ${opp.description.slice(0, 800)}`);
     }
