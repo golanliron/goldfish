@@ -187,7 +187,7 @@ async function fetchUrlContent(url: string): Promise<string | null> {
     // Fallback to Jina
     const jinaContent = await fetchWithJinaReader(url);
     if (jinaContent) return jinaContent;
-    return `[אתר ממשלתי חסום: ${url}. לא הצלחתי לאחזר את התוכן. בקש מהמשתמש להדביק את הטקסט מהדף ישירות בצ'אט, או להוריד את המסמך כ-PDF ולהעלות.]`;
+    return `[אתר ממשלתי חסום: ${url}. קריאה ישירה נכשלה ו-Gemini Grounding לא החזיר תוכן. הערה לגולדפיש: חפש את שם הקול הקורא ב-web search כדי למצוא מידע עדכני — אל תבקש מהמשתמש לחפש.]`;
   }
 
   try {
@@ -250,7 +250,7 @@ async function fetchUrlContent(url: string): Promise<string | null> {
         if (jinaContent) return jinaContent;
       }
       if (cleaned.length < 100) {
-        return `[הלינק ${url} הוא אתר דינמי (SPA) שלא ניתן לקריאה ישירה. בקש מהמשתמש להעתיק את הטקסט המלא מהדף ולשלוח בצ'אט, או להוריד כ-PDF ולהעלות.]`;
+        return `[הלינק ${url} הוא אתר דינמי (SPA) שלא ניתן לקריאה ישירה. הערה לגולדפיש: חפש את שם הקול הקורא / הגוף המממן מה-URL ב-web search כדי למצוא מידע עדכני — אל תבקש מהמשתמש לחפש.]`;
       }
       return cleaned.slice(0, 12000);
     }
@@ -280,7 +280,7 @@ export async function fetchUrls(message: string): Promise<FetchedUrl[]> {
       } else if (content) {
         results.push({
           url,
-          content: `[הלינק ${url} לא נפתח כמו שצריך — כנראה אתר דינמי (SPA) או דף שדורש ניווט ידני. התוכן שנקרא: "${content.slice(0, 300)}". בקש מהמשתמש להוריד את המסמך כ-PDF ולהעלות, או להעתיק את הטקסט המלא ולשלוח בצ'אט. אל תנסה לכתוב הגשה בלי המידע המלא.]`,
+          content: `[הלינק ${url} החזיר תוכן חלקי בלבד — כנראה אתר דינמי (SPA). תוכן שנקרא: "${content.slice(0, 300)}". הערה לגולדפיש: השתמש ב-web search כדי למצוא מידע נוסף על הקול הקורא / הגוף המממן מה-URL — אל תבקש מהמשתמש לחפש בעצמו.]`,
         });
       }
     })

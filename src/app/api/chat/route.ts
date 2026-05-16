@@ -8,7 +8,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { withAuth } from '@/lib/api-auth';
 import { FISHGOLD_SYSTEM_PROMPT, FISHGOLD_GRANT_EXPERTISE, FISHGOLD_FUNDER_WRITING_DNA, FISHGOLD_FUNDER_QUESTIONS, FISHGOLD_GRANT_MASTERY, FISHGOLD_BEHAVIOR_RULES, FISHGOLD_PROPOSAL_GUIDE, FISHGOLD_SUBMISSION_ENGINE, FISHGOLD_COMPETITIVE_INTEL, FISHGOLD_FUNDRAISING_INTEL, FISHGOLD_EMAIL_MASTERY, buildOrgContext } from '@/lib/ai/fishgold';
 import { buildRAGContext } from '@/lib/ai/rag';
-import { detectSearchIntent, detectFunderQuery, webSearch, searchCompany, searchGrants, formatSearchResults } from '@/lib/ai/web-search';
+import { detectSearchIntent, detectFunderQuery, webSearch, searchCompany, searchGrants, formatSearchResults, searchFallbackForUrl } from '@/lib/ai/web-search';
 import { autoResearchFunder, formatFunderResearch } from '@/lib/ai/funder-auto-research';
 import { parseRfp, checkReadiness, assembleSubmission, generateOrgBlocks, formatReadinessReport } from '@/lib/ai/submission-engine';
 import { fetchByRegistrationNumber, formatForContext, formatForProfile } from '@/lib/ai/guidestar';
@@ -493,6 +493,37 @@ ${blockSummary}
         }
       } catch (e) {
         chatLog.error({ err: e, org_id }, 'web search failed');
+      }
+    }
+
+    // Broken URL fallback: if any fetched URL returned a blocked/empty result,
+    // search Tavily using a smart query built from the URL itself.
+    if (process.env.TAVILY_API_KEY && fetchedUrls.length > 0) {
+      const BLOCKED_MARKERS = ['אתר ממשלתי חסום', 'אתר דינמי', 'SPA', 'לא הצלחתי לקרוא', 'החזיר תוכן חלקי'];
+      const blockedUrls = fetchedUrls.filter(f =>
+        BLOCKED_MARKERS.some(m => f.content.includes(m))
+      );
+
+      for (const blocked of blockedUrls.slice(0, 2)) {
+        try {
+          const { results, bestUrl } = await searchFallbackForUrl(blocked.url);
+          if (results.length > 0) {
+            const formatted = results
+              .map((r, i) => `(${i + 1}) ${r.title}\n${r.content.slice(0, 400)}\nURL: ${r.url}`)
+              .join('\n\n');
+
+            // Replace the blocked-content string with real search results
+            const injection = `[חיפוש אוטומטי עבור ${blocked.url}]\n` +
+              (bestUrl ? `הקישור העדכני הרשמי שנמצא: ${bestUrl}\n\n` : '') +
+              `תוצאות חיפוש:\n${formatted}\n\n` +
+              `הנחיה לגולדפיש: הצג את הקישור העדכני שמצאת. אם יש PDF בתוצאות — ציין שניתן לפתוח אותו. אל תאמר "לא מצאתי" — מצאת.`;
+
+            // Append to webSearchContext (even if it's already set)
+            webSearchContext += `\n\n===== תוצאות חיפוש אוטומטי (URL חסום) =====\n${injection}`;
+          }
+        } catch (e) {
+          chatLog.error({ err: e, url: blocked.url }, 'fallback URL search failed');
+        }
       }
     }
 

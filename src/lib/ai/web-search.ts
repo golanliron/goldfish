@@ -150,6 +150,70 @@ export async function searchGrants(query: string): Promise<SearchResult[]> {
 }
 
 /**
+ * Build a smart search query from a failed/broken URL.
+ * Extracts meaningful terms from the URL path and builds a targeted query.
+ * For gov.il URLs, adds site:gov.il constraint and current year.
+ */
+export function buildQueryFromUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const isGov = /\.gov\.il/i.test(parsed.hostname);
+    const isTmichot = /tmichot\.mof\.gov\.il/i.test(parsed.hostname);
+
+    // Extract readable tokens from path + query params
+    const pathTokens = parsed.pathname
+      .split(/[\/\-_?=&%+]+/)
+      .map(t => decodeURIComponent(t).replace(/\d{4,}/, '').trim()) // strip long IDs
+      .filter(t => t.length > 2 && !/^(page|id|view|index|html|php|asp|aspx|default)$/i.test(t));
+
+    const paramTokens: string[] = [];
+    parsed.searchParams.forEach((v) => {
+      const decoded = decodeURIComponent(v).trim();
+      if (decoded.length > 2 && decoded.length < 60 && !/^\d+$/.test(decoded)) {
+        paramTokens.push(decoded);
+      }
+    });
+
+    const allTokens = [...new Set([...pathTokens, ...paramTokens])].slice(0, 6);
+    const currentYear = new Date().getFullYear();
+
+    if (isTmichot) {
+      return `site:mof.gov.il תמיכות ${allTokens.join(' ')} ${currentYear}`.trim();
+    }
+    if (isGov) {
+      return `site:gov.il ${allTokens.join(' ')} קול קורא ${currentYear}`.trim();
+    }
+
+    return `${allTokens.join(' ')} קול קורא מענק ישראל ${currentYear}`.trim();
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Fallback search when a URL fetch failed.
+ * Builds a focused query from the URL, runs Tavily, returns results + best URL found.
+ */
+export async function searchFallbackForUrl(url: string): Promise<{ results: SearchResult[]; bestUrl: string | null }> {
+  const query = buildQueryFromUrl(url);
+  if (!query) return { results: [], bestUrl: null };
+
+  const isGov = /\.gov\.il/i.test(url);
+  const results = await webSearch(query, {
+    maxResults: 5,
+    searchDepth: 'advanced',
+    includeDomains: isGov
+      ? ['gov.il', 'mof.gov.il', 'education.gov.il', 'molsa.gov.il', 'tmichot.mof.gov.il', 'shatil.org.il']
+      : undefined,
+  });
+
+  // Pick the highest-scoring result URL that looks official
+  const bestUrl = results.find(r => r.score > 0.5)?.url || results[0]?.url || null;
+
+  return { results, bestUrl };
+}
+
+/**
  * Search for information about a specific company or foundation
  */
 export async function searchCompany(name: string): Promise<SearchResult[]> {
