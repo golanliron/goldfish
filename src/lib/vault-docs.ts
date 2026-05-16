@@ -151,6 +151,43 @@ export const EXTENDED_VAULT_DOCS: typeof REQUIRED_VAULT_DOCS = [
     category: 'identity',
     hint: 'מכתבי המלצה מגורמים מקצועיים',
   },
+  {
+    key: 'zchuyot_chativa',
+    label: 'אישור זכויות חתימה',
+    pattern: /זכויות חתימה|מורשי חתימה|authorized.*signator|signing.*authorit/i,
+    category: 'official',
+    hint: 'אישור מורשי חתימה בעמותה',
+  },
+  {
+    key: 'mazun_bochan',
+    label: 'מאזן בוחן',
+    pattern: /מאזן בוחן|trial.*balance/i,
+    category: 'budget',
+    hint: 'מאזן בוחן / דוח יתרות',
+    ttl_months: 12,
+  },
+  {
+    key: 'teudat_malkar',
+    label: 'תעודת מלכ"ר',
+    pattern: /תעודת מלכ"ר|תעודת מלכר|מלכ"ר|non.*profit.*certificate|npo.*certificate/i,
+    category: 'official',
+    hint: 'תעודת הכרה כמלכ"ר / ארגון ללא מטרת רווח',
+  },
+  {
+    key: 'top5_salary',
+    label: 'חמשת מקבלי השכר הגבוהים',
+    pattern: /מקבלי השכר|שכר גבוה|חמשת.*שכר|top.*5.*salary|highest.*paid/i,
+    category: 'budget',
+    hint: 'דוח חמשת מקבלי השכר הגבוהים ביותר בארגון',
+    ttl_months: 12,
+  },
+  {
+    key: 'pef_approval',
+    label: 'אישור PEF / קרן בינלאומית',
+    pattern: /PEF|palestine.*education|approval.*letter.*fund|fund.*approval.*letter/i,
+    category: 'official',
+    hint: 'אישור מקרן בינלאומית (PEF ואחרות)',
+  },
 ];
 
 // כל המסמכים ביחד — לזיהוי אוטומטי בהעלאה
