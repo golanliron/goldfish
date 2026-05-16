@@ -5,12 +5,12 @@ import pdfParse from 'pdf-parse';
 import { geminiAnalyzeDocument, geminiDeepAnalysis, geminiOcrPdf, geminiParseXlsx } from '@/lib/ai/gemini';
 import { embedBatch } from '@/lib/ai/rag';
 import { stripHtml, chunkText } from '@/lib/utils/text';
-import { REQUIRED_VAULT_DOCS } from '@/lib/vault-docs';
+import { ALL_VAULT_DOCS } from '@/lib/vault-docs';
 
 // Detect if a document is an official vault doc — by filename + content
 function detectVaultKey(filename: string, text: string): string | null {
   const combined = `${filename} ${text.slice(0, 5000)}`;
-  for (const req of REQUIRED_VAULT_DOCS) {
+  for (const req of ALL_VAULT_DOCS) {
     if (req.pattern.test(combined)) return req.key;
   }
   return null;

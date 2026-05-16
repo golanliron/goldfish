@@ -11,7 +11,7 @@ const UploadJsonSchema = z.object({
 });
 import { geminiClassify, geminiExtract, geminiSummarize, geminiOcrPdf, geminiParseXlsx, geminiCall } from '@/lib/ai/gemini';
 import { embedBatch } from '@/lib/ai/rag';
-import { REQUIRED_VAULT_DOCS } from '@/lib/vault-docs';
+import { REQUIRED_VAULT_DOCS, ALL_VAULT_DOCS } from '@/lib/vault-docs';
 import { analyzeRejectionLetter } from '@/lib/ai/funder-learning';
 
 // PDF: use pdf-parse v1, fallback to Gemini OCR
@@ -141,9 +141,9 @@ function chunkText(text: string, maxChars: number = 2000): string[] {
 // ===== Vault Document Validation =====
 
 // Match by filename OR by content snippet (first 1000 chars)
-function detectVaultDocType(filename: string, contentSnippet?: string): typeof REQUIRED_VAULT_DOCS[number] | null {
+function detectVaultDocType(filename: string, contentSnippet?: string): typeof ALL_VAULT_DOCS[number] | null {
   const combined = `${filename} ${contentSnippet?.slice(0, 5000) || ''}`;
-  for (const req of REQUIRED_VAULT_DOCS) {
+  for (const req of ALL_VAULT_DOCS) {
     if (req.pattern.test(combined)) return req;
   }
   return null;

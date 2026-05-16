@@ -11,11 +11,11 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { withAuth } from '@/lib/api-auth';
-import { REQUIRED_VAULT_DOCS } from '@/lib/vault-docs';
+import { ALL_VAULT_DOCS } from '@/lib/vault-docs';
 
 function detectVaultKey(filename: string, parsedText?: string | null): string | null {
   const combined = `${filename} ${parsedText?.slice(0, 5000) || ''}`;
-  for (const req of REQUIRED_VAULT_DOCS) {
+  for (const req of ALL_VAULT_DOCS) {
     if (req.pattern.test(combined)) return req.key;
   }
   return null;

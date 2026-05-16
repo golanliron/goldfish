@@ -9,14 +9,14 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { withAuth } from '@/lib/api-auth';
-import { REQUIRED_VAULT_DOCS } from '@/lib/vault-docs';
+import { REQUIRED_VAULT_DOCS, ALL_VAULT_DOCS } from '@/lib/vault-docs';
 
 export { REQUIRED_VAULT_DOCS };
 
 function detectDocType(filename: string, parsedText?: string | null): string | null {
-  // Search filename + full parsed text (up to 5000 chars) — Hebrew doc keywords can appear anywhere
+  // Search across ALL known doc types — required + extended
   const text = `${filename} ${parsedText?.slice(0, 5000) || ''}`;
-  for (const req of REQUIRED_VAULT_DOCS) {
+  for (const req of ALL_VAULT_DOCS) {
     if (req.pattern.test(text)) return req.key;
   }
   return null;

@@ -1,4 +1,4 @@
-// מסמכי תשתית קבועים — כל עמותה צריכה אותם
+// מסמכים שמוצגים למשתמש כ"חסרים" — ליבה חובה
 export const REQUIRED_VAULT_DOCS: {
   key: string;
   label: string;
@@ -71,3 +71,87 @@ export const REQUIRED_VAULT_DOCS: {
     ttl_months: 6,
   },
 ];
+
+// מסמכים נוספים — מזוהים ומסווגים אוטומטית אך לא מוצגים כ"חסרים"
+// גולדפיש מכיר אותם, לומד מהם, ומשתמש בהם בהגשות
+export const EXTENDED_VAULT_DOCS: typeof REQUIRED_VAULT_DOCS = [
+  {
+    key: 'takanon',
+    label: 'תקנון העמותה',
+    pattern: /תקנון העמותה|תקנון.*עמותה|articles of association|bylaws/i,
+    category: 'official',
+    hint: 'תקנון העמותה המקורי / המעודכן',
+  },
+  {
+    key: 'osek_murshe',
+    label: 'אישור עוסק מורשה / פטור ממע"מ',
+    pattern: /עוסק מורשה|פטור ממע"מ|פטור ממעמ|vat.*exempt|registered.*dealer/i,
+    category: 'official',
+    hint: 'אישור עוסק מורשה או פטור ממע"מ מרשות המסים',
+    ttl_months: 12,
+  },
+  {
+    key: 'doch_miluli',
+    label: 'דוח מילולי שנתי',
+    pattern: /דוח מילולי|דוח שנתי.*פעילות|דוח פעילות שנתי|annual.*activity.*report/i,
+    category: 'impact',
+    hint: 'דוח מילולי שנתי על פעילות הארגון',
+    ttl_months: 12,
+  },
+  {
+    key: 'bituach',
+    label: 'ביטוח אחריות',
+    pattern: /ביטוח אחריות|פוליסת ביטוח|liability.*insurance|insurance.*policy/i,
+    category: 'official',
+    hint: 'פוליסת ביטוח אחריות מקצועית / צד שלישי',
+    ttl_months: 12,
+  },
+  {
+    key: 'salary_report',
+    label: 'דוח שכר / תקרת שכר',
+    pattern: /תקרת שכר|דוח שכר|שכר מנכ"ל|salary.*cap|executive.*compensation/i,
+    category: 'budget',
+    hint: 'דוח שכר בכירים או הצהרת תקרת שכר',
+    ttl_months: 12,
+  },
+  {
+    key: 'key_people',
+    label: 'רשימת בעלי תפקידים',
+    pattern: /בעלי תפקידים|צוות הנהלה|key.*personnel|management.*team|organizational.*chart/i,
+    category: 'identity',
+    hint: 'רשימת בעלי תפקידים בכירים + פרטי קשר',
+  },
+  {
+    key: 'w9_w8',
+    label: 'W-9 / W-8BEN',
+    pattern: /w-?9|w-?8ben|w8.*ben|tax.*identification.*number|tin.*form/i,
+    category: 'official',
+    hint: 'טופס מס אמריקאי לפדרציות ותורמים מארה"ב',
+  },
+  {
+    key: 'impact_report',
+    label: 'דוח אימפקט',
+    pattern: /דוח אימפקט|דוח השפעה|impact.*report|theory.*of.*change|תיאוריית השינוי/i,
+    category: 'impact',
+    hint: 'דוח אימפקט / הערכת תוצאות',
+    ttl_months: 12,
+  },
+  {
+    key: 'strategic_plan',
+    label: 'תוכנית אסטרטגית',
+    pattern: /תוכנית אסטרטגית|תכנית עסקית|strategic.*plan|business.*plan/i,
+    category: 'identity',
+    hint: 'תוכנית אסטרטגית רב-שנתית',
+    ttl_months: 36,
+  },
+  {
+    key: 'recommendation_letters',
+    label: 'מכתבי המלצה',
+    pattern: /מכתב המלצה|מכתבי המלצה|letter.*of.*recommendation|letter.*of.*support/i,
+    category: 'identity',
+    hint: 'מכתבי המלצה מגורמים מקצועיים',
+  },
+];
+
+// כל המסמכים ביחד — לזיהוי אוטומטי בהעלאה
+export const ALL_VAULT_DOCS = [...REQUIRED_VAULT_DOCS, ...EXTENDED_VAULT_DOCS];
