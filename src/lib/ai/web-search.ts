@@ -164,7 +164,7 @@ export function buildQueryFromUrl(url: string): string {
     const pathTokens = parsed.pathname
       .split(/[\/\-_?=&%+]+/)
       .map(t => decodeURIComponent(t).replace(/\d{4,}/, '').trim()) // strip long IDs
-      .filter(t => t.length > 2 && !/^(page|id|view|index|html|php|asp|aspx|default)$/i.test(t));
+      .filter(t => t.length > 2 && !/^(page|id|view|index|html|php|asp|aspx|default)$/i.test(t) && !/\.(aspx|php|html|asp)$/i.test(t));
 
     const paramTokens: string[] = [];
     parsed.searchParams.forEach((v) => {
