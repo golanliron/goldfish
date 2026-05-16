@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 
 interface Company {
   id: string;
@@ -44,6 +44,38 @@ const TYPE_ICONS: Record<string, string> = {
   business: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4',
 };
 
+// Outreach tracking types
+interface OutreachRecord {
+  id: string;
+  company_id: string;
+  status: string;
+  contact_name: string | null;
+  contact_email: string | null;
+  notes: string | null;
+  sent_at: string | null;
+  created_at: string;
+}
+
+const OUTREACH_STATUS_LABELS: Record<string, string> = {
+  draft: 'טיוטה',
+  sent: 'נשלח',
+  replied: 'ענו',
+  meeting: 'פגישה',
+  approved: 'אושר',
+  rejected: 'נדחה',
+  no_response: 'אין מענה',
+};
+
+const OUTREACH_STATUS_COLORS: Record<string, string> = {
+  draft: 'bg-gray-100 text-gray-600',
+  sent: 'bg-blue-100 text-blue-700',
+  replied: 'bg-amber-100 text-amber-700',
+  meeting: 'bg-purple-100 text-purple-700',
+  approved: 'bg-green-100 text-green-700',
+  rejected: 'bg-red-100 text-red-600',
+  no_response: 'bg-gray-100 text-gray-500',
+};
+
 interface BusinessTabProps {
   stage?: number;
   orgId?: string | null;
@@ -64,9 +96,55 @@ export default function BusinessTab({ orgId, companyTypeFilter }: BusinessTabPro
   const [fundSubType, setFundSubType] = useState<'' | 'fund' | 'federation'>('');
   const [regionFilter, setRegionFilter] = useState<string>('');
 
+  // Outreach tracking
+  const [outreachMap, setOutreachMap] = useState<Record<string, OutreachRecord[]>>({});
+  const [trackingCompany, setTrackingCompany] = useState<Company | null>(null);
+  const [trackStatus, setTrackStatus] = useState('sent');
+  const [trackNotes, setTrackNotes] = useState('');
+  const [trackSaving, setTrackSaving] = useState(false);
+
+  const loadOutreach = useCallback(async () => {
+    if (!orgId) return;
+    try {
+      const res = await fetch('/api/outreach', { credentials: 'include' });
+      const data = await res.json();
+      const map: Record<string, OutreachRecord[]> = {};
+      for (const rec of (data.outreach || []) as OutreachRecord[]) {
+        if (!map[rec.company_id]) map[rec.company_id] = [];
+        map[rec.company_id].push(rec);
+      }
+      setOutreachMap(map);
+    } catch { /* ignore */ }
+  }, [orgId]);
+
   useEffect(() => {
     loadCompanies();
+    loadOutreach();
   }, [selectedType, matchedOnly, orgId]);
+
+  const handleTrackOutreach = async () => {
+    if (!trackingCompany || !orgId) return;
+    setTrackSaving(true);
+    try {
+      await fetch('/api/outreach', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          company_id: trackingCompany.id,
+          company_name: trackingCompany.name,
+          status: trackStatus,
+          notes: trackNotes,
+          sent_at: trackStatus === 'sent' ? new Date().toISOString() : null,
+        }),
+      });
+      await loadOutreach();
+      setTrackingCompany(null);
+      setTrackNotes('');
+      setTrackStatus('sent');
+    } catch { /* ignore */ }
+    setTrackSaving(false);
+  };
 
   const loadCompanies = async () => {
     setLoading(true);
@@ -340,33 +418,6 @@ export default function BusinessTab({ orgId, companyTypeFilter }: BusinessTabPro
                   פדרציות ({fundSubCounts.federations})
                 </button>
               </div>
-              {/* סינון אזור — מופיע רק בלשונית פדרציות */}
-              {fundSubType === 'federation' && (
-                <div className="flex flex-wrap gap-1">
-                  {[
-                    { key: 'israel_grants', label: '🇮🇱 מממנות ישראל' },
-                    { key: 'northeast', label: '🗽 NE US' },
-                    { key: 'southeast', label: '🌴 SE US' },
-                    { key: 'midwest', label: '🌽 Midwest' },
-                    { key: 'west', label: '🌊 West US' },
-                    { key: 'canada', label: '🍁 קנדה' },
-                    { key: 'europe', label: '🇪🇺 אירופה' },
-                    { key: 'australia', label: '🦘 אוסטרליה' },
-                    { key: 'south_america', label: '🌎 ד. אמריקה' },
-                    { key: 'global', label: '🌐 גלובלי' },
-                  ].map(({ key, label }) => (
-                    <button
-                      key={key}
-                      onClick={() => setRegionFilter(regionFilter === key ? '' : key)}
-                      className={`text-[9px] px-1.5 py-0.5 rounded-md font-medium transition-colors ${
-                        regionFilter === key ? 'bg-accent text-white' : 'bg-surf2 text-muted hover:text-text'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
           )}
           {/* Relevance level filter */}
@@ -440,6 +491,53 @@ export default function BusinessTab({ orgId, companyTypeFilter }: BusinessTabPro
         </div>
       </div>
 
+      {/* Outreach tracking modal */}
+      {trackingCompany && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm" onClick={() => setTrackingCompany(null)}>
+          <div className="w-full max-w-sm bg-white rounded-t-2xl p-4 space-y-3 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-text">מעקב פנייה — {trackingCompany.name}</h3>
+              <button onClick={() => setTrackingCompany(null)} className="text-muted hover:text-text text-lg leading-none">×</button>
+            </div>
+            <div className="space-y-1">
+              <p className="text-[10px] text-muted font-medium">סטטוס פנייה</p>
+              <div className="flex flex-wrap gap-1">
+                {Object.entries(OUTREACH_STATUS_LABELS).map(([val, label]) => (
+                  <button
+                    key={val}
+                    onClick={() => setTrackStatus(val)}
+                    className={`text-[10px] px-2.5 py-1 rounded-full font-medium transition-colors border ${
+                      trackStatus === val
+                        ? 'bg-accent text-white border-accent'
+                        : 'bg-surf2 text-muted border-border hover:border-accent/40'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-1">
+              <p className="text-[10px] text-muted font-medium">הערות (אופציונלי)</p>
+              <textarea
+                rows={2}
+                placeholder="לדוגמה: דיברתי עם ענת, מעוניינים לשמוע יותר..."
+                value={trackNotes}
+                onChange={(e) => setTrackNotes(e.target.value)}
+                className="w-full px-3 py-2 text-xs bg-surf2 border border-border rounded-xl focus:border-accent focus:outline-none resize-none"
+              />
+            </div>
+            <button
+              onClick={handleTrackOutreach}
+              disabled={trackSaving}
+              className="w-full py-2.5 text-sm font-bold bg-accent text-white rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50"
+            >
+              {trackSaving ? 'שומר...' : 'שמור פנייה'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Companies list */}
       <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
         {filtered.length === 0 ? (
@@ -452,10 +550,12 @@ export default function BusinessTab({ orgId, companyTypeFilter }: BusinessTabPro
             <CompanyCard
               key={company.id}
               company={company}
+              outreach={outreachMap[company.id] || []}
               onAskGoldfish={handleAskGoldfish}
               onScanFund={handleScanFund}
               onDraftEmail={handleDraftEmail}
               onFindContact={handleFindContact}
+              onTrackOutreach={(c) => { setTrackingCompany(c); setTrackStatus('sent'); setTrackNotes(''); }}
             />
           ))
         )}
@@ -466,20 +566,26 @@ export default function BusinessTab({ orgId, companyTypeFilter }: BusinessTabPro
 
 function CompanyCard({
   company,
+  outreach,
   onAskGoldfish,
   onScanFund,
   onDraftEmail,
   onFindContact,
+  onTrackOutreach,
 }: {
   company: Company;
+  outreach: OutreachRecord[];
   onAskGoldfish: (c: Company) => void;
   onScanFund: (c: Company) => void;
   onDraftEmail: (c: Company, projectHint?: string) => void;
   onFindContact: (c: Company) => void;
+  onTrackOutreach: (c: Company) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [projectHint, setProjectHint] = useState('');
   const [showEmailComposer, setShowEmailComposer] = useState(false);
+
+  const latestOutreach = outreach[0];
   const typeColor = TYPE_COLORS[company.company_type] || 'bg-gray-100 text-gray-600';
   const typeLabel = TYPE_LABELS[company.company_type] || company.company_type;
 
@@ -567,6 +673,11 @@ function CompanyCard({
           )}
           {!!company.csr_rank && company.csr_rank > 0 && (
             <span className="text-accent font-medium">CSR #{company.csr_rank}</span>
+          )}
+          {latestOutreach && (
+            <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${OUTREACH_STATUS_COLORS[latestOutreach.status] || 'bg-gray-100 text-gray-600'}`}>
+              {OUTREACH_STATUS_LABELS[latestOutreach.status] || latestOutreach.status}
+            </span>
           )}
         </div>
 
@@ -749,6 +860,22 @@ function CompanyCard({
                 בקש מגולדפיש לאתר אחראי CSR
               </button>
             )}
+
+            {/* Outreach tracking */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={(e) => { e.stopPropagation(); onTrackOutreach(company); }}
+                className="flex-1 py-1.5 text-[10px] font-medium border border-dashed border-accent/40 text-accent rounded-lg hover:bg-accent/5 transition-colors flex items-center justify-center gap-1"
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
+                </svg>
+                {latestOutreach ? `עדכן סטטוס (${OUTREACH_STATUS_LABELS[latestOutreach.status]})` : 'סמן פנייה'}
+              </button>
+              {outreach.length > 0 && (
+                <span className="text-[9px] text-muted">{outreach.length} פניות</span>
+              )}
+            </div>
 
             {/* Direct contact buttons */}
             {(company.contact_email || company.contact_phone) && (
