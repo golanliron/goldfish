@@ -13,13 +13,29 @@ Fetch strategy (3-layer fallback):
   2. Jina Reader (bypasses 403 / JS-light pages)
   3. Tavily Search (for full SPA / gov.il dynamic pages that return empty shells)
 """
-import json, re, time, os
+import json, re, time, os, ssl
 from datetime import datetime
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
 
+# SSL context for gov.il sites on Windows Python 3.14
+# Sets minimum to TLS 1.2 (secure; TLS 1.0/1.1 are deprecated)
+_GOV_SSL_CTX = ssl.create_default_context()
+_GOV_SSL_CTX.minimum_version = ssl.TLSVersion.TLSv1_2
+
 SUPABASE_URL = "https://touqczopfjxcpmbxzdjr.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRvdXFjem9wZmp4Y3BtYnh6ZGpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4OTAzNTcsImV4cCI6MjA5MzQ2NjM1N30.K16QAHB3IwRnHJl_XxtcWjnxzggF-Z3gtTrestlq-ek"
+# Load .env.local if present (Vercel wraps values in quotes — strip them)
+_env_file = os.path.join(os.path.dirname(__file__), ".env.local")
+if os.path.exists(_env_file):
+    with open(_env_file, encoding="utf-8") as _ef:
+        for _line in _ef:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _, _v = _line.partition("=")
+                _v = _v.strip().strip('"').strip("'")
+                os.environ.setdefault(_k.strip(), _v)
+
 TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY", "")
 
 CURRENT_YEAR = datetime.now().year
@@ -157,7 +173,8 @@ def fetch_direct(url, timeout=25):
     """Layer 1: direct HTTP. Returns None on 403/connection error (signal: try Jina)."""
     try:
         req = Request(url, headers=HEADERS)
-        with urlopen(req, timeout=timeout) as r:
+        ctx = _GOV_SSL_CTX if ".gov.il" in url else None
+        with urlopen(req, timeout=timeout, context=ctx) as r:
             raw = r.read()
             if r.info().get("Content-Encoding") == "gzip":
                 import gzip
@@ -230,39 +247,19 @@ def fetch_with_fallback(url, source_name):
 # ─── tmichot.mof — direct API ──────────────────────────────────────────────────
 
 def scan_tmichot():
-    """Fetch active support calls from tmichot.mof.gov.il public API."""
-    results = []
-    try:
-        req = Request(
-            "https://tmichot.mof.gov.il/api/Application/GetOpenApplications",
-            headers={**HEADERS, "Accept": "application/json"},
-        )
-        with urlopen(req, timeout=20) as r:
-            data = json.loads(r.read())
-            items = data if isinstance(data, list) else data.get("data", data.get("items", []))
-            for item in items[:50]:
-                title = (item.get("applicationName") or item.get("name") or item.get("title") or "").strip()
-                funder = (item.get("ministerName") or item.get("ministry") or item.get("officeHe") or "").strip()
-                deadline_raw = item.get("deadline") or item.get("submissionDeadline") or item.get("endDate") or ""
-                app_id = item.get("applicationId") or item.get("id") or ""
-                url = f"https://tmichot.mof.gov.il/Application/{app_id}" if app_id else "https://tmichot.mof.gov.il/"
-                deadline = extract_date(str(deadline_raw)) if deadline_raw else None
-                if title and len(title) > 5:
-                    results.append({"title": title, "url": url, "funder": funder or "פורטל תמיכות ממשלתי", "deadline": deadline})
-            if results:
-                print(f"  tmichot API: got {len(results)} items")
-                return results
-    except Exception as e:
-        print(f"  tmichot API error: {e}")
-
-    # Fallback: parse homepage
+    """
+    tmichot.mof.gov.il is a React SPA — no public REST API.
+    Parse the homepage HTML for any direct links, then rely on DDG/Tavily
+    Phase 3 queries to surface the actual grant pages.
+    """
     html = fetch_with_fallback("https://tmichot.mof.gov.il/", "tmichot")
-    if html:
-        links = extract_links(html, "https://tmichot.mof.gov.il/")
-        for lnk in links:
-            lnk["funder"] = lnk.get("funder") or "פורטל תמיכות ממשלתי"
-        return links
-    return []
+    if not html:
+        return []
+    links = extract_links(html, "https://tmichot.mof.gov.il/")
+    for lnk in links:
+        lnk["funder"] = lnk.get("funder") or "פורטל תמיכות ממשלתי"
+    print(f"  tmichot homepage: {len(links)} links found")
+    return links
 
 
 # ─── Tavily gov search ─────────────────────────────────────────────────────────
