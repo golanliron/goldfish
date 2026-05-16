@@ -1,4 +1,7 @@
 import { NextRequest } from 'next/server';
+
+export const maxDuration = 300; // 5 minutes — Vercel Pro limit
+
 import Anthropic from '@anthropic-ai/sdk';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { geminiOcrPdf } from '@/lib/ai/gemini';
