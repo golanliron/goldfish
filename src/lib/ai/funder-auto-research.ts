@@ -5,6 +5,7 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { webSearch, SearchResult } from './web-search';
 import { geminiCall, geminiSearchGrounding } from './gemini';
+import { getFunderByName } from './israeli-funders';
 
 // ===== Types =====
 
@@ -13,11 +14,15 @@ export type SubmissionMethod = 'Email' | 'Portal' | 'LOI';
 export interface FunderResearchResult {
   found: boolean;
   funderName: string;
+  approachStrategy: 'RFP_ONLY' | 'DIRECT_APPROACH' | 'UNKNOWN';
+  approachBlocked?: string;      // If RFP_ONLY: human-readable block message
   description?: string;
   website?: string;
-  applicationUrl?: string;       // Direct link to the application form
+  applicationUrl?: string;       // Direct link to the application form / RFP page
   submissionMethod?: SubmissionMethod;
   contactEmail?: string;
+  contactName?: string;
+  submissionInstructions?: string;
   focusAreas?: string[];
   targetPopulations?: string[];
   regions?: string[];
@@ -29,6 +34,7 @@ export interface FunderResearchResult {
   pastGrantees?: string[];       // who they funded in practice
   grantSizes?: string;           // from annual reports
   matchAnalysis?: string;        // contextual alignment with org profile
+  dataQualityScore?: number;     // 0-100
   sources: string[];
   savedToDb: boolean;
 }
@@ -364,20 +370,61 @@ export async function autoResearchFunder(
   const funderName = detectUnknownFunderQuery(message);
   if (!funderName) return null;
 
-  // 2. Check if we already know them
-  const known = await isFunderKnown(funderName);
-  if (known) return null; // Already in DB — no need to research
-
-  // 3. Deep research on web (general + past grantees + annual reports)
-  const { results, sources } = await researchFunderOnWeb(funderName);
-  if (!results.length) {
-    return { found: false, funderName, sources: [], savedToDb: false };
+  // 2. Check static catalog first — instant response for known Israeli funders
+  const staticEntry = getFunderByName(funderName);
+  if (staticEntry) {
+    const isRfpOnly = staticEntry.approach_strategy === 'RFP_ONLY';
+    const rfpLink = staticEntry.rfp_page;
+    return {
+      found: true,
+      funderName: staticEntry.name,
+      approachStrategy: staticEntry.approach_strategy,
+      approachBlocked: isRfpOnly
+        ? `${staticEntry.name} מפרסמת קולות קוראים בלבד — אין טעם לשלוח מייל קר.${rfpLink ? ` קולות קוראים: ${rfpLink}` : ''}`
+        : undefined,
+      website: staticEntry.website,
+      applicationUrl: rfpLink ?? undefined,
+      contactEmail: staticEntry.contact_email,
+      contactName: staticEntry.contact_name,
+      submissionInstructions: staticEntry.submission_instructions,
+      focusAreas: staticEntry.focus_areas,
+      eligibility: staticEntry.rejects ? `פוסלת: ${staticEntry.rejects}` : undefined,
+      howToApply: staticEntry.tip,
+      dataQualityScore: 80, // static = high quality
+      sources: [staticEntry.website ?? ''].filter(Boolean),
+      savedToDb: false,
+    };
   }
 
-  // 4. Extract structured profile via Gemini (incl. past grantees + grant sizes)
+  // 3. Check if we already know them in DB
+  const known = await isFunderKnown(funderName);
+  if (known) return null; // Already in DB — no need to re-research
+
+  // 4. Deep research on web (general + past grantees + annual reports)
+  const { results, sources } = await researchFunderOnWeb(funderName);
+  if (!results.length) {
+    return { found: false, funderName, approachStrategy: 'UNKNOWN', sources: [], savedToDb: false };
+  }
+
+  // 5. Extract structured profile via Gemini (incl. past grantees + grant sizes)
   const profile = await extractFunderProfile(funderName, results);
 
-  // 5. Contextual alignment — compare funder to this org's profile
+  // 6. Determine approach strategy from extracted data
+  let approachStrategy: 'RFP_ONLY' | 'DIRECT_APPROACH' | 'UNKNOWN' = 'UNKNOWN';
+  if (profile.submissionMethod === 'Portal' && !profile.contactEmail) {
+    approachStrategy = 'RFP_ONLY';
+  } else if (profile.submissionMethod === 'Email' || profile.submissionMethod === 'LOI') {
+    approachStrategy = profile.contactEmail ? 'DIRECT_APPROACH' : 'UNKNOWN';
+  }
+
+  // 7. Validate contact email — strip generic addresses
+  let validatedEmail = profile.contactEmail;
+  if (validatedEmail && /^(info|contact|admin|mail|no-reply|support)@/i.test(validatedEmail)) {
+    validatedEmail = undefined;
+    if (approachStrategy === 'DIRECT_APPROACH') approachStrategy = 'UNKNOWN';
+  }
+
+  // 8. Contextual alignment — compare funder to this org's profile
   let matchAnalysis: string | undefined;
   if (orgId) {
     try {
@@ -385,10 +432,20 @@ export async function autoResearchFunder(
     } catch { /* non-fatal */ }
   }
 
-  // 6. Save to DB
+  // 9. Compute quality score
+  const qualityScore = (
+    (profile.description ? 15 : 0) +
+    (approachStrategy !== 'UNKNOWN' ? 20 : 0) +
+    (validatedEmail ? 20 : 0) +
+    (profile.applicationUrl ? 20 : 0) +
+    (profile.typicalAmountMin ? 15 : 0) +
+    (profile.pastGrantees?.length ? 10 : 0)
+  );
+
+  // 10. Save to DB
   let savedToDb = false;
   try {
-    await saveFunderToDb(funderName, profile, sources);
+    await saveFunderToDb(funderName, { ...profile, contactEmail: validatedEmail }, sources);
     savedToDb = true;
   } catch (e) {
     console.error('[funder-auto-research] DB save failed:', e);
@@ -397,8 +454,14 @@ export async function autoResearchFunder(
   return {
     found: true,
     funderName,
+    approachStrategy,
+    approachBlocked: approachStrategy === 'RFP_ONLY'
+      ? `${funderName} נראית כמפרסמת קולות קוראים בלבד — לא מומלץ לשלוח מייל קר.`
+      : undefined,
     ...profile,
+    contactEmail: validatedEmail,
     matchAnalysis,
+    dataQualityScore: qualityScore,
     sources,
     savedToDb,
   };
@@ -411,30 +474,45 @@ export function formatFunderResearch(research: FunderResearchResult): string {
   if (!research.found) return '';
 
   const lines = [
-    `\n\n===== מחקר חדש: ${research.funderName} =====`,
-    `[גולדפיש חקר את הגוף הזה עכשיו ועדכן את המאגר]`,
+    `\n\n===== מחקר: ${research.funderName} =====`,
   ];
+
+  // === APPROACH STRATEGY — most critical block ===
+  if (research.approachStrategy === 'RFP_ONLY') {
+    lines.push(`אסטרטגיית פנייה: RFP בלבד`);
+    lines.push(`⚠ פנייה חופשית לא מומלצת — הקרן הזו מפרסמת קולות קוראים בלבד.`);
+    if (research.applicationUrl) lines.push(`קולות קוראים / עמוד הגשה: ${research.applicationUrl}`);
+  } else if (research.approachStrategy === 'DIRECT_APPROACH') {
+    lines.push(`אסטרטגיית פנייה: פנייה ישירה אפשרית`);
+    if (research.contactName) lines.push(`איש קשר: ${research.contactName}`);
+    if (research.contactEmail) lines.push(`מייל ישיר: ${research.contactEmail}`);
+    if (research.submissionInstructions) lines.push(`הנחיות: ${research.submissionInstructions}`);
+    if (research.applicationUrl) lines.push(`טופס הגשה: ${research.applicationUrl}`);
+  } else {
+    lines.push(`אסטרטגיית פנייה: לא ידועה — מומלץ לברר לפני פנייה`);
+  }
+
+  lines.push('---');
 
   if (research.description) lines.push(`תיאור: ${research.description}`);
   if (research.website) lines.push(`אתר: ${research.website}`);
-  if (research.applicationUrl) lines.push(`קישור ישיר להגשה: ${research.applicationUrl}`);
   if (research.submissionMethod) lines.push(`שיטת הגשה: ${research.submissionMethod}`);
-  if (research.contactEmail) lines.push(`מייל פניות: ${research.contactEmail}`);
   if (research.focusAreas?.length) lines.push(`תחומים: ${research.focusAreas.join(', ')}`);
   if (research.targetPopulations?.length) lines.push(`אוכלוסיות: ${research.targetPopulations.join(', ')}`);
   if (research.regions?.length) lines.push(`אזורים: ${research.regions.join(', ')}`);
   if (research.typicalAmountMin || research.typicalAmountMax) {
-    lines.push(`סכומים: ${research.typicalAmountMin || '?'}-${research.typicalAmountMax || '?'} ש"ח`);
+    lines.push(`סכומים טיפוסיים: ${research.typicalAmountMin || '?'}-${research.typicalAmountMax || '?'} ש"ח`);
   }
   if (research.eligibility) lines.push(`תנאי זכאות: ${research.eligibility}`);
   if (research.deadlineNotes) lines.push(`מחזוריות/דדליין: ${research.deadlineNotes}`);
-  if (research.howToApply) lines.push(`איך לפנות: ${research.howToApply}`);
-  if (research.pastGrantees?.length) lines.push(`מימנו בפועל (past grantees): ${research.pastGrantees.join(', ')}`);
+  if (research.howToApply) lines.push(`טיפ: ${research.howToApply}`);
+  if (research.pastGrantees?.length) lines.push(`מימנו בפועל: ${research.pastGrantees.join(', ')}`);
   if (research.grantSizes) lines.push(`סכומים בפועל: ${research.grantSizes}`);
-  if (research.matchAnalysis) lines.push(`ניתוח התאמה לארגון שלך: ${research.matchAnalysis}`);
+  if (research.matchAnalysis) lines.push(`התאמה לארגון שלך: ${research.matchAnalysis}`);
+  if (research.dataQualityScore !== undefined) lines.push(`איכות מידע: ${research.dataQualityScore}/100`);
   if (research.sources.length) lines.push(`מקורות: ${research.sources.slice(0, 3).join(' | ')}`);
 
-  lines.push(`\nהנחיה: ספר למשתמש שלא הכרת את "${research.funderName}", אז חקרת עכשיו ועדכנת את המאגר. תן סיכום של מה שמצאת — כולל מי קיבל כסף בפועל, לא רק מה שהגוף אומר על עצמו. אם יש ניתוח התאמה לארגון — ציין אותו בפירוש.`);
+  lines.push(`\nהנחיה: תן סיכום של מה שמצאת ב-${research.funderName}. אם approach_strategy = RFP_ONLY — הדגש שאין לפנות חופשית ושצריך לחכות לקול קורא. אם DIRECT_APPROACH — הצג את פרטי הקשר המאומתים ואת הנחיות ההגשה. ציין אם מצאת past grantees — זה הכי חשוב.`);
 
   return lines.join('\n');
 }

@@ -36,7 +36,7 @@ export const GET = withAuth(async (req, auth) => {
   try {
   let query = supabase
     .from('companies')
-    .select('id, name, company_type, description, interests, donation_amount, market_cap, csr_rank, contact_name, contact_email, contact_phone, contact_role, website, active')
+    .select('id, name, company_type, description, interests, donation_amount, market_cap, csr_rank, contact_name, contact_email, contact_phone, contact_role, website, active, approach_strategy, submission_url, approach_note')
     .eq('active', true)
     .order('name');
 

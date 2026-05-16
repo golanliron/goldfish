@@ -18,6 +18,9 @@ interface Company {
   website: string | null;
   active: boolean;
   relevance_score?: number;
+  approach_strategy?: string | null;
+  submission_url?: string | null;
+  approach_note?: string | null;
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -190,6 +193,20 @@ export default function BusinessTab({ orgId, companyTypeFilter }: BusinessTabPro
   };
 
   const handleDraftEmail = (company: Company, projectHint?: string) => {
+    // Block RFP_ONLY companies — direct email won't work
+    if (company.approach_strategy === 'RFP_ONLY') {
+      const parts = [
+        `[חברה מהמאגר — בדיקת שיטת פנייה]`,
+        `שם: ${company.name}`,
+        `שיטת פנייה: RFP_ONLY`,
+      ];
+      if (company.submission_url) parts.push(`פורטל הגשות: ${company.submission_url}`);
+      if (company.approach_note) parts.push(`הערה: ${company.approach_note}`);
+      parts.push(`\nהסבר למשתמש: ${company.name} לא מקבלת פניות ישירות במייל. הם עובדים דרך פורטל הגשות בלבד. האם יש קול קורא פתוח שלהם?`);
+      sendToChat(parts.join('\n'));
+      return;
+    }
+
     const typeLabel = TYPE_LABELS[company.company_type] || company.company_type;
     const parts = [
       `[חברה מהמאגר שלך — נסח מייל פנייה!]`,
@@ -641,10 +658,40 @@ function CompanyCard({
               </button>
             )}
 
-            {/* Email composer for business */}
+            {/* Email composer / Portal CTA for business */}
             {company.company_type === 'business' && (
               <div className="space-y-1.5">
-                {showEmailComposer ? (
+                {company.approach_strategy === 'RFP_ONLY' ? (
+                  /* RFP-only: show portal link or info */
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 space-y-1.5">
+                    <p className="text-[10px] text-amber-800 font-medium">
+                      חברה זו מקבלת פניות דרך פורטל בלבד — לא ניתן לפנות במייל ישיר
+                    </p>
+                    {company.submission_url ? (
+                      <a
+                        href={company.submission_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex w-full items-center justify-center gap-1.5 py-1.5 text-[11px] font-bold bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+                          <polyline points="15 3 21 3 21 9" />
+                          <line x1="10" y1="14" x2="21" y2="3" />
+                        </svg>
+                        פתח פורטל הגשה
+                      </a>
+                    ) : (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onDraftEmail(company); }}
+                        className="w-full py-1.5 text-[11px] font-medium border border-amber-300 text-amber-700 rounded-lg hover:bg-amber-100 transition-colors"
+                      >
+                        בדוק מתי הפורטל פתוח
+                      </button>
+                    )}
+                  </div>
+                ) : showEmailComposer ? (
                   <div className="space-y-1.5 p-2 bg-surf2 rounded-lg border border-border">
                     <p className="text-[10px] text-muted font-medium">פרויקט רלוונטי לציין במייל (אופציונלי):</p>
                     <input

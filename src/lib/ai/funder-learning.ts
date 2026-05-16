@@ -3,7 +3,7 @@
 // Multi-tenant: all data is aggregated anonymously across orgs
 
 import { createAdminClient } from '@/lib/supabase/admin';
-import { getFunderApproachMeta, type FunderApproachStrategy } from './israeli-funders';
+import { getFunderByName } from './israeli-funders';
 
 // ===== Types =====
 
@@ -42,6 +42,7 @@ export interface FunderProfile {
   submission_instructions?: string; // special rules: "LOI first", "Rotary member required", etc.
   approach_validated?: boolean;   // was contact info verified by AI/human?
   approach_validated_at?: string; // ISO date
+  data_quality_score?: number;    // 0-100: how complete/verified is this profile
 }
 
 export interface OutcomeSignal {
@@ -69,11 +70,72 @@ interface ReadinessFactor {
   weight: number;
 }
 
+// ===== Funder Profile Validation =====
+
+/**
+ * Validate and clean a raw DB row before returning as FunderProfile.
+ * Strips junk data: generic emails, homepage-only URLs, recomputes quality score.
+ * Also enriches from static israeli-funders list if approach_strategy = UNKNOWN.
+ */
+function validateFunderProfile(data: Record<string, unknown>): FunderProfile {
+  // Strip generic info@ — useless for direct approach
+  let contactEmail = data.contact_email as string | undefined;
+  if (contactEmail && /^(info|contact|admin|mail|no-reply)@/i.test(contactEmail)) {
+    contactEmail = undefined;
+  }
+
+  // Strip placeholder URLs (just homepage, no path)
+  let submissionUrl = (data.submission_url ?? data.application_url) as string | undefined;
+  if (submissionUrl && /^https?:\/\/[^/]+\/?$/.test(submissionUrl)) {
+    submissionUrl = undefined; // homepage only — not a real application URL
+  }
+
+  // Determine approach_strategy: prefer DB value, fallback to static list
+  let approachStrategy = (data.approach_strategy as FunderApproachStrategy) || 'UNKNOWN';
+  let contactName = data.contact_name as string | undefined;
+  let submissionInstructions = data.submission_instructions as string | undefined;
+
+  if (approachStrategy === 'UNKNOWN') {
+    const staticEntry = getFunderByName(data.funder_name as string);
+    if (staticEntry) {
+      approachStrategy = staticEntry.approach_strategy;
+      if (!contactEmail && staticEntry.contact_email) contactEmail = staticEntry.contact_email;
+      if (!contactName && staticEntry.contact_name) contactName = staticEntry.contact_name;
+      if (!submissionUrl && staticEntry.rfp_page) submissionUrl = staticEntry.rfp_page;
+      if (!submissionInstructions && staticEntry.submission_instructions) {
+        submissionInstructions = staticEntry.submission_instructions;
+      }
+    }
+  }
+
+  // Compute quality score
+  const qualityScore = (
+    (data.writing_tips && String(data.writing_tips).length > 30 ? 20 : 0) +
+    (approachStrategy !== 'UNKNOWN' ? 20 : 0) +
+    (contactEmail ? 20 : 0) +
+    (submissionUrl ? 20 : 0) +
+    (data.typical_amount_min ? 20 : 0)
+  );
+
+  return {
+    ...(data as unknown as FunderProfile),
+    contact_email: contactEmail,
+    contact_name: contactName,
+    submission_url: submissionUrl,
+    submission_instructions: submissionInstructions,
+    approach_strategy: approachStrategy,
+    data_quality_score: qualityScore,
+    approval_rate: (data.total_submissions as number) > 0
+      ? Math.round(((data.total_approved as number) / (data.total_submissions as number)) * 100)
+      : undefined,
+  };
+}
+
 // ===== Funder Intelligence =====
 
 /**
- * Get or create a funder intelligence profile by funder name.
- * If one doesn't exist, creates a stub from opportunity data.
+ * Get a funder intelligence profile by funder name.
+ * Validates contact data, enriches from static list, strips junk.
  */
 export async function getFunderProfile(funderName: string): Promise<FunderProfile | null> {
   if (!funderName) return null;
@@ -85,16 +147,38 @@ export async function getFunderProfile(funderName: string): Promise<FunderProfil
     .eq('funder_name', funderName)
     .single();
 
-  if (data) {
-    return {
-      ...data,
-      approval_rate: data.total_submissions > 0
-        ? Math.round((data.total_approved / data.total_submissions) * 100)
-        : undefined,
-    };
-  }
+  if (!data) return null;
+  return validateFunderProfile(data as unknown as Record<string, unknown>);
+}
 
+/**
+ * Check if approaching this funder directly is blocked (RFP_ONLY).
+ * Returns a human-readable block message, or null if approach is allowed.
+ */
+export function checkApproachBlocked(profile: FunderProfile): string | null {
+  if (profile.approach_strategy === 'RFP_ONLY') {
+    const rfpLink = profile.submission_url ? ` עמוד הקולות הקוראים: ${profile.submission_url}` : '';
+    return `${profile.funder_name} מפרסמת קולות קוראים בלבד — אין טעם לשלוח מייל קר. המתן לקול קורא רלוונטי.${rfpLink}`;
+  }
   return null;
+}
+
+/**
+ * Format direct approach instructions for a DIRECT_APPROACH funder.
+ */
+export function formatDirectApproach(profile: FunderProfile): string {
+  if (profile.approach_strategy !== 'DIRECT_APPROACH') return '';
+
+  const lines: string[] = [`פנייה ישירה אפשרית ל-${profile.funder_name}:`];
+  if (profile.contact_name) lines.push(`• איש קשר: ${profile.contact_name}`);
+  if (profile.contact_email) lines.push(`• מייל: ${profile.contact_email}`);
+  if (profile.contact_phone) lines.push(`• טלפון: ${profile.contact_phone}`);
+  if (profile.submission_url) lines.push(`• טופס הגשה: ${profile.submission_url}`);
+  if (profile.submission_instructions) lines.push(`• הנחיות: ${profile.submission_instructions}`);
+  if (!profile.approach_validated) {
+    lines.push('⚠ פרטים אלו לא אומתו ידנית — מומלץ לאמת לפני שליחה.');
+  }
+  return lines.join('\n');
 }
 
 /**
@@ -182,12 +266,12 @@ export async function buildFunderProfiles(): Promise<{ created: number; updated:
       .limit(1)
       .single();
 
-    // Resolve approach strategy from catalog first, then auto-detect
-    const catalogMeta = getFunderApproachMeta(funderName);
-    let approachStrategy: FunderApproachStrategy = catalogMeta?.approach ?? 'UNKNOWN';
+    // Resolve approach strategy from static catalog first, then auto-detect
+    const staticEntry = getFunderByName(funderName);
+    let approachStrategy: FunderApproachStrategy = staticEntry?.approach_strategy ?? 'UNKNOWN';
 
     // Auto-detect from submission method if catalog has no entry
-    if (!catalogMeta && detectedSubmissionMethod) {
+    if (!staticEntry && detectedSubmissionMethod) {
       if (detectedSubmissionMethod === 'Portal') approachStrategy = 'RFP_ONLY';
       else if (detectedSubmissionMethod === 'LOI' || detectedSubmissionMethod === 'Email') approachStrategy = 'DIRECT_APPROACH';
     }
@@ -216,16 +300,16 @@ export async function buildFunderProfiles(): Promise<{ created: number; updated:
       updated_at: new Date().toISOString(),
     };
 
-    // Merge catalog contact data (trusted) — catalog wins over scraped data
-    if (catalogMeta) {
-      if (catalogMeta.contact_name) profile.contact_name = catalogMeta.contact_name;
-      if (catalogMeta.contact_email) profile.contact_email = catalogMeta.contact_email;
-      if (catalogMeta.submission_url) profile.submission_url = catalogMeta.submission_url;
-      if (catalogMeta.submission_instructions) profile.submission_instructions = catalogMeta.submission_instructions;
-      if (catalogMeta.contact_email) {
+    // Merge static catalog contact data (trusted source) — catalog wins over scraped data
+    if (staticEntry) {
+      if (staticEntry.contact_name) profile.contact_name = staticEntry.contact_name;
+      if (staticEntry.contact_email && isValidContactEmail(staticEntry.contact_email)) {
+        profile.contact_email = staticEntry.contact_email;
         profile.approach_validated = true;
         profile.approach_validated_at = new Date().toISOString();
       }
+      if (staticEntry.rfp_page) profile.submission_url = staticEntry.rfp_page;
+      if (staticEntry.submission_instructions) profile.submission_instructions = staticEntry.submission_instructions;
     } else {
       // Only set scraped contact_email if it passes validation
       if (isValidContactEmail(detectedEmail)) profile.contact_email = detectedEmail;
