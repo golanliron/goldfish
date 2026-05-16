@@ -363,10 +363,10 @@ export default function OnboardingPage() {
             ) : (
               <>
                 <h1 className="text-xl font-bold leading-snug mb-2">
-                  הפרופיל נשמר
+                  למדתי ושמרתי הכל
                 </h1>
                 <p className="text-sm text-muted leading-relaxed max-w-xs mx-auto">
-                  חסר עוד מידע כדי להתאים הזדמנויות — אפשר להוסיף מהדשבורד.
+                  בואו לגלות את ההזדמנויות שלכם
                 </p>
               </>
             )}
