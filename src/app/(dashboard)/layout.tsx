@@ -240,17 +240,18 @@ function DashboardInner({ children }: { children: React.ReactNode }) {
       </div>
 
       <div className="flex-1 md:hidden overflow-hidden flex flex-col">
-        <div className="flex-1 overflow-hidden">
-          {mobileTab === 'chat' ? (
-            <main className="h-full overflow-hidden">
-              {children}
-            </main>
-          ) : mobileTab === 'urgent' ? (
-            <div className="h-full overflow-y-auto bg-bg">
+        <div className="flex-1 overflow-hidden relative">
+          {/* Chat — always mounted so fishgold:send listener stays active */}
+          <main className={`h-full overflow-hidden absolute inset-0 ${mobileTab === 'chat' ? 'z-10' : 'z-0 pointer-events-none invisible'}`}>
+            {children}
+          </main>
+          {mobileTab === 'urgent' && (
+            <div className="h-full overflow-y-auto bg-bg absolute inset-0 z-10">
               <WhatUrgentNow orgId={orgId || ''} />
             </div>
-          ) : (
-            <div className="h-full overflow-y-auto bg-bg2">
+          )}
+          {mobileTab !== 'chat' && mobileTab !== 'urgent' && (
+            <div className="h-full overflow-y-auto bg-bg2 absolute inset-0 z-10">
               <SidebarPanel stage={stage} orgId={orgId || ''} initialTab={mobileTab as SidebarTab} />
             </div>
           )}
