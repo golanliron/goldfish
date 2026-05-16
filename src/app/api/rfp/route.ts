@@ -1,7 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { withAuth } from '@/lib/api-auth';
-import { geminiCall } from '@/lib/ai/gemini';
+import { geminiCall, geminiSearchGrounding } from '@/lib/ai/gemini';
+
+function isGovUrl(url: string): boolean {
+  return /\.gov\.il|merkava\.|btl\.gov|most\.gov|mof\.gov|moital\.gov|education\.gov|welfare\.gov/i.test(url);
+}
+
+// Fetch grant URL content with multi-layer fallback
+async function fetchRfpContent(url: string): Promise<string> {
+  // Layer 1: Jina Reader (works for most non-gov sites)
+  try {
+    const res = await fetch(`https://r.jina.ai/${url}`, {
+      headers: { Accept: 'text/plain', 'Accept-Language': 'he-IL,he;q=0.9,en-US;q=0.8', 'X-Return-Format': 'text' },
+      signal: AbortSignal.timeout(25000),
+    });
+    if (res.ok) {
+      const text = await res.text();
+      if (text.length > 200) return text;
+    }
+  } catch { /* try next */ }
+
+  // Layer 2: Direct fetch with browser UA
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,*/*;q=0.8',
+        'Accept-Language': 'he,en;q=0.9',
+      },
+      signal: AbortSignal.timeout(15000),
+      redirect: 'follow',
+    });
+    if (res.ok) {
+      const html = await res.text();
+      return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80000);
+    }
+  } catch { /* try next */ }
+
+  // Layer 3: Gemini Search Grounding — works for gov.il and blocked sites
+  try {
+    const geminiText = await geminiSearchGrounding(url);
+    if (geminiText && geminiText.length > 200) return geminiText;
+  } catch { /* all failed */ }
+
+  return '';
+}
 
 export const maxDuration = 120; // seconds — Vercel Pro/Team plan
 
@@ -13,27 +57,10 @@ export const POST = withAuth(async (req, auth) => {
 
   const supabase = createAdminClient();
 
-  // 1. Fetch raw text if URL provided
+  // 1. Fetch raw text if URL provided (multi-layer fallback)
   let rawText = text || '';
   if (url && !rawText) {
-    try {
-      const res = await fetch(`https://r.jina.ai/${url}`, {
-        headers: { Accept: 'text/plain', 'Accept-Language': 'he-IL,he;q=0.9,en-US;q=0.8' },
-        signal: AbortSignal.timeout(25000),
-      });
-      if (res.ok) rawText = await res.text();
-    } catch { /* ignore, will fail gracefully */ }
-
-    // Direct fetch fallback
-    if (!rawText) {
-      try {
-        const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
-        if (res.ok) {
-          const html = await res.text();
-          rawText = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80000);
-        }
-      } catch { /* ignore */ }
-    }
+    rawText = await fetchRfpContent(url);
   }
 
   if (!rawText || rawText.length < 20) {
@@ -63,6 +90,7 @@ ${rawText.slice(0, 60000)}
   "rfp_title": "שם קול הקורא",
   "deadline": "YYYY-MM-DD או null",
   "max_amount": מספר בשקלים או null,
+  "application_url": "הקישור הישיר לדף/טופס ההגשה (forms.monday, מרכבה, פורטל ממשלתי, PDF ישיר) — לא עמוד הבית של הקרן. null אם לא נמצא.",
   "eligibility": {
     "org_types": ["סוגי ארגונים מתאימים"],
     "regions": ["אזורים"],
@@ -110,12 +138,27 @@ ${rawText.slice(0, 60000)}
       evaluation_criteria: rfpData.evaluation_criteria || [],
       raw_text: rawText.slice(0, 50000),
       rfp_url: url || null,
+      application_url: rfpData.application_url && typeof rfpData.application_url === 'string' && rfpData.application_url.startsWith('http')
+        ? rfpData.application_url
+        : (url || null),
     })
     .select('id')
     .single();
 
+  // If we extracted a direct application_url — backfill to opportunities table
+  const extractedAppUrl = rfpData.application_url && typeof rfpData.application_url === 'string' && rfpData.application_url.startsWith('http')
+    ? rfpData.application_url as string
+    : null;
+  if (extractedAppUrl && opportunity_id) {
+    await supabase.from('opportunities')
+      .update({ application_url: extractedAppUrl })
+      .eq('id', opportunity_id)
+      .is('application_url', null); // only update if not already set
+  }
+
   return NextResponse.json({
     rfp_id: rfpRow?.id,
     rfp: rfpData,
+    application_url: extractedAppUrl || url || null,
   });
 });

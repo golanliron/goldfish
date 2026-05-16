@@ -1,7 +1,11 @@
 import { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { geminiOcrPdf } from '@/lib/ai/gemini';
+import { geminiOcrPdf, geminiSearchGrounding } from '@/lib/ai/gemini';
 import { parseFileContent } from '@/lib/utils/file-parser';
+
+function isGovUrl(url: string): boolean {
+  return /\.gov\.il|merkava\.|btl\.gov|most\.gov|mof\.gov|moital\.gov|education\.gov|welfare\.gov/i.test(url);
+}
 
 export const maxDuration = 300;
 
@@ -57,13 +61,57 @@ async function fetchDirectPdfContent(url: string): Promise<string> {
 }
 
 async function fetchGrantPageContent(url: string): Promise<string> {
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-    signal: AbortSignal.timeout(12000),
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  // gov.il blocks direct fetch — go straight to Gemini Grounding + Jina
+  if (isGovUrl(url)) {
+    try {
+      const geminiText = await geminiSearchGrounding(url);
+      if (geminiText && geminiText.length > 200) return geminiText.slice(0, 8000);
+    } catch { /* try Jina */ }
 
-  const html = await res.text();
+    try {
+      const jinaRes = await fetch(`https://r.jina.ai/${url}`, {
+        headers: { 'Accept': 'text/plain', 'X-Return-Format': 'text' },
+        signal: AbortSignal.timeout(25000),
+      });
+      if (jinaRes.ok) {
+        const text = await jinaRes.text();
+        if (text.length > 200) return text.slice(0, 8000);
+      }
+    } catch { /* all failed */ }
+
+    throw new Error('gov.il blocked — all fallbacks failed');
+  }
+
+  // Regular site: direct fetch
+  let html = '';
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,*/*;q=0.8',
+        'Accept-Language': 'he,en;q=0.9',
+      },
+      signal: AbortSignal.timeout(12000),
+      redirect: 'follow',
+    });
+    if (res.ok) html = await res.text();
+  } catch { /* try Jina fallback */ }
+
+  // Jina fallback if direct failed
+  if (!html || html.length < 100) {
+    try {
+      const jinaRes = await fetch(`https://r.jina.ai/${url}`, {
+        headers: { 'Accept': 'text/plain', 'X-Return-Format': 'text' },
+        signal: AbortSignal.timeout(25000),
+      });
+      if (jinaRes.ok) {
+        const text = await jinaRes.text();
+        if (text.length > 200) return text.slice(0, 8000);
+      }
+    } catch { /* give up */ }
+    throw new Error('fetch failed and Jina failed');
+  }
+
   const pageText = html
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
     .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')

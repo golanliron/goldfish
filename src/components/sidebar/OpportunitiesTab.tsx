@@ -1066,9 +1066,22 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
       {draftState === 'error' && draftError && (
         <div className="mt-1.5 bg-red-50 border border-red-200 rounded-lg p-2" onClick={e => e.stopPropagation()}>
           <div className="text-[10px] text-red-600">{draftError}</div>
-          <button onClick={e => { e.stopPropagation(); setDraftState('idle'); }} className="text-[9px] text-accent hover:underline mt-0.5">
-            נסה שוב
-          </button>
+          <div className="flex items-center gap-2 mt-1">
+            <button onClick={e => { e.stopPropagation(); setDraftState('idle'); }} className="text-[9px] text-accent hover:underline">
+              נסה שוב
+            </button>
+            {(opp.application_url || opp.url) && (
+              <a
+                href={opp.application_url || opp.url || '#'}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={e => e.stopPropagation()}
+                className="text-[9px] text-blue-600 hover:underline"
+              >
+                פתח קול קורא ישירות ↗
+              </a>
+            )}
+          </div>
         </div>
       )}
 
