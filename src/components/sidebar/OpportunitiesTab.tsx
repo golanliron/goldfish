@@ -993,18 +993,28 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
           </button>
         )}
 
-        {/* 3. Open source */}
+        {/* 3. Open source / Google fallback */}
         {sourceHref ? (
           <a
             href={sourceHref}
             target="_blank"
             rel="noopener noreferrer"
             onClick={e => e.stopPropagation()}
+            className="flex-1 py-1.5 text-[10px] font-bold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-center"
+          >
+            🔗 לקול הקורא
+          </a>
+        ) : (
+          <a
+            href={`https://www.google.com/search?q=${encodeURIComponent(opp.title + ' ' + (opp.funder || ''))}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={e => e.stopPropagation()}
             className="flex-1 py-1.5 text-[10px] font-medium bg-surf2 border border-border text-muted rounded-lg hover:text-accent hover:border-accent/40 transition-colors text-center"
           >
-            פתח מקור
+            חפש בגוגל
           </a>
-        ) : null}
+        )}
       </div>
 
       {/* Draft done state — share URL */}
