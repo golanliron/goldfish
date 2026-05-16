@@ -158,7 +158,7 @@ export default function OnboardingPage() {
       if (!uploadRes.ok) {
         await fetch('/api/process-upload', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...(orgId ? { 'x-org-id': orgId } : {}) },
           body: JSON.stringify({ document_id: urlData.document_id }),
         });
         setFiles(prev => prev.map((f, i) => i === index ? { ...f, status: 'error' } : f));
@@ -167,7 +167,7 @@ export default function OnboardingPage() {
 
       const processRes = await fetch('/api/process-upload', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(orgId ? { 'x-org-id': orgId } : {}) },
         body: JSON.stringify({ document_id: urlData.document_id }),
       });
       const processData = await processRes.json();
