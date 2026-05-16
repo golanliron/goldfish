@@ -886,7 +886,7 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
           handleDownload={handleDownload}
           handleCategoryChange={handleCategoryChange}
           onUploadClick={() => fileInputRef.current?.click()}
-          onVaultRefresh={loadData}
+
         />
       )}
 
@@ -1077,7 +1077,7 @@ function OrgVaultSection({
   handleDownload,
   handleCategoryChange,
   onUploadClick,
-  onVaultRefresh,
+
 }: {
   documents: FgDoc[];
   missingDocs: { label: string; pattern: RegExp; hint?: string }[];
@@ -1095,30 +1095,8 @@ function OrgVaultSection({
   handleDownload: (doc: FgDoc) => void;
   handleCategoryChange: (id: string, cat: string) => void;
   onUploadClick: () => void;
-  onVaultRefresh?: () => void;
 }) {
   const missingRef = useRef<HTMLDivElement>(null);
-  const [backfilling, setBackfilling] = useState(false);
-  const [backfillResult, setBackfillResult] = useState<string | null>(null);
-
-  const runBackfill = async () => {
-    setBackfilling(true);
-    setBackfillResult(null);
-    try {
-      const res = await fetch('/api/documents/backfill-vault', { method: 'POST' });
-      const data = await res.json();
-      if (data.updated === 0) {
-        setBackfillResult('כל המסמכים כבר מסווגים');
-      } else {
-        setBackfillResult(`סווגו ${data.updated} מסמכים`);
-        onVaultRefresh?.();
-      }
-    } catch {
-      setBackfillResult('שגיאה בסיווג');
-    } finally {
-      setBackfilling(false);
-    }
-  };
 
   // Group documents
   const grouped = DOC_GROUPS.map(g => ({
@@ -1147,21 +1125,8 @@ function OrgVaultSection({
       <div>
         <div className="flex items-center justify-between">
           <h4 className="text-xs font-semibold">תיק הארגון</h4>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] text-muted2">{documents.length} מסמכים</span>
-            <button
-              onClick={runBackfill}
-              disabled={backfilling}
-              title="סרוק מחדש את כל המסמכים וזהה מסמכים רשמיים"
-              className="text-[9px] px-2 py-0.5 rounded-full border border-border bg-surf2 hover:bg-surf2/80 text-muted transition-colors disabled:opacity-50"
-            >
-              {backfilling ? 'סורק...' : 'זהה מסמכים'}
-            </button>
-          </div>
+          <span className="text-[10px] text-muted2">{documents.length} מסמכים</span>
         </div>
-        {backfillResult && (
-          <div className="text-[10px] text-green-600 dark:text-green-400 mt-1">{backfillResult}</div>
-        )}
         <p className="text-[10px] text-muted2 mt-0.5">
           Goldfish משתמש במסמכים האלה כדי לכתוב הגשות מדויקות ולבדוק מוכנות.
         </p>
