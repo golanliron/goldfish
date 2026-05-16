@@ -84,6 +84,7 @@ export default function ChatPanel({ orgId, userId, onStageChange }: ChatPanelPro
   const [loaded, setLoaded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load last conversation on mount - Goldfish remembers you
   useEffect(() => {
@@ -291,13 +292,17 @@ export default function ChatPanel({ orgId, userId, onStageChange }: ChatPanelPro
       } catch { /* ignore */ }
     };
 
+    const openUploadHandler = () => fileInputRef.current?.click();
+
     window.addEventListener('fishgold:send', handler);
     window.addEventListener('fishgold:activeTab', tabHandler);
     window.addEventListener('fishgold:loadConversation', loadConvHandler);
+    window.addEventListener('fishgold:openUpload', openUploadHandler);
     return () => {
       window.removeEventListener('fishgold:send', handler);
       window.removeEventListener('fishgold:activeTab', tabHandler);
       window.removeEventListener('fishgold:loadConversation', loadConvHandler);
+      window.removeEventListener('fishgold:openUpload', openUploadHandler);
     };
   }, [orgId]);
 
@@ -634,6 +639,7 @@ ${rejectionLines ? `\n${rejectionLines}\nתנתח את הדחייה: מה הית
           {/* File upload */}
           <label className="flex-shrink-0 cursor-pointer p-2 rounded-lg hover:bg-surf2 transition-colors text-muted hover:text-accent">
             <input
+              ref={fileInputRef}
               type="file"
               className="hidden"
               multiple

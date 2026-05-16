@@ -328,11 +328,44 @@ ${VALID_REGIONS.join(', ')}
 // ============================================================
 // TITLE VALIDATION — reject garbage
 // ============================================================
+// URL patterns that indicate a scanned link is an asset/nav-element, not a real grant
+const JUNK_URL_PATTERNS = [
+  /the-lottery-logo/i,
+  /logo.*\.pdf/i,
+  /favicon/i,
+  /\.png$/i,
+  /\.jpg$/i,
+  /\.gif$/i,
+];
+
+// Language-selector titles that get scraped accidentally from multilingual sites
+const JUNK_TITLE_EXACT = new Set([
+  'Nederlands (Dutch)', 'Español (Spanish)', 'English', 'Français (French)',
+  'Deutsch (German)', 'Русский (Russian)', 'العربية (Arabic)', 'עברית (Hebrew)',
+  'Italiano (Italian)', 'Português (Portuguese)',
+]);
+
+// Partial-match patterns — titles containing these strings are junk
+const JUNK_TITLE_PATTERNS = [
+  /להורדת מסמך/i,
+  /לחץ כאן להורדה/i,
+  /download.*pdf/i,
+  /click here to download/i,
+  /^\s*>\s*$/,   // just ">"
+];
+
 function isValidTitle(title: string): boolean {
   if (!title || title.length < 8 || title.length > 200) return false;
+  if (JUNK_TITLE_EXACT.has(title)) return false;
+  if (JUNK_TITLE_PATTERNS.some(re => re.test(title))) return false;
   const skip = ['קישור', 'תאריך אחרון', 'מפרסם', 'דף הבית', 'צור קשר', 'אודות', 'חיפוש', 'הרשמה', 'menu', 'search', 'home'];
   const lower = title.toLowerCase();
   return !skip.some(s => lower.includes(s) || title.includes(s));
+}
+
+function isValidGrantUrl(url: string | undefined): boolean {
+  if (!url) return true; // no URL is fine — title may still be valid
+  return !JUNK_URL_PATTERNS.some(re => re.test(url));
 }
 
 // ============================================================
@@ -510,6 +543,7 @@ async function scanAllSources() {
 
       for (const item of items) {
         if (!isValidTitle(item.title)) continue;
+        if (!isValidGrantUrl(item.url)) continue;
 
         // Set funder from source if AI didn't extract one
         if (!item.funder && source.funder) {
