@@ -231,8 +231,8 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
   const filtered = useMemo(() => {
     let result = opportunities;
 
-    // Default view: show only matched (≥60) when matchScores exist
-    if (showOnlyMatched && matchScores.size > 0) {
+    // Default view: show only matched (≥60) when matchScores exist AND there are actual matches
+    if (showOnlyMatched && matchScores.size > 0 && matchedCount > 0) {
       result = result.filter(o => (matchScores.get(o.id)?.score ?? 0) >= 60);
     }
 
@@ -329,17 +329,23 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
               </p>
             </div>
           ) : (
-            <div className="bg-surf2 border border-border rounded-xl px-3 py-3 text-center">
-              <p className="text-[13px] font-semibold text-text mb-1">עוד אין התאמה חזקה</p>
-              <p className="text-[11px] text-muted mb-2.5 leading-relaxed">
-                כדי להתאים קולות קוראים צריך עוד מידע על הארגון. העלו אתר, מסמך או תיאור קצר בלשונית הארגון.
-              </p>
-              <button
-                onClick={() => window.dispatchEvent(new CustomEvent('fishgold:activeTab', { detail: 'org' }))}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-accent text-white text-[11px] font-semibold rounded-lg hover:bg-accent/90 transition-colors"
-              >
-                השלימו פרופיל ארגון
-              </button>
+            <div>
+              <h3 className="text-[15px] font-bold text-text leading-tight">הזדמנויות פתוחות</h3>
+              <p className="text-[11px] text-muted mt-0.5">{opportunities.length} קולות קוראים פעילים במאגר</p>
+              <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-start gap-2">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#D97706" strokeWidth="2" className="flex-shrink-0 mt-0.5">
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                <p className="text-[11px] text-amber-800 leading-relaxed">
+                  השלימו פרופיל ארגון כדי לראות רק הקולות שמתאימים לכם —{' '}
+                  <button
+                    onClick={() => window.dispatchEvent(new CustomEvent('fishgold:activeTab', { detail: 'org' }))}
+                    className="underline font-semibold hover:text-amber-900"
+                  >
+                    לחצו כאן
+                  </button>
+                </p>
+              </div>
             </div>
           )
         ) : (
