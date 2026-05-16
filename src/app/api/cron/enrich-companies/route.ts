@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getCompanyCSRProfile, isValidCSREmail } from '@/lib/ai/israeli-companies';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -34,11 +35,11 @@ function extractPhones(text: string): string[] {
 }
 
 function extractEmails(text: string): string[] {
-  const skip = new Set(['example@example.com', 'info@info.com', 'test@test.com', 'email@example.com']);
   const emails: string[] = [];
   for (const m of text.matchAll(EMAIL_RE)) {
     const email = m[0].toLowerCase();
-    if (!skip.has(email) && !emails.includes(email)) emails.push(email);
+    // Use isValidCSREmail to reject generic/spam addresses
+    if (isValidCSREmail(email) && !emails.includes(email)) emails.push(email);
   }
   return emails.slice(0, 3);
 }
@@ -188,6 +189,34 @@ async function enrichCompanies() {
 
   for (const company of companies) {
     try {
+      // Step 1b: Catalog-first — apply trusted CSR data before web scraping
+      const catalogProfile = getCompanyCSRProfile(company.name);
+      if (catalogProfile) {
+        const catalogUpdate: Record<string, unknown> = {};
+        if (!company.website && catalogProfile.website) {
+          catalogUpdate.website = catalogProfile.website;
+        }
+        if (!company.contact_email && catalogProfile.contact_email && isValidCSREmail(catalogProfile.contact_email)) {
+          catalogUpdate.contact_email = catalogProfile.contact_email;
+        }
+        if (!company.contact_name && catalogProfile.contact_name) {
+          catalogUpdate.contact_name = catalogProfile.contact_name;
+          if (catalogProfile.contact_role) catalogUpdate.contact_role = catalogProfile.contact_role;
+        }
+        if ((!company.interests || (company.interests as string[]).length === 0) && catalogProfile.csr_focus_tags.length > 0) {
+          catalogUpdate.interests = catalogProfile.csr_focus_tags;
+        }
+        if (catalogProfile.outreach_tone) catalogUpdate.outreach_tone = catalogProfile.outreach_tone;
+        if (catalogProfile.submission_url) catalogUpdate.submission_url = catalogProfile.submission_url;
+        if (catalogProfile.submission_instructions) catalogUpdate.submission_instructions = catalogProfile.submission_instructions;
+        if (Object.keys(catalogUpdate).length > 0) {
+          catalogUpdate.updated_at = new Date().toISOString();
+          await supabase.from('companies').update(catalogUpdate).eq('id', company.id);
+          // Refresh local object so web scraping doesn't overwrite catalog data
+          Object.assign(company, catalogUpdate);
+        }
+      }
+
       let website = company.website;
 
       // Step 2: If no website, try to find one
