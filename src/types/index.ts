@@ -83,6 +83,10 @@ export interface OrgProfileData {
   // People
   ceo_name?: string;
   board_members?: string[];
+  volunteers_count?: number;
+  partners?: string[];
+  theory_of_change?: string;
+  unique_model?: string;
   // Contact info
   contact_name?: string;
   contact_email?: string;
