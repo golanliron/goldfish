@@ -14,6 +14,8 @@ interface UploadedFile {
   scoreDelta?: number;
 }
 
+const REGIONS = ['ארצי', 'מרכז', 'צפון', 'דרום', 'ירושלים', 'נגב', 'גליל', 'פריפריה'];
+
 export default function OnboardingPage() {
   const [ready, setReady] = useState(false);
   const [files, setFiles] = useState<UploadedFile[]>([]);
@@ -23,17 +25,32 @@ export default function OnboardingPage() {
   const [urlDone, setUrlDone] = useState<string[]>([]);
   const [finishing, setFinishing] = useState(false);
   const [showWow, setShowWow] = useState(false);
-  const [wowMatches, setWowMatches] = useState<Array<{ id: string; title: string; funder: string; deadline: string | null; score: number; amount_min: number | null; amount_max: number | null; type: string }>>([]);
+  const [wowMatches, setWowMatches] = useState<Array<{
+    id: string;
+    title: string;
+    funder: string;
+    deadline: string | null;
+    score: number;
+    amount_min: number | null;
+    amount_max: number | null;
+    type: string;
+    reason?: string;
+  }>>([]);
   const [wowLoading, setWowLoading] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [orgName, setOrgName] = useState('');
   const [orgDesc, setOrgDesc] = useState('');
-  const [orgPopulation, setOrgPopulation] = useState('');
   const [selectedPopulations, setSelectedPopulations] = useState<string[]>([]);
   const [selectedDomains, setSelectedDomains] = useState<string[]>([]);
+  const [selectedRegions, setSelectedRegions] = useState<string[]>([]);
   const [urlResults, setUrlResults] = useState<Record<string, string>>({});
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
+  const websiteInputRef = useRef<HTMLInputElement>(null);
+  const driveInputRef = useRef<HTMLInputElement>(null);
+  const descInputRef = useRef<HTMLTextAreaElement>(null);
+
   const { orgId: authOrgId, loading: authLoading, user } = useAuth();
   const [localOrgId, setLocalOrgId] = useState<string | null>(null);
   const orgId = authOrgId || localOrgId;
@@ -71,7 +88,6 @@ export default function OnboardingPage() {
     const isPreviewMode = typeof window !== 'undefined' && window.location.search.includes('preview=1');
     if (isPreviewMode) {
       setReady(true);
-      // In preview mode, skip auth and show onboarding directly
       return;
     }
     if (authLoading) return;
@@ -92,9 +108,9 @@ export default function OnboardingPage() {
         } else {
           if (d?.name) setOrgName(d.name as string);
           if (d?.summary) setOrgDesc(d.summary as string);
-          if (Array.isArray(d?.target_populations) && d.target_populations[0]) setOrgPopulation(d.target_populations[0] as string);
           if (Array.isArray(d?.populations)) setSelectedPopulations(d.populations as string[]);
           if (Array.isArray(d?.domains)) setSelectedDomains(d.domains as string[]);
+          if (Array.isArray(d?.regions)) setSelectedRegions(d.regions as string[]);
           setReady(true);
         }
       }, () => setReady(true));
@@ -113,7 +129,6 @@ export default function OnboardingPage() {
     }
 
     try {
-      // Step 1: Get signed upload URL + create document record (status=processing)
       const urlRes = await fetch('/api/upload-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(orgId ? { 'x-org-id': orgId } : {}) },
@@ -126,7 +141,6 @@ export default function OnboardingPage() {
         return;
       }
 
-      // Already exists
       if (urlData.already_exists) {
         setFiles(prev => prev.map((f, i) => i === index
           ? { ...f, status: 'done', category: urlData.category, summary: urlData.summary }
@@ -135,7 +149,6 @@ export default function OnboardingPage() {
         return;
       }
 
-      // Step 2: Upload directly to Supabase Storage via signed URL
       const uploadRes = await fetch(urlData.signed_url, {
         method: 'PUT',
         headers: { 'Content-Type': file.type || 'application/octet-stream' },
@@ -143,7 +156,6 @@ export default function OnboardingPage() {
       });
 
       if (!uploadRes.ok) {
-        // Document record exists as processing — mark error via process-upload
         await fetch('/api/process-upload', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -153,7 +165,6 @@ export default function OnboardingPage() {
         return;
       }
 
-      // Step 3: Trigger processing (synchronous — waits for AI enrichment)
       const processRes = await fetch('/api/process-upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -167,7 +178,6 @@ export default function OnboardingPage() {
           : f
         ));
       } else {
-        // Processing failed — document exists in DB with status=error
         setFiles(prev => prev.map((f, i) => i === index ? { ...f, status: 'error' } : f));
       }
     } catch {
@@ -183,7 +193,6 @@ export default function OnboardingPage() {
       ...prev,
       ...newFiles.map(f => ({ name: f.name, category: '', summary: '', status: 'uploading' as const })),
     ]);
-    // Upload sequentially to avoid Gemini rate limiting
     (async () => {
       for (let i = 0; i < newFiles.length; i++) {
         await uploadFile(newFiles[i], startIndex + i);
@@ -220,7 +229,6 @@ export default function OnboardingPage() {
   const finish = async () => {
     setFinishing(true);
     try {
-      // Auto-submit any URLs that were typed but not manually sent
       const pendingUrls: Array<[string, string]> = [];
       if (websiteUrl.trim() && !urlDone.includes('website')) pendingUrls.push([websiteUrl.trim(), 'website']);
       if (driveUrl.trim() && !urlDone.includes('drive')) pendingUrls.push([driveUrl.trim(), 'drive']);
@@ -244,9 +252,9 @@ export default function OnboardingPage() {
             ...currentData,
             ...(orgName.trim() ? { name: orgName.trim() } : {}),
             ...(orgDesc.trim() ? { summary: orgDesc.trim() } : {}),
-            ...(orgPopulation.trim() ? { target_populations: [orgPopulation.trim()] } : {}),
             ...(selectedPopulations.length > 0 ? { populations: selectedPopulations } : {}),
             ...(selectedDomains.length > 0 ? { domains: selectedDomains } : {}),
+            ...(selectedRegions.length > 0 ? { regions: selectedRegions } : {}),
             onboarding_complete: true,
           },
           last_updated: new Date().toISOString(),
@@ -256,7 +264,6 @@ export default function OnboardingPage() {
       console.error('Onboarding finish error:', e);
     }
 
-    // Fetch top matches for WOW screen
     if (orgId) {
       setWowLoading(true);
       try {
@@ -266,7 +273,7 @@ export default function OnboardingPage() {
           const top = (data.opportunities || [])
             .filter((o: Record<string, unknown>) => (o.matchScore as number) >= 50)
             .sort((a: Record<string, unknown>, b: Record<string, unknown>) => (b.matchScore as number) - (a.matchScore as number))
-            .slice(0, 6)
+            .slice(0, 3)
             .map((o: Record<string, unknown>) => ({
               id: String(o.id),
               title: String(o.title),
@@ -276,26 +283,18 @@ export default function OnboardingPage() {
               amount_min: o.amount_min as number | null,
               amount_max: o.amount_max as number | null,
               type: String(o.type || ''),
+              reason: o.reason ? String(o.reason) : undefined,
             }));
           setWowMatches(top);
         }
       } catch {
-        // silently ignore — will still show WOW with 0 matches
+        // silently ignore
       }
       setWowLoading(false);
     }
 
     setFinishing(false);
     setShowWow(true);
-  };
-
-  const categoryLabels: Record<string, string> = {
-    identity: 'זהות ארגוני',
-    budget: 'דוח כספי',
-    project: 'פרויקט',
-    grant: 'מענק',
-    submission: 'הגשה',
-    other: 'מסמך',
   };
 
   const hasContent = orgName.trim() || orgDesc.trim() || files.length > 0 || urlDone.length > 0;
@@ -331,17 +330,9 @@ export default function OnboardingPage() {
     );
   }
 
+  // ── WOW SCREEN ──────────────────────────────────────────────────────────────
   if (showWow) {
-    // Calculate familiarity score
-    const familiarityScore = Math.min(100, Math.round(
-      (orgName.trim() ? 15 : 0) +
-      (orgDesc.trim() ? 20 : 0) +
-      (selectedPopulations.length > 0 ? 15 : 0) +
-      (selectedDomains.length > 0 ? 10 : 0) +
-      (urlDone.includes('website') ? 20 : 0) +
-      (urlDone.includes('drive') ? 10 : 0) +
-      (files.filter(f => f.status === 'done').length * 5)
-    ));
+    const hasMatches = wowMatches.length > 0;
 
     return (
       <div className="min-h-screen bg-bg flex flex-col items-center justify-center px-4 py-12" dir="rtl">
@@ -353,54 +344,36 @@ export default function OnboardingPage() {
               <FishLogo size={40} className="swim" />
               <span className="font-bold text-xl tracking-tight">Goldfish</span>
             </div>
+
             {wowLoading ? (
-              <p className="text-sm text-muted animate-pulse">דג לכם הזדמנויות...</p>
-            ) : wowMatches.length > 0 ? (
+              <p className="text-sm text-muted animate-pulse">סורק קולות קוראים פעילים...</p>
+            ) : hasMatches ? (
               <>
                 <div className="inline-block bg-accent/10 text-accent text-xs font-semibold px-3 py-1 rounded-full mb-4">
-                  {wowMatches.length} קולות קוראים וקרנות שמתאימים לכם עכשיו
+                  {wowMatches.length} הזדמנויות נמצאו
                 </div>
                 <h1 className="text-2xl font-bold leading-snug">
-                  מצאנו כסף<br />שמחכה לכם
+                  מצאנו {wowMatches.length} הזדמנויות<br />שמתאימות לכם עכשיו
                 </h1>
               </>
             ) : (
               <>
-                <div className="inline-block bg-green-100 text-green-700 text-xs font-semibold px-3 py-1 rounded-full mb-4">
-                  הפרופיל נשמר בהצלחה
+                <div className="inline-block bg-gray-100 text-gray-600 text-xs font-semibold px-3 py-1 rounded-full mb-4">
+                  עוד אין התאמה חזקה
                 </div>
-                <h1 className="text-2xl font-bold leading-snug">
-                  גולדפיש כבר<br />מחפש בשבילכם
+                <h1 className="text-2xl font-bold leading-snug mb-3">
+                  הפרופיל נשמר בהצלחה
                 </h1>
+                <p className="text-sm text-muted leading-relaxed max-w-xs mx-auto">
+                  זה בדרך כלל אומר שחסר לי עוד מידע על הארגון — אתר, מסמכים או תחומי פעילות. אפשר להמשיך לדשבורד ולהוסיף משם.
+                </p>
               </>
             )}
           </div>
 
-          {/* Familiarity meter */}
-          <div className="bg-bg2 border border-border rounded-2xl p-4 mb-5">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-text">כמה גולדפיש מכיר אתכם</span>
-              <span className="text-sm font-bold text-accent">{familiarityScore}%</span>
-            </div>
-            <div className="h-2 bg-border rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all duration-700"
-                style={{
-                  width: `${familiarityScore}%`,
-                  background: familiarityScore >= 70 ? '#22c55e' : familiarityScore >= 40 ? '#f59e0b' : '#E8358A',
-                }}
-              />
-            </div>
-            {familiarityScore < 60 && (
-              <p className="text-[10px] text-muted mt-2">
-                הוסיפו מסמכים ואתר הארגון כדי שגולדפיש יכיר אתכם טוב יותר ויתאים הצעות מדויקות יותר
-              </p>
-            )}
-          </div>
-
-          {/* Matches list */}
-          {!wowLoading && wowMatches.length > 0 && (
-            <div className="space-y-3 mb-8">
+          {/* Matches list — max 3 */}
+          {!wowLoading && hasMatches && (
+            <div className="space-y-3 mb-6">
               {wowMatches.map((m) => (
                 <div key={m.id} className="bg-bg2 border border-border rounded-2xl p-4">
                   <div className="flex items-start justify-between gap-3">
@@ -435,6 +408,9 @@ export default function OnboardingPage() {
                           </span>
                         )}
                       </div>
+                      {m.reason && (
+                        <p className="text-[11px] text-muted mt-2 leading-relaxed">{m.reason}</p>
+                      )}
                     </div>
                     <div className="flex-shrink-0 text-center">
                       <div className="w-10 h-10 rounded-full bg-accent/10 border-2 border-accent flex items-center justify-center">
@@ -448,59 +424,92 @@ export default function OnboardingPage() {
             </div>
           )}
 
-          {/* Loading state */}
+          {/* Loading */}
           {wowLoading && (
-            <div className="flex flex-col items-center gap-3 py-10 mb-8">
+            <div className="flex flex-col items-center gap-3 py-10 mb-6">
               <FishLogo size={32} className="swim" />
-              <p className="text-sm text-muted">סורק {223} קולות קוראים פעילים...</p>
+              <p className="text-sm text-muted">סורק קולות קוראים פעילים...</p>
             </div>
           )}
 
-          {/* CTA */}
+          {/* What's missing checklist */}
+          {!wowLoading && (
+            <div className="bg-bg2 border border-border rounded-2xl p-4 mb-6">
+              <p className="text-xs font-semibold text-text mb-3">מה חסר כדי להגיש</p>
+              <ul className="space-y-1.5">
+                {['ניהול תקין', 'סעיף 46', 'דוח כספי', 'תקציב פרויקט'].map(item => (
+                  <li key={item} className="flex items-center gap-2 text-xs text-muted">
+                    <span className="w-4 h-4 rounded border border-border flex-shrink-0" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* CTAs */}
           <button
             onClick={() => { window.location.href = '/dashboard?tab=opportunities'; }}
-            className="w-full py-3.5 bg-accent text-white font-semibold rounded-xl hover:bg-accent-hover transition-all hover:scale-[1.02] active:scale-[0.98] text-sm"
+            className="w-full py-3.5 bg-accent text-white font-semibold rounded-xl hover:bg-accent-hover transition-all hover:scale-[1.02] active:scale-[0.98] text-sm mb-3"
           >
-            {wowMatches.length > 0 ? 'בואו נגש לעבודה' : 'כניסה לדשבורד'}
+            {hasMatches ? 'בחרו הזדמנות ונתחיל לעבוד' : 'מצא לי הזדמנויות ראשונות בכל זאת'}
           </button>
 
-          {wowMatches.length > 0 && (
-            <p className="text-center text-[11px] text-muted mt-3">
-              תמיד אפשר להוסיף מסמכים ולשפר את ההתאמה
-            </p>
-          )}
+          <button
+            onClick={() => { window.location.href = '/dashboard'; }}
+            className="w-full py-3 border border-border rounded-xl text-sm text-muted hover:border-accent hover:text-accent transition-colors"
+          >
+            היכנסו לדשבורד
+          </button>
         </div>
       </div>
     );
   }
 
+  // ── MAIN ONBOARDING ─────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-bg" dir="rtl">
       <div className="max-w-lg mx-auto px-4 py-10">
 
         {/* Hero */}
-        <div className="text-center mb-10">
+        <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-2 mb-5">
             <FishLogo size={36} className="swim" />
             <span className="font-bold text-xl tracking-tight">Goldfish</span>
           </div>
-          <div className="inline-block bg-accent/10 text-accent text-xs font-semibold px-3 py-1 rounded-full mb-4">
-            עוד רגע תחשפו להצעות וקולות קוראים שמתאימים בדיוק לכם
-          </div>
-          <h1 className="text-2xl font-bold mb-2 leading-snug">
-            קודם תנו לגולדפיש<br />להכיר אתכם
+          <h1 className="text-xl font-bold mb-3 leading-snug">
+            כדי למצוא לכם כסף אמיתי, Goldfish צריך להבין מי אתם.
           </h1>
-          <p className="text-sm text-muted leading-relaxed">
-            גולדפיש דג מענקים לאלפי עמותות — אבל הוא עובד בשבילכם רק אם הוא מכיר אתכם.
+          <p className="text-sm text-muted leading-relaxed mb-6">
+            זה לוקח 3 דקות. אפשר להעלות מסמכים או לענות בקצרה.
           </p>
+
+          {/* Quick start buttons */}
+          <div className="flex gap-2 justify-center flex-wrap">
+            <button
+              onClick={() => websiteInputRef.current?.focus()}
+              className="px-4 py-2 rounded-xl border border-border bg-surf text-sm font-medium hover:border-accent hover:text-accent transition-colors"
+            >
+              יש לי אתר
+            </button>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="px-4 py-2 rounded-xl border border-border bg-surf text-sm font-medium hover:border-accent hover:text-accent transition-colors"
+            >
+              יש לי מסמכים
+            </button>
+            <button
+              onClick={() => descInputRef.current?.focus()}
+              className="px-4 py-2 rounded-xl border border-border bg-surf text-sm font-medium hover:border-accent hover:text-accent transition-colors"
+            >
+              אני אכתוב בקצרה
+            </button>
+          </div>
         </div>
 
         {/* Section 1: Basic info */}
         <div className="bg-bg2 rounded-2xl border border-border p-5 mb-4">
-          <div className="flex items-center gap-2 mb-4">
-            <span className="w-6 h-6 rounded-full bg-accent text-white text-xs font-bold flex items-center justify-center flex-shrink-0">1</span>
-            <h3 className="font-semibold">הארגון שלכם</h3>
-          </div>
+          <p className="text-xs text-muted font-medium mb-4">מידע ראשוני לצורך התאמה</p>
 
           <div className="space-y-3">
             <div>
@@ -515,8 +524,9 @@ export default function OnboardingPage() {
             </div>
 
             <div>
-              <label className="text-xs font-medium text-muted block mb-1">מה אתם עושים? <span className="text-muted/60">(2-3 משפטים)</span></label>
+              <label className="text-xs font-medium text-muted block mb-1">מה אתם עושים במשפט או שניים?</label>
               <textarea
+                ref={descInputRef}
                 value={orgDesc}
                 onChange={e => setOrgDesc(e.target.value)}
                 placeholder="תארו את הפעילות, המטרה, והאנשים שאתם משרתים..."
@@ -526,7 +536,7 @@ export default function OnboardingPage() {
             </div>
 
             <div>
-              <label className="text-xs font-medium text-muted block mb-1">מי הם המוטבים שלכם? <span className="text-muted/60">(בחרו הכל שרלוונטי)</span></label>
+              <label className="text-xs font-medium text-muted block mb-1">קהלי יעד</label>
               <div className="flex flex-wrap gap-1.5">
                 {[
                   { key: 'youth_at_risk', label: 'נוער בסיכון' },
@@ -563,7 +573,7 @@ export default function OnboardingPage() {
             </div>
 
             <div>
-              <label className="text-xs font-medium text-muted block mb-1">תחומי פעילות <span className="text-muted/60">(בחרו הכל שרלוונטי)</span></label>
+              <label className="text-xs font-medium text-muted block mb-1">תחומי פעילות</label>
               <div className="flex flex-wrap gap-1.5">
                 {[
                   { key: 'education', label: 'חינוך' },
@@ -598,19 +608,39 @@ export default function OnboardingPage() {
                 ))}
               </div>
             </div>
+
+            <div>
+              <label className="text-xs font-medium text-muted block mb-1">אזורי פעילות</label>
+              <div className="flex flex-wrap gap-1.5">
+                {REGIONS.map(region => (
+                  <button
+                    key={region}
+                    type="button"
+                    onClick={() => setSelectedRegions(prev =>
+                      prev.includes(region) ? prev.filter(r => r !== region) : [...prev, region]
+                    )}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
+                      selectedRegions.includes(region)
+                        ? 'bg-accent text-white border-accent'
+                        : 'bg-surf border-border text-muted hover:border-accent/50'
+                    }`}
+                  >
+                    {region}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Section 2: Documents */}
+        {/* Section 2: Documents & Links — center of the flow */}
         <div className="bg-bg2 rounded-2xl border border-border p-5 mb-4">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="w-6 h-6 rounded-full bg-accent text-white text-xs font-bold flex items-center justify-center flex-shrink-0">2</span>
-            <h3 className="font-semibold">מסמכים</h3>
-          </div>
-          <p className="text-xs text-muted mb-4 mr-8">
-            אודות הארגון, מצגות, דוחות כספיים, הגשות קודמות — ככל שיותר, כך גולדפיש ידייק יותר.
+          <h3 className="font-semibold mb-1">מסמכים וקישורים</h3>
+          <p className="text-xs text-muted mb-4">
+            מצגת, דוח שנתי, תקציב, הגשות קודמות. כל דבר עוזר.
           </p>
 
+          {/* Dropzone */}
           <input
             ref={fileInputRef}
             type="file"
@@ -626,7 +656,7 @@ export default function OnboardingPage() {
             onDragEnter={e => { e.preventDefault(); setDragging(true); }}
             onDragLeave={e => { e.preventDefault(); if (dropRef.current && !dropRef.current.contains(e.relatedTarget as Node)) setDragging(false); }}
             onDrop={e => { e.preventDefault(); setDragging(false); handleFiles(e.dataTransfer.files); }}
-            className={`w-full py-7 border-2 border-dashed rounded-xl text-sm cursor-pointer transition-all text-center ${
+            className={`w-full py-8 border-2 border-dashed rounded-xl text-sm cursor-pointer transition-all text-center ${
               dragging
                 ? 'border-accent bg-accent/5 text-accent scale-[1.02]'
                 : 'border-border text-muted hover:border-accent hover:text-accent'
@@ -636,6 +666,7 @@ export default function OnboardingPage() {
             <span className="block text-[10px] mt-1 opacity-60">PDF, Word, Excel, PPT</span>
           </div>
 
+          {/* File results */}
           {files.length > 0 && (
             <div className="space-y-1.5 mt-3">
               {files.map((f, i) => (
@@ -647,38 +678,26 @@ export default function OnboardingPage() {
                     {f.status === 'done' && <span className="text-green-500 flex-shrink-0 text-xs">✓</span>}
                     {f.status === 'error' && <span className="text-red-500 flex-shrink-0 text-xs">✗</span>}
                     <span className="flex-1 truncate text-xs">{f.name}</span>
-                    {f.status === 'done' && f.category && (
-                      <span className="text-[10px] text-muted bg-bg px-1.5 py-0.5 rounded-full">
-                        {categoryLabels[f.category] || f.category}
-                      </span>
-                    )}
                   </div>
                   {f.status === 'done' && f.summary && (
-                    <p className="text-[11px] text-green-600 px-3 pb-1.5 leading-relaxed line-clamp-2">{f.summary}</p>
-                  )}
-                  {f.status === 'done' && f.scoreDelta != null && f.scoreDelta > 0 && (
-                    <p className="text-[11px] text-accent font-medium px-3 pb-1.5">
-                      ציון הידע עלה +{f.scoreDelta} נקודות
+                    <p className="text-[11px] text-green-700 px-3 pb-1.5 pt-1 leading-relaxed line-clamp-3">
+                      למדתי מהקובץ: {f.summary}
+                      {f.category === 'identity' || f.category === 'project'
+                        ? ' — חסר לי עדיין תקציב או דוח כספי אם יש.'
+                        : ''}
                     </p>
                   )}
                 </div>
               ))}
             </div>
           )}
-        </div>
 
-        {/* Section 3: Links */}
-        <div className="bg-bg2 rounded-2xl border border-border p-5 mb-6">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="w-6 h-6 rounded-full bg-accent text-white text-xs font-bold flex items-center justify-center flex-shrink-0">3</span>
-            <h3 className="font-semibold">קישורים</h3>
-          </div>
-          <p className="text-xs text-muted mb-4 mr-8">גולדפיש יקרא את הדפים ויחלץ מהם מידע על הארגון.</p>
-
-          <div className="space-y-3">
+          {/* URL inputs */}
+          <div className="space-y-3 mt-4">
             <div>
               <div className="flex gap-2">
                 <input
+                  ref={websiteInputRef}
                   type="url"
                   value={websiteUrl}
                   onChange={e => setWebsiteUrl(e.target.value)}
@@ -695,8 +714,8 @@ export default function OnboardingPage() {
                 </button>
               </div>
               {urlResults.website && (
-                <p className={`text-[11px] mt-1 leading-relaxed ${urlDone.includes('website') ? 'text-green-600' : 'text-red-500'}`}>
-                  {urlResults.website}
+                <p className={`text-[11px] mt-1 leading-relaxed ${urlDone.includes('website') ? 'text-green-700' : 'text-red-500'}`}>
+                  {urlDone.includes('website') ? `למדתי מהאתר: ${urlResults.website}` : urlResults.website}
                 </p>
               )}
             </div>
@@ -704,6 +723,7 @@ export default function OnboardingPage() {
             <div>
               <div className="flex gap-2">
                 <input
+                  ref={driveInputRef}
                   type="url"
                   value={driveUrl}
                   onChange={e => setDriveUrl(e.target.value)}
@@ -720,8 +740,8 @@ export default function OnboardingPage() {
                 </button>
               </div>
               {urlResults.drive ? (
-                <p className={`text-[11px] mt-1 leading-relaxed ${urlDone.includes('drive') ? 'text-green-600' : 'text-red-500'}`}>
-                  {urlResults.drive}
+                <p className={`text-[11px] mt-1 leading-relaxed ${urlDone.includes('drive') ? 'text-green-700' : 'text-red-500'}`}>
+                  {urlDone.includes('drive') ? `למדתי מה-Drive: ${urlResults.drive}` : urlResults.drive}
                 </p>
               ) : (
                 <p className="text-[10px] text-muted mt-1">Share → Anyone with the link</p>
@@ -732,34 +752,34 @@ export default function OnboardingPage() {
 
         {/* Goldfish personality note */}
         {!hasContent && (
-          <div className="flex gap-3 items-start bg-orange-50 border border-orange-200 rounded-2xl p-4 mb-5 text-sm">
-            <span className="text-lg flex-shrink-0">🐟</span>
-            <p className="text-orange-700 leading-relaxed">
-              <span className="font-semibold">גולדפיש לא אוהב חפיפניקים.</span>{' '}
-              ככל שתספרו יותר — הוא ידוג יותר. ארגון שמגיע בלי מידע מקבל הצעות גנריות. ארגון שמגיע עם תמונה מלאה — מקבל זהב.
+          <div className="flex gap-3 items-start bg-bg2 border border-border rounded-2xl p-4 mb-5 text-sm">
+            <FishLogo size={20} />
+            <p className="text-muted leading-relaxed">
+              תנו לי חומר, אני אדע מה לעשות איתו.
             </p>
           </div>
         )}
 
         {hasContent && (
           <div className="flex gap-3 items-start bg-green-50 border border-green-200 rounded-2xl p-4 mb-5 text-sm">
-            <span className="text-lg flex-shrink-0">🐟</span>
+            <FishLogo size={20} />
             <p className="text-green-700 leading-relaxed">
-              <span className="font-semibold">יופי, מתחילים לגבש תמונה.</span>{' '}
-              אפשר תמיד לחזור ולהוסיף עוד — גולדפיש לומד כל הזמן.
+              מתחיל להבין מי אתם. אפשר תמיד לחזור ולהוסיף עוד.
             </p>
           </div>
         )}
 
-        {/* CTA */}
+        {/* Primary CTA */}
         <button
           onClick={finish}
           disabled={finishing}
           className="w-full py-3.5 bg-accent text-white font-semibold rounded-xl hover:bg-accent-hover disabled:opacity-50 transition-all hover:scale-[1.02] active:scale-[0.98] text-sm"
         >
           {finishing
-            ? (urlLoading ? `קורא ${urlLoading === 'drive' ? 'Drive' : urlLoading === 'social' ? 'רשת חברתית' : 'אתר'}...` : 'שוחה לדשבורד...')
-            : hasContent ? 'קחו אותי לדשבורד' : 'דלגו על זה עכשיו'}
+            ? (urlLoading ? `קורא ${urlLoading === 'drive' ? 'Drive' : 'אתר'}...` : 'מחפש הזדמנויות...')
+            : hasContent
+            ? 'מצא לי הזדמנויות ראשונות'
+            : 'מצא לי הזדמנויות ראשונות בכל זאת'}
         </button>
 
         {!hasContent && (

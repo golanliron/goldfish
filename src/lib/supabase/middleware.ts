@@ -50,28 +50,48 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (user && isAuthRoute) {
-    // Check if user already has an org — if so, go to dashboard
-    const { data: existing } = await supabase
+    // Check onboarding_complete to decide where to send the user
+    const { data: userRow } = await supabase
       .from('users')
       .select('org_id')
       .eq('id', user.id)
       .maybeSingle();
+
+    let onboardingDone = false;
+    if (userRow?.org_id) {
+      const { data: profile } = await supabase
+        .from('org_profiles')
+        .select('data')
+        .eq('org_id', userRow.org_id)
+        .maybeSingle();
+      onboardingDone = !!(profile?.data as Record<string, unknown> | null)?.onboarding_complete;
+    }
+
     const url = request.nextUrl.clone();
-    url.pathname = existing?.org_id ? '/dashboard' : '/onboarding';
+    url.pathname = onboardingDone ? '/dashboard' : '/onboarding';
     return NextResponse.redirect(url);
   }
 
-  // If user is logged in and goes to /onboarding without ?edit=1 or ?preview=1, and already has profile — send to dashboard
+  // If user is logged in and goes to /onboarding — only redirect to dashboard if onboarding is truly complete
   if (user && request.nextUrl.pathname === '/onboarding' && !request.nextUrl.searchParams.has('edit') && !request.nextUrl.searchParams.has('preview')) {
-    const { data: existing } = await supabase
-      .from('organizations')
-      .select('id')
-      .eq('user_id', user.id)
+    const { data: userRow } = await supabase
+      .from('users')
+      .select('org_id')
+      .eq('id', user.id)
       .maybeSingle();
-    if (existing) {
-      const url = request.nextUrl.clone();
-      url.pathname = '/dashboard';
-      return NextResponse.redirect(url);
+
+    if (userRow?.org_id) {
+      const { data: profile } = await supabase
+        .from('org_profiles')
+        .select('data')
+        .eq('org_id', userRow.org_id)
+        .maybeSingle();
+      const done = !!(profile?.data as Record<string, unknown> | null)?.onboarding_complete;
+      if (done) {
+        const url = request.nextUrl.clone();
+        url.pathname = '/dashboard';
+        return NextResponse.redirect(url);
+      }
     }
   }
 

@@ -94,10 +94,11 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedPopulation, setSelectedPopulation] = useState('');
   const [selectedType, setSelectedType] = useState<OpportunityType | ''>('');
-  const [showOnlyMatched, setShowOnlyMatched] = useState(false);
+  const [showOnlyMatched, setShowOnlyMatched] = useState(true);
   const [minMatchScore, setMinMatchScore] = useState<'' | '60' | '70' | '80' | '90'>('');
   const [showTimeline, setShowTimeline] = useState(false);
   const [selectedRegion, setSelectedRegion] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [profileCompleteness, setProfileCompleteness] = useState<number | null>(null);
   const [funderInfo, setFunderInfo] = useState<FunderInfoMap>({});
   const [upcomingRecurrences, setUpcomingRecurrences] = useState<UpcomingRecurrence[]>([]);
@@ -230,7 +231,7 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
   const filtered = useMemo(() => {
     let result = opportunities;
 
-    // Filter by match to org (≥60 = "relevant")
+    // Default view: show only matched (≥60) when matchScores exist
     if (showOnlyMatched && matchScores.size > 0) {
       result = result.filter(o => (matchScores.get(o.id)?.score ?? 0) >= 60);
     }
@@ -270,14 +271,19 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
       result = result.filter(o => (o.regions as string[] | undefined)?.includes(selectedRegion));
     }
 
-    // Sort by match score (highest first) when we have matches
-    if (matchScores.size > 0) {
-      result = [...result].sort((a, b) => {
-        const scoreA = matchScores.get(a.id)?.score || 0;
-        const scoreB = matchScores.get(b.id)?.score || 0;
-        return scoreB - scoreA;
-      });
-    }
+    // Sort: high match + urgent deadline first, then high match, then medium
+    result = [...result].sort((a, b) => {
+      const scoreA = matchScores.get(a.id)?.score || 0;
+      const scoreB = matchScores.get(b.id)?.score || 0;
+      const daysA = a.deadline ? Math.ceil((new Date(a.deadline).getTime() - Date.now()) / 86400000) : 9999;
+      const daysB = b.deadline ? Math.ceil((new Date(b.deadline).getTime() - Date.now()) / 86400000) : 9999;
+      // Urgency bonus: deadline within 30 days + high score
+      const urgentA = scoreA >= 70 && daysA <= 30 ? 1 : 0;
+      const urgentB = scoreB >= 70 && daysB <= 30 ? 1 : 0;
+      if (urgentA !== urgentB) return urgentB - urgentA;
+      if (scoreA !== scoreB) return scoreB - scoreA;
+      return daysA - daysB;
+    });
 
     return result;
   }, [opportunities, search, selectedCategory, selectedPopulation, selectedType, showOnlyMatched, minMatchScore, matchScores]);
@@ -312,25 +318,60 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
 
       {/* Header */}
       <div className="p-3 border-b border-border space-y-2">
-        {/* Stats banner */}
-        <div className="bg-accent/5 border border-accent/15 rounded-xl px-3 py-2.5">
-          {/* Main stat: matched for you */}
-          {matchedCount > 0 && (
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-[14px] font-extrabold text-accent">{matchedCount}</span>
-              <span className="text-[12px] font-bold text-accent">הגשות מותאמות לארגון שלכם</span>
+
+        {/* Main heading */}
+        {matchScores.size > 0 ? (
+          matchedCount > 0 ? (
+            <div>
+              <h3 className="text-[15px] font-bold text-text leading-tight">הזדמנויות שמתאימות לכם</h3>
+              <p className="text-[11px] text-muted mt-0.5">
+                מצאתי {matchedCount} קולות קוראים רלוונטיים. אלה הראשונים שכדאי לבדוק.
+              </p>
             </div>
-          )}
-          {/* Secondary: summary text + sync button */}
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-green animate-pulse flex-shrink-0" />
-              <span className="text-[11px] text-muted leading-tight">
-                {matchedCount > 0
-                  ? `מצאנו ${matchedCount} קולות קוראים מותאמים מתוך ${opportunities.length} פתוחות במאגר`
-                  : `${opportunities.length} הגשות פתוחות במאגר`}
-              </span>
+          ) : (
+            <div className="bg-surf2 border border-border rounded-xl px-3 py-3 text-center">
+              <p className="text-[13px] font-semibold text-text mb-1">עוד אין התאמה חזקה</p>
+              <p className="text-[11px] text-muted mb-2.5 leading-relaxed">
+                כדי להתאים קולות קוראים צריך עוד מידע על הארגון. העלו אתר, מסמך או תיאור קצר בלשונית הארגון.
+              </p>
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('fishgold:activeTab', { detail: 'org' }))}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-accent text-white text-[11px] font-semibold rounded-lg hover:bg-accent/90 transition-colors"
+              >
+                השלימו פרופיל ארגון
+              </button>
             </div>
+          )
+        ) : (
+          <div>
+            <h3 className="text-[15px] font-bold text-text leading-tight">הזדמנויות פתוחות</h3>
+            <p className="text-[11px] text-muted mt-0.5">{opportunities.length} קולות קוראים פעילים במאגר</p>
+          </div>
+        )}
+
+        {/* Profile completeness hint */}
+        {profileCompleteness !== null && profileCompleteness < 60 && matchedCount > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-start gap-2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#D97706" strokeWidth="2" className="flex-shrink-0 mt-0.5">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <div>
+              <div className="text-[11px] font-medium text-amber-800">
+                פרופיל {profileCompleteness}% שלם — התאמות יהיו מדויקות יותר עם יותר מידע
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* "Show all" shortcut + agent sync */}
+        {matchedCount > 0 && (
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => { setShowOnlyMatched(!showOnlyMatched); setMinMatchScore(''); }}
+              className="text-[10px] text-muted hover:text-accent transition-colors underline-offset-2 hover:underline"
+            >
+              {showOnlyMatched ? `הצג את כל המאגר (${opportunities.length})` : `חזור להתאמות (${matchedCount})`}
+            </button>
             {orgId && (
               <button
                 onClick={handleAgentSync}
@@ -349,217 +390,160 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
                     <path d="M12 3v3M12 18v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M3 12h3M18 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12" />
                   </svg>
                 )}
-                {agentRunning ? 'מנתח...' : 'סנכרון והעשרה'}
+                {agentRunning ? 'מנתח...' : 'סנכרון'}
               </button>
             )}
           </div>
-          {matchedCount > 0 && (
-            <>
-              <div className="flex gap-1.5 mb-1.5">
-                <button
-                  onClick={() => { setShowOnlyMatched(true); setMinMatchScore(''); }}
-                  className={`flex-1 text-[10px] py-1 rounded-md font-medium transition-colors ${
-                    showOnlyMatched && !minMatchScore
-                      ? 'bg-accent text-white'
-                      : 'bg-surf2 text-muted hover:text-text'
-                  }`}
-                >
-                  מותאמים ({matchedCount})
-                </button>
-                <button
-                  onClick={() => { setShowOnlyMatched(false); setMinMatchScore(''); }}
-                  className={`flex-1 text-[10px] py-1 rounded-md font-medium transition-colors ${
-                    !showOnlyMatched && !minMatchScore
-                      ? 'bg-accent text-white'
-                      : 'bg-surf2 text-muted hover:text-text'
-                  }`}
-                >
-                  כל ההגשות ({opportunities.length})
-                </button>
-              </div>
-              {/* Quick match % filter — exclusive buckets */}
-              <div className="flex gap-1">
-                {(['80', '70', '60'] as const).map(pct => {
-                  const count = bucketCount[pct];
-                  const isActive = minMatchScore === pct;
-                  return (
-                    <button
-                      key={pct}
-                      onClick={() => {
-                        if (isActive) {
-                          setMinMatchScore('');
-                          setShowOnlyMatched(true);
-                        } else {
-                          setMinMatchScore(pct as typeof minMatchScore);
-                          setShowOnlyMatched(false);
-                        }
-                      }}
-                      className={`flex-1 text-[9px] py-1 rounded-md font-medium transition-colors ${
-                        isActive
-                          ? 'bg-green-600 text-white'
-                          : count === 0
-                          ? 'bg-surf2 text-muted/40 border border-border/30 cursor-default'
-                          : 'bg-surf2 text-muted hover:text-text border border-border/50'
-                      }`}
-                      disabled={count === 0}
-                    >
-                      +{pct}% ({count})
-                    </button>
-                  );
-                })}
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Profile completeness hint */}
-        {profileCompleteness !== null && profileCompleteness < 60 && (
-          <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-start gap-2">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#D97706" strokeWidth="2" className="flex-shrink-0 mt-0.5">
-              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-            </svg>
-            <div>
-              <div className="text-[11px] font-medium text-amber-800">
-                הפרופיל שלכם {profileCompleteness}% שלם
-              </div>
-              <div className="text-[10px] text-amber-600 mt-0.5">
-                העלו עוד מסמכים בלשונית הארגון כדי לקבל התאמות מדויקות יותר
-              </div>
-            </div>
-          </div>
         )}
 
-        {/* Search + Calendar toggle */}
-        <div className="flex gap-1.5">
-          <div className="relative flex-1">
-            <svg className="absolute right-3 top-1/2 -translate-y-1/2 text-muted" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-            <input
-              type="text"
-              placeholder="חיפוש הגשה, קרן, מממן..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="w-full pr-9 pl-3 py-2 text-xs bg-surf2 border border-border rounded-lg focus:border-accent focus:outline-none transition-colors"
-            />
-          </div>
+        {/* Advanced options (collapsible) */}
+        <div>
           <button
-            onClick={() => setShowTimeline(!showTimeline)}
-            title="לוח זמנים"
-            className={`flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-lg border transition-colors ${
-              showTimeline ? 'bg-accent text-white border-accent' : 'bg-surf2 text-muted border-border hover:text-text'
-            }`}
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="flex items-center gap-1 text-[10px] text-muted hover:text-text transition-colors"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-              <line x1="16" y1="2" x2="16" y2="6" />
-              <line x1="8" y1="2" x2="8" y2="6" />
-              <line x1="3" y1="10" x2="21" y2="10" />
+            <svg
+              width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+              className={`transition-transform ${showAdvanced ? 'rotate-180' : ''}`}
+            >
+              <polyline points="6 9 12 15 18 9" />
             </svg>
-          </button>
-        </div>
-
-        {/* Filter toggle */}
-        <div className="flex items-center justify-between">
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`flex items-center gap-1 text-[11px] px-2 py-1 rounded-md transition-colors ${
-              showFilters || activeFilters > 0
-                ? 'bg-accent/10 text-accent font-medium'
-                : 'text-muted hover:text-text'
-            }`}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="4" y1="6" x2="20" y2="6" />
-              <line x1="8" y1="12" x2="16" y2="12" />
-              <line x1="11" y1="18" x2="13" y2="18" />
-            </svg>
-            סינון
+            אפשרויות מתקדמות
             {activeFilters > 0 && (
-              <span className="bg-accent text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center">
+              <span className="bg-accent text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center mr-1">
                 {activeFilters}
               </span>
             )}
           </button>
-          <span className="text-[10px] text-muted">
-            {filtered.length} מתוך {opportunities.length}
-            {matchedCount > 0 && !showOnlyMatched && ` (${matchedCount} מתאימים)`}
-          </span>
-        </div>
 
-        {/* Filter dropdowns */}
-        {showFilters && (
-          <div className="space-y-1.5 pt-1">
-            <select
-              value={selectedCategory}
-              onChange={e => setSelectedCategory(e.target.value)}
-              className="w-full text-[11px] px-2 py-1.5 bg-surf2 border border-border rounded-md focus:border-accent focus:outline-none"
-            >
-              <option value="">כל הקטגוריות</option>
-              {categories.map(c => (
-                <option key={c.key} value={c.key}>{c.label_he}</option>
-              ))}
-            </select>
+          {showAdvanced && (
+            <div className="mt-2 space-y-2 pt-2 border-t border-border/50">
+              {/* Search */}
+              <div className="relative">
+                <svg className="absolute right-3 top-1/2 -translate-y-1/2 text-muted" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input
+                  type="text"
+                  placeholder="חיפוש הגשה, קרן, מממן..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="w-full pr-9 pl-3 py-2 text-xs bg-surf2 border border-border rounded-lg focus:border-accent focus:outline-none transition-colors"
+                />
+              </div>
 
-            <select
-              value={selectedPopulation}
-              onChange={e => setSelectedPopulation(e.target.value)}
-              className="w-full text-[11px] px-2 py-1.5 bg-surf2 border border-border rounded-md focus:border-accent focus:outline-none"
-            >
-              <option value="">כל אוכלוסיות היעד</option>
-              {populations.map(p => (
-                <option key={p.key} value={p.key}>{p.label_he}</option>
-              ))}
-            </select>
-
-            {matchScores.size > 0 && (
-              <select
-                value={minMatchScore}
-                onChange={e => setMinMatchScore(e.target.value as '' | '60' | '70' | '80' | '90')}
-                className="w-full text-[11px] px-2 py-1.5 bg-surf2 border border-accent/20 rounded-md focus:border-accent focus:outline-none"
+              {/* Calendar toggle */}
+              <button
+                onClick={() => setShowTimeline(!showTimeline)}
+                className={`flex items-center gap-1.5 text-[10px] px-2 py-1.5 rounded-lg border transition-colors w-full ${
+                  showTimeline ? 'bg-accent/10 text-accent border-accent/30' : 'bg-surf2 text-muted border-border hover:text-text'
+                }`}
               >
-                <option value="">כל רמות ההתאמה</option>
-                <option value="60">60%+ התאמה לארגון</option>
-                <option value="70">70%+ התאמה גבוהה</option>
-                <option value="80">80%+ התאמה מעולה</option>
-                <option value="90">90%+ התאמה מושלמת</option>
-              </select>
-            )}
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                  <line x1="16" y1="2" x2="16" y2="6" />
+                  <line x1="8" y1="2" x2="8" y2="6" />
+                  <line x1="3" y1="10" x2="21" y2="10" />
+                </svg>
+                לוח זמנים
+              </button>
 
-            {/* Region filter */}
-            <div>
-              <div className="text-[10px] text-muted mb-1">אזור גאוגרפי</div>
-              <div className="flex flex-wrap gap-1">
-                {Object.entries(GEO_LABELS).map(([key, label]) => (
-                  <button
-                    key={key}
-                    onClick={() => setSelectedRegion(selectedRegion === key ? '' : key)}
-                    className={`text-[9px] px-1.5 py-0.5 rounded-md font-medium transition-colors ${
-                      selectedRegion === key ? 'bg-accent text-white' : 'bg-surf2 text-muted hover:text-text'
-                    }`}
-                  >
-                    {label}
-                  </button>
+              {/* Match buckets */}
+              {matchScores.size > 0 && (
+                <div className="flex gap-1">
+                  {(['80', '70', '60'] as const).map(pct => {
+                    const count = bucketCount[pct];
+                    const isActive = minMatchScore === pct;
+                    return (
+                      <button
+                        key={pct}
+                        onClick={() => {
+                          if (isActive) {
+                            setMinMatchScore('');
+                            setShowOnlyMatched(true);
+                          } else {
+                            setMinMatchScore(pct as typeof minMatchScore);
+                            setShowOnlyMatched(false);
+                          }
+                        }}
+                        className={`flex-1 text-[9px] py-1 rounded-md font-medium transition-colors ${
+                          isActive
+                            ? 'bg-green-600 text-white'
+                            : count === 0
+                            ? 'bg-surf2 text-muted/40 border border-border/30 cursor-default'
+                            : 'bg-surf2 text-muted hover:text-text border border-border/50'
+                        }`}
+                        disabled={count === 0}
+                      >
+                        +{pct}% ({count})
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Filter dropdowns */}
+              <select
+                value={selectedCategory}
+                onChange={e => setSelectedCategory(e.target.value)}
+                className="w-full text-[11px] px-2 py-1.5 bg-surf2 border border-border rounded-md focus:border-accent focus:outline-none"
+              >
+                <option value="">כל הקטגוריות</option>
+                {categories.map(c => (
+                  <option key={c.key} value={c.key}>{c.label_he}</option>
                 ))}
+              </select>
+
+              <select
+                value={selectedPopulation}
+                onChange={e => setSelectedPopulation(e.target.value)}
+                className="w-full text-[11px] px-2 py-1.5 bg-surf2 border border-border rounded-md focus:border-accent focus:outline-none"
+              >
+                <option value="">כל אוכלוסיות היעד</option>
+                {populations.map(p => (
+                  <option key={p.key} value={p.key}>{p.label_he}</option>
+                ))}
+              </select>
+
+              {/* Region filter */}
+              <div>
+                <div className="text-[10px] text-muted mb-1">אזור גאוגרפי</div>
+                <div className="flex flex-wrap gap-1">
+                  {Object.entries(GEO_LABELS).map(([key, label]) => (
+                    <button
+                      key={key}
+                      onClick={() => setSelectedRegion(selectedRegion === key ? '' : key)}
+                      className={`text-[9px] px-1.5 py-0.5 rounded-md font-medium transition-colors ${
+                        selectedRegion === key ? 'bg-accent text-white' : 'bg-surf2 text-muted hover:text-text'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {activeFilters > 0 && (
+                <button
+                  onClick={() => {
+                    setSelectedCategory('');
+                    setSelectedPopulation('');
+                    setMinMatchScore('');
+                    setSelectedRegion('');
+                  }}
+                  className="text-[10px] text-accent hover:underline"
+                >
+                  נקה סינון
+                </button>
+              )}
+
+              <div className="text-[10px] text-muted text-left">
+                {filtered.length} מתוך {opportunities.length}
               </div>
             </div>
-
-            {activeFilters > 0 && (
-              <button
-                onClick={() => {
-                  setSelectedCategory('');
-                  setSelectedPopulation('');
-                  setMinMatchScore('');
-                  setSelectedRegion('');
-                }}
-                className="text-[10px] text-accent hover:underline"
-              >
-                נקה סינון
-              </button>
-            )}
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Timeline view (inline) */}
@@ -882,24 +866,39 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
     : 'bg-gray-100 text-gray-600 border-gray-200'
     : '';
 
-  const handleWriteSubmission = (e: React.MouseEvent) => {
+
+  // Status tag logic
+  const statusTag: { label: string; cls: string } = (() => {
+    if (daysLeft !== null && daysLeft >= 0 && daysLeft <= 14) {
+      return { label: 'דחוף', cls: 'bg-red-100 text-red-700 border-red-200' };
+    }
+    if (match && match.score >= 75) {
+      return { label: 'התאמה גבוהה', cls: 'bg-green-100 text-green-700 border-green-200' };
+    }
+    if (match && match.score >= 60) {
+      return { label: 'שווה בדיקה', cls: 'bg-amber-100 text-amber-700 border-amber-200' };
+    }
+    if (!match || match.score === 0) {
+      return { label: 'חסר מידע', cls: 'bg-gray-100 text-gray-500 border-gray-200' };
+    }
+    return { label: 'שווה בדיקה', cls: 'bg-amber-100 text-amber-700 border-amber-200' };
+  })();
+
+  const sourceHref = opp.application_url || opp.source_url || opp.url || null;
+
+  const handleAnalyzeInChat = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const parts = [`תכתוב טיוטת הגשה לקול הקורא: "${opp.title}"`];
+    const parts = [`נתח את הקול הקורא הזה: דרישות, התאמה לארגון, סיכוי, ומה חסר כדי להגיש.`];
+    parts.push(`\nשם: ${opp.title}`);
     if (opp.funder) parts.push(`מממן: ${opp.funder}`);
     if (opp.deadline) parts.push(`דדליין: ${new Date(opp.deadline).toLocaleDateString('he-IL')}`);
     if (opp.amount_max) parts.push(`סכום מקסימלי: ${opp.amount_max.toLocaleString()} ₪`);
     if (opp.eligibility) parts.push(`תנאי סף: ${opp.eligibility}`);
-    if (opp.how_to_apply) parts.push(`אופן הגשה: ${opp.how_to_apply}`);
-    if (opp.application_url) parts.push(`לינק ישיר להגשה: ${opp.application_url}`);
-    else if (opp.url) parts.push(`לינק לקול הקורא: ${opp.url}`);
-    // Include raw page content if available — this is the actual RFP text
+    if (opp.description) parts.push(`\nתיאור: ${opp.description.slice(0, 600)}`);
     if (opp.full_content && opp.full_content.length > 200) {
-      parts.push(`\n===== תוכן קול הקורא המלא =====\n${opp.full_content.slice(0, 6000)}`);
-    } else if (opp.description) {
-      parts.push(`\nתיאור: ${opp.description.slice(0, 800)}`);
+      parts.push(`\n===== תוכן קול הקורא =====\n${opp.full_content.slice(0, 4000)}`);
     }
     const detail = parts.join('\n');
-    // Close sidebar first (mobile), then send after ChatPanel mounts
     window.dispatchEvent(new CustomEvent('fishgold:closeSidebar'));
     setTimeout(() => window.dispatchEvent(new CustomEvent('fishgold:send', { detail })), 50);
   };
@@ -911,146 +910,33 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
     >
       {/* ── HEADER ── */}
       <div className="p-3 pb-2">
-      {/* Match score badge + 4-pillar breakdown */}
-      {match && (
-        <div className={`mb-2.5 rounded-lg border text-[10px] overflow-hidden ${matchColor}`}>
-          {/* Main score row */}
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="flex-shrink-0">
-              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-            </svg>
-            <span className="font-bold flex-1">{match.score}% התאמה לארגון שלכם</span>
-            {match.pillars && (
-              <span className="text-[8px] opacity-60 ml-1">לפי 4 עמודות</span>
-            )}
-          </div>
-          {/* Pillar mini-bars — only when pillars data exists */}
-          {match.pillars && (
-            <div className="px-2.5 pb-2 grid grid-cols-4 gap-1">
-              {[
-                { key: 'eligibility',       label: 'סף', value: match.pillars.eligibility },
-                { key: 'mission_alignment', label: 'משימה', value: match.pillars.mission_alignment },
-                { key: 'geography',         label: 'אזור', value: match.pillars.geography },
-                { key: 'capacity',          label: 'כמות', value: match.pillars.capacity },
-              ].map(({ key, label, value }) => (
-                <div key={key} className="flex flex-col items-center gap-0.5">
-                  <div className="w-full h-1 rounded-full bg-current/20 overflow-hidden">
-                    <div
-                      className={`h-full rounded-full ${value >= 70 ? 'bg-green-500' : value >= 40 ? 'bg-amber-500' : 'bg-red-400'}`}
-                      style={{ width: `${value}%` }}
-                    />
-                  </div>
-                  <span className="text-[8px] opacity-70">{label}</span>
-                </div>
-              ))}
-            </div>
-          )}
-          {/* Reasoning — shown when reasoning exists */}
-          {match.reasoning && (
-            <div className="px-2.5 pb-2 text-[9px] opacity-75 leading-snug border-t border-current/10 pt-1.5">
-              {match.reasoning}
-            </div>
-          )}
-        </div>
-      )}
 
-      {/* Top row: title + type badge + source link */}
-      <div className="flex items-start justify-between gap-2 mb-1.5">
-        <h4 className="text-[15px] font-bold leading-snug flex-1 min-w-0 line-clamp-2">
-          {opp.title}
-        </h4>
-        <div className="flex flex-col items-end gap-1 flex-shrink-0">
-          {opp.type && (
-            <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${TYPE_COLORS[opp.type]}`}>
-              {TYPE_LABELS[opp.type]}
-            </span>
-          )}
-          {/* source_url — direct link to original grant page, or Google Search fallback */}
-          {opp.source_url ? (
-            <a
-              href={opp.source_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={e => e.stopPropagation()}
-              title="מעבר לדף המקור"
-              className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-md bg-accent/10 text-accent hover:bg-accent/20 font-medium transition-colors"
-            >
-              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
-                <polyline points="15 3 21 3 21 9" />
-                <line x1="10" y1="14" x2="21" y2="3" />
-              </svg>
-              מקור
-            </a>
-          ) : (
-            <a
-              href={`https://www.google.com/search?q=${encodeURIComponent(`${opp.funder || ''} ${opp.title}`)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={e => e.stopPropagation()}
-              title="חפש את קול הקורא בגוגל"
-              className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-md bg-gray-100 text-gray-500 hover:bg-gray-200 font-medium transition-colors"
-            >
-              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-              חפש
-            </a>
-          )}
-          {(opp.application_url || opp.url) && (() => {
-            const href = opp.application_url || opp.url!;
-            // Don't duplicate if source_url and this href are the same
-            if (href === opp.source_url) return null;
-            const isDirect = !!opp.application_url;
-            const isGov = href.includes('gov.il') || href.includes('merkava') || href.includes('taktziv') || href.includes('pras.');
-            return (
-              <a
-                href={href}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={e => e.stopPropagation()}
-                title={isDirect ? 'מעבר לאתר ההגשה' : 'מעבר לאתר המקור'}
-                className="inline-flex items-center gap-0.5 text-[9px] text-muted hover:text-accent hover:underline"
-              >
-                {isGov ? <span>🇮🇱</span> : (
-                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
-                    <polyline points="15 3 21 3 21 9" />
-                    <line x1="10" y1="14" x2="21" y2="3" />
-                  </svg>
-                )}
-                {isDirect ? 'הגשה' : 'אתר'}
-              </a>
-            );
-          })()}
-        </div>
+      {/* Status tag */}
+      <div className="flex items-center gap-1.5 mb-2">
+        <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold border ${statusTag.cls}`}>
+          {statusTag.label}
+        </span>
+        {match && match.score > 0 && (
+          <span className={`text-[9px] font-medium ${matchColor.includes('green') ? 'text-green-700' : matchColor.includes('amber') ? 'text-amber-700' : 'text-gray-500'}`}>
+            {match.score}% התאמה
+          </span>
+        )}
+        {opp.type && (
+          <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium mr-auto ${TYPE_COLORS[opp.type]}`}>
+            {TYPE_LABELS[opp.type]}
+          </span>
+        )}
       </div>
 
-      {/* Funder + intelligence */}
+      {/* Title */}
+      <h4 className="text-[14px] font-bold leading-snug mb-1.5 line-clamp-2">{opp.title}</h4>
+
+      {/* Funder */}
       {opp.funder && (
-        <div className="flex items-center gap-1.5 mb-1.5">
-          <p className="text-[11px] text-muted">{opp.funder}</p>
-          {funderMeta?.style && (
-            <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-medium ${
-              funderMeta.style === 'government' ? 'bg-slate-100 text-slate-600' :
-              funderMeta.style === 'foundation' ? 'bg-purple-100 text-purple-600' :
-              funderMeta.style === 'federation' ? 'bg-blue-100 text-blue-600' :
-              funderMeta.style === 'corporate' ? 'bg-emerald-100 text-emerald-600' :
-              'bg-gray-100 text-gray-500'
-            }`}>
-              {funderMeta.style === 'government' ? 'ממשלתי' :
-               funderMeta.style === 'foundation' ? 'קרן' :
-               funderMeta.style === 'federation' ? 'פדרציה' :
-               funderMeta.style === 'corporate' ? 'עסקי' : ''}
-            </span>
-          )}
-          {funderMeta?.approval_rate != null && funderMeta.approval_rate > 0 && (
-            <span className="text-[8px] text-muted">{funderMeta.approval_rate}% אישור</span>
-          )}
-        </div>
+        <p className="text-[11px] text-muted mb-1.5">{opp.funder}</p>
       )}
 
-      {/* Meta row: amount + deadline */}
+      {/* Meta: amount + deadline */}
       <div className="flex items-center gap-3 text-[10px] mb-2">
         {(opp.amount_min || opp.amount_max) && (
           <span className="text-green-600 font-medium">
@@ -1072,22 +958,103 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
         )}
       </div>
 
-      {/* Category tags */}
-      {opp.categories && opp.categories.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {opp.categories.slice(0, 3).map(cat => (
-            <span key={cat} className="text-[9px] px-1.5 py-0.5 bg-surf2 text-muted rounded-md">
-              {cat}
-            </span>
-          ))}
-          {opp.categories.length > 3 && (
-            <span className="text-[9px] text-muted">+{opp.categories.length - 3}</span>
-          )}
-        </div>
+      {/* Reasoning (brief) */}
+      {match?.reasoning && (
+        <p className="text-[10px] text-muted leading-snug mb-2 line-clamp-2">{match.reasoning}</p>
       )}
+
+      {/* 3 primary actions */}
+      <div className="flex gap-1.5 mt-2" onClick={e => e.stopPropagation()}>
+        {/* 1. Analyze in chat */}
+        <button
+          onClick={handleAnalyzeInChat}
+          className="flex-1 py-1.5 text-[10px] font-medium bg-surf2 border border-border text-muted rounded-lg hover:text-accent hover:border-accent/40 transition-colors"
+        >
+          נתח בצ׳אט
+        </button>
+
+        {/* 2. Create draft — primary */}
+        {orgId && (
+          <button
+            onClick={handlePrepareDraft}
+            disabled={draftState !== 'idle' && draftState !== 'error'}
+            className="flex-[2] py-1.5 text-[11px] font-bold bg-orange-500 text-white rounded-lg hover:bg-orange-600 active:scale-[0.98] transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+          >
+            {(draftState === 'parsing' || draftState === 'analyzing' || draftState === 'generating') ? (
+              <>
+                <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                {draftState === 'parsing' ? 'קורא...' : draftState === 'analyzing' ? 'מנתח...' : 'כותב...'}
+              </>
+            ) : draftState === 'done' ? (
+              '✓ הטיוטה מוכנה'
+            ) : (
+              'צור טיוטה לעריכה'
+            )}
+          </button>
+        )}
+
+        {/* 3. Open source */}
+        {sourceHref ? (
+          <a
+            href={sourceHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={e => e.stopPropagation()}
+            className="flex-1 py-1.5 text-[10px] font-medium bg-surf2 border border-border text-muted rounded-lg hover:text-accent hover:border-accent/40 transition-colors text-center"
+          >
+            פתח מקור
+          </a>
+        ) : null}
       </div>
 
-      {/* ── CONTENT (expanded) ── */}
+      {/* Draft done state — share URL */}
+      {draftState === 'done' && shareUrl && (
+        <div className="mt-2 bg-green-50 border border-green-200 rounded-lg p-2 space-y-1" onClick={e => e.stopPropagation()}>
+          <a
+            href={shareUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-[10px] text-blue-600 hover:underline font-medium"
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+              <polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" />
+            </svg>
+            פתח דף עריכה שיתופי
+          </a>
+          <button
+            onClick={() => { setDraftState('idle'); setShareUrl(null); }}
+            className="text-[9px] text-muted hover:underline"
+          >
+            הכן טיוטה חדשה
+          </button>
+        </div>
+      )}
+
+      {/* Fit review */}
+      {draftState === 'fit_review' && fitAnalysis && (
+        <div onClick={e => e.stopPropagation()}>
+          <FitAnalysisCard
+            analysis={fitAnalysis}
+            onProceed={handleProceedFromAnalysis}
+            onCancel={handleCancelAnalysis}
+          />
+        </div>
+      )}
+
+      {/* Draft error */}
+      {draftState === 'error' && draftError && (
+        <div className="mt-1.5 bg-red-50 border border-red-200 rounded-lg p-2" onClick={e => e.stopPropagation()}>
+          <div className="text-[10px] text-red-600">{draftError}</div>
+          <button onClick={e => { e.stopPropagation(); setDraftState('idle'); }} className="text-[9px] text-accent hover:underline mt-0.5">
+            נסה שוב
+          </button>
+        </div>
+      )}
+
+      </div>
+
+      {/* ── EXPANDED DETAILS ── */}
       {expanded && (
         <div className="border-t border-border">
           <div className="px-3 pt-3 pb-2 space-y-2.5 text-[11px]">
@@ -1102,6 +1069,7 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
               ))}
             </ul>
           )}
+
           {/* 4-Pillar Match Breakdown */}
           {match?.pillars && (
             <div className="rounded-lg border border-border bg-surf2 p-2.5 space-y-2">
@@ -1161,10 +1129,10 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
           )}
           </div>
 
-          {/* Doc Progress Bar */}
+          {/* Doc Progress Bar (advanced) */}
           {orgId && <DocProgressBar opportunityId={opp.id} orgId={orgId} />}
 
-          {/* Readiness check */}
+          {/* Readiness check (advanced) */}
           {orgId && (
             <div className="px-3 pb-2">
               {!readiness && !loadingReadiness && (
@@ -1220,125 +1188,8 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
             </div>
           )}
 
-          <div className="border-t border-border bg-surf2/40 px-3 pt-3 pb-3 space-y-2">
-          {orgId && (
-            <div>
-              {draftState === 'idle' && (
-                <button
-                  onClick={handlePrepareDraft}
-                  className="w-full py-2.5 text-[11px] font-bold bg-orange-500 text-white rounded-xl hover:bg-orange-600 active:scale-[0.98] transition-all shadow-sm flex items-center justify-center gap-2"
-                >
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
-                  </svg>
-                  הכן טיוטת הגשה אוטומטית
-                </button>
-              )}
-              {(draftState === 'parsing' || draftState === 'analyzing' || draftState === 'generating') && (
-                <div className="w-full py-2.5 text-[11px] font-medium bg-orange-50 text-orange-600 rounded-xl border border-orange-200 flex items-center justify-center gap-1.5">
-                  <div className="w-3 h-3 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
-                  {draftState === 'parsing' ? 'קורא את קול הקורא...' : draftState === 'analyzing' ? 'מנתח התאמה...' : 'כותב טיוטת הגשה...'}
-                </div>
-              )}
-              {draftState === 'fit_review' && fitAnalysis && (
-                <FitAnalysisCard
-                  analysis={fitAnalysis}
-                  onProceed={handleProceedFromAnalysis}
-                  onCancel={handleCancelAnalysis}
-                />
-              )}
-              {draftState === 'done' && shareUrl && (
-                <div className="bg-green-50 border border-green-200 rounded-lg p-2.5 space-y-1.5">
-                  <div className="text-[10px] font-semibold text-green-700">הטיוטה מוכנה!</div>
-                  {(opp.source_url || opp.url) && (
-                    <a
-                      href={opp.source_url || opp.url!}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={e => e.stopPropagation()}
-                      className="flex items-center gap-1 text-[10px] text-orange-600 hover:underline font-medium"
-                    >
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
-                        <polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" />
-                      </svg>
-                      לינק לקול הקורא
-                    </a>
-                  )}
-                  {opp.application_url && (
-                    <a
-                      href={opp.application_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={e => e.stopPropagation()}
-                      className="flex items-center gap-1 text-[10px] text-orange-600 hover:underline font-medium"
-                    >
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
-                        <polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" />
-                      </svg>
-                      לינק להגשה
-                    </a>
-                  )}
-                  <a
-                    href={shareUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={e => e.stopPropagation()}
-                    className="flex items-center gap-1 text-[10px] text-blue-600 hover:underline font-medium"
-                  >
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
-                      <polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" />
-                    </svg>
-                    פתח דף עריכה שיתופי
-                  </a>
-                  <button
-                    onClick={e => {
-                      e.stopPropagation();
-                      const url = window.location.origin + shareUrl.replace(window.location.origin, '');
-                      navigator.clipboard.writeText(url);
-                    }}
-                    className="flex items-center gap-1 text-[10px] text-muted hover:text-text"
-                  >
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                      <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-                    </svg>
-                    העתק לינק
-                  </button>
-                  <button
-                    onClick={e => { e.stopPropagation(); setDraftState('idle'); setShareUrl(null); }}
-                    className="text-[9px] text-muted hover:underline"
-                  >
-                    הכן טיוטה חדשה
-                  </button>
-                </div>
-              )}
-              {draftState === 'error' && (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-2 space-y-1">
-                  <div className="text-[10px] text-red-600">{draftError}</div>
-                  <button
-                    onClick={e => { e.stopPropagation(); setDraftState('idle'); }}
-                    className="text-[9px] text-accent hover:underline"
-                  >
-                    נסה שוב
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* SECONDARY: Write in chat */}
-          <button
-            onClick={handleWriteSubmission}
-            className="w-full py-2 text-[10px] font-medium bg-accent/10 text-accent rounded-lg hover:bg-accent/20 transition-colors border border-accent/20"
-          >
-            כתוב הגשה בצ'אט
-          </button>
-
-          {/* Share row — icons only */}
-          <div className="flex items-center justify-end gap-1 pt-0.5">
+          {/* Share row */}
+          <div className="border-t border-border bg-surf2/40 px-3 py-2 flex items-center justify-end gap-1">
             <span className="text-[9px] text-muted ml-auto">שתף:</span>
             <a
               href={`mailto:?subject=${encodeURIComponent(opp.title)}&body=${encodeURIComponent(buildShareText(opp))}`}
@@ -1364,8 +1215,6 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
               </svg>
             </a>
           </div>
-          </div>
-
         </div>
       )}
     </div>
