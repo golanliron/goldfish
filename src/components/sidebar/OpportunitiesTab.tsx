@@ -231,6 +231,11 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
   const filtered = useMemo(() => {
     let result = opportunities;
 
+    // Main toggle: matched-only (score >= 60) vs all
+    if (showOnlyMatched && matchScores.size > 0) {
+      result = result.filter(o => (matchScores.get(o.id)?.score ?? 0) >= 60);
+    }
+
     // Filter by exclusive bucket (e.g. "70%" = 70–79, "80%" = ≥80)
     if (minMatchScore) {
       const min = parseInt(minMatchScore);
@@ -315,40 +320,10 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
       <div className="p-3 border-b border-border space-y-2">
 
         {/* Main heading */}
-        {matchScores.size > 0 ? (
-          matchedCount > 0 ? (
-            <div>
-              <h3 className="text-[15px] font-bold text-text leading-tight">הזדמנויות שמתאימות לכם</h3>
-              <p className="text-[11px] text-muted mt-0.5">
-                מצאתי {matchedCount} קולות קוראים רלוונטיים. אלה הראשונים שכדאי לבדוק.
-              </p>
-            </div>
-          ) : (
-            <div>
-              <h3 className="text-[15px] font-bold text-text leading-tight">הזדמנויות פתוחות</h3>
-              <p className="text-[11px] text-muted mt-0.5">{opportunities.length} קולות קוראים פעילים במאגר</p>
-              <div className="mt-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-start gap-2">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#D97706" strokeWidth="2" className="flex-shrink-0 mt-0.5">
-                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-                </svg>
-                <p className="text-[11px] text-amber-800 leading-relaxed">
-                  השלימו פרופיל ארגון כדי לראות רק הקולות שמתאימים לכם —{' '}
-                  <button
-                    onClick={() => window.dispatchEvent(new CustomEvent('fishgold:activeTab', { detail: 'org' }))}
-                    className="underline font-semibold hover:text-amber-900"
-                  >
-                    לחצו כאן
-                  </button>
-                </p>
-              </div>
-            </div>
-          )
-        ) : (
-          <div>
-            <h3 className="text-[15px] font-bold text-text leading-tight">הזדמנויות פתוחות</h3>
-            <p className="text-[11px] text-muted mt-0.5">{opportunities.length} קולות קוראים פעילים במאגר</p>
-          </div>
-        )}
+        <div className="flex items-center justify-between">
+          <h3 className="text-[15px] font-bold text-text leading-tight">קולות קוראים פתוחים</h3>
+          <span className="text-[11px] text-muted">{opportunities.length} במאגר</span>
+        </div>
 
         {/* Profile completeness hint */}
         {profileCompleteness !== null && profileCompleteness < 60 && matchedCount > 0 && (
@@ -361,6 +336,61 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
                 פרופיל {profileCompleteness}% שלם — התאמות יהיו מדויקות יותר עם יותר מידע
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Matched / All toggle — always visible when there are opportunities */}
+        {opportunities.length > 0 && (
+          <div className="flex rounded-xl border border-border overflow-hidden">
+            <button
+              onClick={() => setShowOnlyMatched(true)}
+              className={`flex-1 text-[11px] py-1.5 font-medium transition-colors flex items-center justify-center gap-1 ${
+                showOnlyMatched ? 'bg-accent text-white' : 'bg-surf text-muted hover:text-text'
+              }`}
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
+              </svg>
+              מותאמים לארגון
+              {matchedCount > 0 && (
+                <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${showOnlyMatched ? 'bg-white/25' : 'bg-accent/15 text-accent'}`}>
+                  {matchedCount}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setShowOnlyMatched(false)}
+              className={`flex-1 text-[11px] py-1.5 font-medium transition-colors flex items-center justify-center gap-1 ${
+                !showOnlyMatched ? 'bg-accent text-white' : 'bg-surf text-muted hover:text-text'
+              }`}
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+                <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+              </svg>
+              כל הקולות הקוראים
+              <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${!showOnlyMatched ? 'bg-white/25' : 'bg-surf2 text-muted'}`}>
+                {opportunities.length}
+              </span>
+            </button>
+          </div>
+        )}
+
+        {/* When no profile — show all with nudge */}
+        {matchScores.size === 0 && opportunities.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-start gap-2">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#D97706" strokeWidth="2" className="flex-shrink-0 mt-0.5">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <p className="text-[11px] text-amber-800 leading-relaxed">
+              השלימו פרופיל ארגון כדי לראות רק מה שמתאים לכם —{' '}
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('fishgold:activeTab', { detail: 'org' }))}
+                className="underline font-semibold hover:text-amber-900"
+              >
+                לחצו כאן
+              </button>
+            </p>
           </div>
         )}
 
