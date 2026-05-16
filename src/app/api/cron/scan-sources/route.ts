@@ -600,6 +600,18 @@ async function scanAllSources() {
           }
         }
 
+        // Require deadline — no deadline = not a real open call
+        if (!item.deadline) {
+          totalSkipped++;
+          continue;
+        }
+
+        // Require URL — no URL = cannot link to grant
+        if (!item.url) {
+          totalSkipped++;
+          continue;
+        }
+
         // Dedup: check URL (only specific URLs, not homepages) and title prefix
         const isGenericUrl = false; // already filtered above
         if (item.url && existingUrls.has(item.url)) {
