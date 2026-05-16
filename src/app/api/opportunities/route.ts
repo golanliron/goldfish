@@ -145,7 +145,15 @@ export const GET = withAuth(async (req, auth) => {
             outcomeBonus,
           );
         })
-        .filter(m => !m.isNegativeMatch && m.score >= 50)
+        .filter(m => {
+          if (m.isNegativeMatch) return false;
+          // Standard path: total score is strong enough
+          if (m.score >= 50) return true;
+          // Partnership path: content is highly relevant even though total is low
+          // (eligibility barrier dragged the score down — let AI evaluate it)
+          if (m.needsPartnershipReview && (m.contentScore ?? 0) >= 55) return true;
+          return false;
+        })
         .sort((a, b) => b.score - a.score);
 
       matches = scored as unknown as typeof matches;

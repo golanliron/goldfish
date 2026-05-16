@@ -48,6 +48,8 @@ export interface ScoredOpportunity {
   funder: string | null;
   url: string | null;
   isNegativeMatch?: boolean;
+  contentScore?: number; // pure mission/population/domain score, before eligibility constraints
+  needsPartnershipReview?: boolean; // true = high content match but eligibility barrier exists
 }
 
 export interface CompanyCandidate {
@@ -288,6 +290,24 @@ export interface FunderIntel {
   approval_rate: number;
 }
 
+// Patterns that indicate a legal eligibility barrier (not a content mismatch)
+const ELIGIBILITY_BARRIER_PATTERNS = [
+  /רשויות? מקומיות? בלבד/,
+  /חברות? (עסקיות?|מסחריות?) בלבד/,
+  /גופים? ציבוריים? בלבד/,
+  /מוסדות? אקדמיים? בלבד/,
+  /רק (לרשויות?|לחברות?|לגופים?|למוסדות?)/,
+  /מיועד (לרשויות?|לחברות?|לגופים?)/,
+  /הגשה דרך רשות/,
+  /עמותות? אינן? זכאיות?/,
+  /לא לעמותות?/,
+];
+
+export function hasEligibilityBarrier(opp: { eligibility?: string | null; description?: string | null }): boolean {
+  const text = `${opp.eligibility || ''} ${opp.description || ''}`.toLowerCase();
+  return ELIGIBILITY_BARRIER_PATTERNS.some(p => p.test(text));
+}
+
 export function scoreOpportunityDNA(
   opp: {
     id: string;
@@ -295,6 +315,7 @@ export function scoreOpportunityDNA(
     categories?: string[] | null;
     target_populations?: string[] | null;
     description?: string | null;
+    eligibility?: string | null;
     also_relevant_for?: string[] | null;
     deadline?: string | null;
     funder?: string | null;
@@ -312,6 +333,11 @@ export function scoreOpportunityDNA(
     String(opp.description || ''),
     (opp.also_relevant_for as string[]) || [],
   );
+
+  // contentScore = pure mission/population/domain match, before any eligibility constraints
+  const contentScore = score;
+  const eligibilityBarrier = hasEligibilityBarrier(opp);
+  const needsPartnershipReview = eligibilityBarrier && contentScore >= 55;
 
   let adjustedScore = score;
   const reasons = [reasoning];
@@ -351,6 +377,8 @@ export function scoreOpportunityDNA(
     funder: opp.funder ?? null,
     url: opp.url ?? null,
     isNegativeMatch,
+    contentScore,
+    needsPartnershipReview,
   };
 }
 
