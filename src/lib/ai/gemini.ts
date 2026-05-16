@@ -29,6 +29,17 @@ export async function geminiCall(prompt: string, maxTokens: number = 500, temp: 
       continue;
     }
 
+    // 403 = invalid/leaked/revoked key — no point retrying
+    if (res.status === 403) {
+      const err = await res.text().catch(() => '');
+      const isLeaked = err.includes('leaked') || err.includes('reported');
+      const msg = isLeaked
+        ? 'מפתח Gemini API דווח כדלוף — יש להחליף את GEMINI_API_KEY במיידי'
+        : 'מפתח Gemini API אינו בתוקף — נא לפנות למנהל המערכת';
+      console.error('[gemini] 403 KEY ERROR:', err.slice(0, 300));
+      throw new Error(msg);
+    }
+
     if (!res.ok) {
       const err = await res.text().catch(() => '');
       console.error(`[gemini] API error ${res.status}:`, err.slice(0, 500));
@@ -61,6 +72,14 @@ async function geminiCallMultimodal(parts: Array<{ text: string } | { inlineData
       console.warn(`[gemini multimodal] 429, retrying in ${delays[attempt]}ms`);
       await new Promise(r => setTimeout(r, delays[attempt]));
       continue;
+    }
+
+    if (res.status === 403) {
+      const err = await res.text().catch(() => '');
+      const isLeaked = err.includes('leaked') || err.includes('reported');
+      throw new Error(isLeaked
+        ? 'מפתח Gemini API דווח כדלוף — יש להחליף את GEMINI_API_KEY'
+        : 'מפתח Gemini API אינו בתוקף');
     }
 
     if (!res.ok) {
