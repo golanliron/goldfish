@@ -59,7 +59,7 @@ const SOURCES = [
   },
   {
     name: 'מפעל הפיס — תרבות',
-    url: 'https://culture.pais.co.il/',
+    url: 'https://www.pais.co.il/culture/tenders.aspx',
     funder: 'מפעל הפיס',
   },
   {
@@ -79,7 +79,7 @@ const SOURCES = [
   },
   {
     name: 'מפעל הפיס — מלגות',
-    url: 'https://kolkore-milga.pais.co.il/',
+    url: 'https://www.pais.co.il/scholarships/tenders.aspx',
     funder: 'מפעל הפיס',
   },
   // International foundations — verified working URLs
@@ -142,7 +142,7 @@ const SOURCES = [
   },
   {
     name: 'שפ"י — שירות פסיכולוגי ייעוצי',
-    url: 'https://shefi.education.gov.il/publication/voices-calling/',
+    url: 'https://shefi.education.gov.il/publication/voices-calling',
     funder: 'שפ"י — משרד החינוך',
   },
   {
@@ -152,32 +152,27 @@ const SOURCES = [
   },
   {
     name: 'קרן אבי חי',
-    url: 'https://avichai.org.il/grants/',
+    url: 'https://avichai.org.il/%D7%9E%D7%A2%D7%A0%D7%A7%D7%99%D7%9D/',
     funder: 'קרן אבי חי',
   },
   {
-    name: 'קרן ברכה — מענקים',
-    url: 'https://www.berachafoundation.org/grants',
-    funder: 'קרן ברכה',
-  },
-  {
     name: 'Hadassah Foundation',
-    url: 'https://hadassahfoundation.org/grants/',
+    url: 'https://hadassahfoundation.org/apply/',
     funder: 'Hadassah Foundation',
   },
   {
-    name: 'Israel Grantwatch — נוער',
-    url: 'https://israel.grantwatch.com/cat/47/youth.html',
+    name: 'fundsforNGOs — Youth & Adolescents',
+    url: 'https://www2.fundsforngos.org/category/youth-adolescents/',
     funder: '',
   },
   {
-    name: 'Israel Grantwatch — חינוך',
-    url: 'https://israel.grantwatch.com/cat/3/education.html',
+    name: 'fundsforNGOs — Education',
+    url: 'https://www2.fundsforngos.org/category/education/',
     funder: '',
   },
   {
-    name: 'Israel Grantwatch — שירותים חברתיים',
-    url: 'https://israel.grantwatch.com/cat/32/social-services.html',
+    name: 'fundsforNGOs — Latest Grants',
+    url: 'https://www2.fundsforngos.org/category/latest-funds-for-ngos/',
     funder: '',
   },
   {
@@ -192,7 +187,7 @@ const SOURCES = [
   },
   {
     name: 'Menomadin Foundation',
-    url: 'https://menomadinfoundation.com/he/grants/',
+    url: 'https://www.menomadin.org/he/grants',
     funder: 'Menomadin Foundation',
   },
   {
