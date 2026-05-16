@@ -600,6 +600,33 @@ export function buildCompanyOutreachOpener(
 }
 
 /**
+ * Build a Tavily search query to find the current CSR contact at a company.
+ * Used by the live research flow in route.ts.
+ */
+export function buildContactSearchQuery(company: CompanyCSRProfile): string {
+  const name = company.name_en || company.name;
+  return `"${name}" OR "${company.name}" מנהל CSR אחריות תאגידית פנייה מענק עמותה ${new Date().getFullYear()}`;
+}
+
+/**
+ * Format a company CSR profile as a concise block for AI context injection.
+ */
+export function formatCompanyContext(company: CompanyCSRProfile): string {
+  const lines = [
+    `חברה: ${company.name}${company.name_en ? ` (${company.name_en})` : ''}`,
+    `אתר: ${company.website}`,
+    `מיקוד CSR: ${company.csr_focus_tags.join(', ')}`,
+    `סוגי תרומה: ${company.donation_types.join(', ')}`,
+    `גישה: ${company.approach}`,
+  ];
+  if (company.typical_grant_range) lines.push(`טווח מענק: ${company.typical_grant_range}`);
+  if (company.submission_url) lines.push(`פורטל הגשה: ${company.submission_url}`);
+  if (company.submission_instructions) lines.push(`הוראות: ${company.submission_instructions}`);
+  if (company.red_flags?.length) lines.push(`פסילה אוטומטית: ${company.red_flags.join(', ')}`);
+  return lines.join('\n');
+}
+
+/**
  * Returns UX guidance: can we email this company directly?
  */
 export function getCompanyOutreachGuidance(companyName: string): {

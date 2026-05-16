@@ -9,6 +9,7 @@ import { withAuth } from '@/lib/api-auth';
 import { FISHGOLD_SYSTEM_PROMPT, FISHGOLD_GRANT_EXPERTISE, FISHGOLD_FUNDER_WRITING_DNA, FISHGOLD_FUNDER_QUESTIONS, FISHGOLD_GRANT_MASTERY, FISHGOLD_BEHAVIOR_RULES, FISHGOLD_PROPOSAL_GUIDE, FISHGOLD_SUBMISSION_ENGINE, FISHGOLD_COMPETITIVE_INTEL, FISHGOLD_FUNDRAISING_INTEL, FISHGOLD_EMAIL_MASTERY, buildOrgContext } from '@/lib/ai/fishgold';
 import { buildRAGContext } from '@/lib/ai/rag';
 import { detectSearchIntent, detectFunderQuery, webSearch, searchCompany, searchGrants, formatSearchResults, searchFallbackForUrl } from '@/lib/ai/web-search';
+import { getCompanyCSRProfile, buildContactSearchQuery, getCompanyOutreachGuidance, formatCompanyContext } from '@/lib/ai/israeli-companies';
 import { autoResearchFunder, formatFunderResearch } from '@/lib/ai/funder-auto-research';
 import { parseRfp, checkReadiness, assembleSubmission, generateOrgBlocks, formatReadinessReport } from '@/lib/ai/submission-engine';
 import { fetchByRegistrationNumber, formatForContext, formatForProfile } from '@/lib/ai/guidestar';
@@ -527,6 +528,63 @@ ${blockSummary}
       }
     }
 
+    // Company CSR live research: when user asks to write an email to a company
+    // or asks about a company's CSR — look up catalog + search Tavily for current contact
+    let companyResearchContext = '';
+    const COMPANY_OUTREACH_KEYWORDS = [
+      'כתוב מייל', 'תכתוב מייל', 'מייל ל', 'לפנות ל', 'איך לפנות', 'פנייה ל',
+      'כתוב פנייה', 'תכתוב פנייה', 'אנשי קשר', 'מי אחראי', 'CSR', 'אחריות תאגידית',
+      'write email', 'outreach', 'contact',
+    ];
+    const isCompanyOutreachRequest = COMPANY_OUTREACH_KEYWORDS.some(kw =>
+      message.toLowerCase().includes(kw.toLowerCase())
+    );
+
+    if (isCompanyOutreachRequest) {
+      try {
+        // Extract company name from message — check our catalog first
+        const catalogMatch = (await import('@/lib/ai/israeli-companies')).ISRAELI_COMPANIES_CSR_CATALOG
+          .find(c => {
+            const msgLower = message.toLowerCase();
+            return msgLower.includes(c.name.toLowerCase()) ||
+              msgLower.includes((c.name_en || '').toLowerCase());
+          });
+
+        if (catalogMatch) {
+          const guidance = getCompanyOutreachGuidance(catalogMatch.name);
+          companyResearchContext = `\n\n===== מידע CSR: ${catalogMatch.name} =====\n`;
+          companyResearchContext += formatCompanyContext(catalogMatch) + '\n';
+          companyResearchContext += `גישת פנייה: ${guidance.message}\n`;
+
+          if (guidance.canDirectApproach && process.env.TAVILY_API_KEY) {
+            // Tavily live search for current CSR contact
+            try {
+              const contactQuery = buildContactSearchQuery(catalogMatch);
+              const contactResults = await webSearch(contactQuery, {
+                maxResults: 3,
+                searchDepth: 'advanced',
+              });
+              if (contactResults.length > 0) {
+                companyResearchContext += `\nחיפוש חי — איש קשר CSR עדכני:\n`;
+                contactResults.slice(0, 2).forEach((r, i) => {
+                  companyResearchContext += `(${i + 1}) ${r.title}\n${r.content.slice(0, 350)}\nמקור: ${r.url}\n\n`;
+                });
+                companyResearchContext += `הנחיה: אם מצאת שם ומייל אישי בתוצאות — השתמש בהם. אם לא — השתמש בכתובת CSR הרשמית עם פנייה ל"מנהל/ת אחריות תאגידית". אל תמציא נתונים.`;
+              } else {
+                companyResearchContext += `\nלא נמצא איש קשר עדכני בחיפוש חי. השתמש ב-${catalogMatch.website} למציאת גורם CSR נוכחי.`;
+              }
+            } catch {
+              companyResearchContext += `\nחיפוש איש קשר לא הצליח — הפנה לאתר: ${catalogMatch.website}`;
+            }
+          } else if (!guidance.canDirectApproach) {
+            companyResearchContext += `\nהנחיה: ${guidance.message}`;
+          }
+        }
+      } catch (e) {
+        chatLog.error({ err: e, org_id }, 'company CSR research failed');
+      }
+    }
+
     // Auto-Research: unknown funder detection + auto-ingestion
     let autoResearchContext = '';
     try {
@@ -587,7 +645,7 @@ ${blockSummary}
 4. אם המסמך הוא תקציב — זהה שורות הוצאה, סכומים, קטגוריות.
 5. ציין תמיד מאיזה קובץ שלפת את המידע (לפי שם הקובץ ב-filename).` : '';
 
-    let systemPrompt = FISHGOLD_SYSTEM_PROMPT + FISHGOLD_BEHAVIOR_RULES + FISHGOLD_GRANT_EXPERTISE + FISHGOLD_GRANT_MASTERY + FISHGOLD_FUNDER_WRITING_DNA + FISHGOLD_FUNDER_QUESTIONS + FISHGOLD_PROPOSAL_GUIDE + FISHGOLD_SUBMISSION_ENGINE + FISHGOLD_COMPETITIVE_INTEL + FISHGOLD_FUNDRAISING_INTEL + FISHGOLD_EMAIL_MASTERY + ragContext + documentInterpretationRules + tabFocus + orgContext + orgMemory + submissionHistory + docSummary + knowledge + rag + grantWritingContext + submissionEngineContext + opportunityContext + companyContext + companiesIndex + grantsIndex + fundersIndex + sectorContext + webSearchContext + guidestarContext + funderIntelligenceContext + autoResearchContext;
+    let systemPrompt = FISHGOLD_SYSTEM_PROMPT + FISHGOLD_BEHAVIOR_RULES + FISHGOLD_GRANT_EXPERTISE + FISHGOLD_GRANT_MASTERY + FISHGOLD_FUNDER_WRITING_DNA + FISHGOLD_FUNDER_QUESTIONS + FISHGOLD_PROPOSAL_GUIDE + FISHGOLD_SUBMISSION_ENGINE + FISHGOLD_COMPETITIVE_INTEL + FISHGOLD_FUNDRAISING_INTEL + FISHGOLD_EMAIL_MASTERY + ragContext + documentInterpretationRules + tabFocus + orgContext + orgMemory + submissionHistory + docSummary + knowledge + rag + grantWritingContext + submissionEngineContext + opportunityContext + companyContext + companiesIndex + grantsIndex + fundersIndex + sectorContext + webSearchContext + companyResearchContext + guidestarContext + funderIntelligenceContext + autoResearchContext;
 
     const MAX_SYSTEM_CHARS = 180000;
     if (systemPrompt.length > MAX_SYSTEM_CHARS) {
