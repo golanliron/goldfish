@@ -5,6 +5,16 @@ import pdfParse from 'pdf-parse';
 import { geminiAnalyzeDocument, geminiDeepAnalysis, geminiOcrPdf, geminiParseXlsx } from '@/lib/ai/gemini';
 import { embedBatch } from '@/lib/ai/rag';
 import { stripHtml, chunkText } from '@/lib/utils/text';
+import { REQUIRED_VAULT_DOCS } from '@/lib/vault-docs';
+
+// Detect if a document is an official vault doc — by filename + content
+function detectVaultKey(filename: string, text: string): string | null {
+  const combined = `${filename} ${text.slice(0, 5000)}`;
+  for (const req of REQUIRED_VAULT_DOCS) {
+    if (req.pattern.test(combined)) return req.key;
+  }
+  return null;
+}
 
 // ===== PDF Parsing =====
 
@@ -303,6 +313,18 @@ async function saveToRag(
   insights?: string,
   missingInfo?: string[]
 ): Promise<string | null> {
+  // Auto-detect vault docs by content — no manual button needed
+  const vaultKey = detectVaultKey(filename, text);
+  const finalCategory = vaultKey ? 'official' : (category === 'linkedin' ? 'other' : category);
+  const finalMetadata = {
+    ...metadata,
+    summary,
+    smart_reader_source: source,
+    ...(vaultKey ? { vault_key: vaultKey } : {}),
+    ...(insights ? { insights } : {}),
+    ...(missingInfo?.length ? { missing_info: missingInfo } : {}),
+  };
+
   const { data: doc } = await supabase
     .from('documents')
     .insert({
@@ -310,9 +332,9 @@ async function saveToRag(
       filename,
       file_type: fileType === 'linkedin' ? 'url' : fileType,
       storage_path: storagePath,
-      category: category === 'linkedin' ? 'other' : category,
+      category: finalCategory,
       parsed_text: text.slice(0, 50000),
-      metadata: { ...metadata, summary, smart_reader_source: source, ...(insights ? { insights } : {}), ...(missingInfo?.length ? { missing_info: missingInfo } : {}) },
+      metadata: finalMetadata,
       status: 'ready',
     })
     .select('id')

@@ -469,8 +469,8 @@ export const POST = withAuth(async (request, auth) => {
     const expiryDate = (finalMetadata.expiry_date as string) || null;
     const VAULT_LABELS: Record<string, string> = {
       nihul_takin: 'ניהול תקין', seif_46: 'סעיף 46', nikuy_mas: 'ניכוי מס במקור',
-      'teudат_rіshum': 'תעודת רישום', 'doch_kaspі': 'דוח כספי', nihul_sfarim: 'ניהול ספרים',
-      vaad_mnahel: 'חברי ועד', "ba'al_heshbon": 'אישור בנק',
+      teudat_rishum: 'תעודת רישום', doch_kaspi: 'דוח כספי מבוקר', nihul_sfarim: 'ניהול ספרים',
+      vaad_mnahel: 'חברי ועד', baal_heshbon: 'אישור בנק',
     };
     let message: string;
     if (vaultWarning) {
