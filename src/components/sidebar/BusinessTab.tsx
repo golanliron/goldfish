@@ -77,7 +77,7 @@ export default function BusinessTab({ orgId, companyTypeFilter }: BusinessTabPro
     if (matchedOnly && orgId) params.set('matched', 'true');
 
     try {
-      const res = await fetch(`/api/companies?${params}`);
+      const res = await fetch(`/api/companies?${params}`, { credentials: 'include' });
       const data = await res.json();
       setCompanies(data.companies || []);
       setTotal(data.total || 0);
@@ -341,7 +341,7 @@ export default function BusinessTab({ orgId, companyTypeFilter }: BusinessTabPro
                 </button>
               </div>
               {/* סינון אזור — מופיע רק בלשונית פדרציות */}
-              {(fundSubType === 'federation' || fundSubType === '') && (
+              {fundSubType === 'federation' && (
                 <div className="flex flex-wrap gap-1">
                   {[
                     { key: 'israel_grants', label: '🇮🇱 מממנות ישראל' },
