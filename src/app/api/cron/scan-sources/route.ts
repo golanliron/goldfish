@@ -561,8 +561,8 @@ async function scanAllSources(batchIndex?: number) {
       .select('id');
     deactivated = expired?.length || 0;
 
-    // 1b. No deadline + older than 60 days = stale
-    const staleDate = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
+    // 1b. No deadline + older than 90 days = stale
+    const staleDate = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
     const { data: stale } = await supabase
       .from('opportunities')
       .update({ active: false })
@@ -695,12 +695,6 @@ async function scanAllSources(batchIndex?: number) {
           if (isHomepage || isSourceUrl || isFileDownload || isListPage) {
             item.url = undefined;
           }
-        }
-
-        // Require deadline — no deadline = not a real open call
-        if (!item.deadline) {
-          totalSkipped++;
-          continue;
         }
 
         // Require URL — no URL = cannot link to grant
