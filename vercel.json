@@ -40,7 +40,7 @@
     },
     {
       "path": "/api/cron/worker",
-      "schedule": "*/2 * * * *"
+      "schedule": "0 * * * *"
     }
   ]
 }
