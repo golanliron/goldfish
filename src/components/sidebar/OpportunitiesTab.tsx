@@ -231,11 +231,6 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
   const filtered = useMemo(() => {
     let result = opportunities;
 
-    // Default view: show only matched (≥60) when matchScores exist AND there are actual matches
-    if (showOnlyMatched && matchScores.size > 0 && matchedCount > 0) {
-      result = result.filter(o => (matchScores.get(o.id)?.score ?? 0) >= 60);
-    }
-
     // Filter by exclusive bucket (e.g. "70%" = 70–79, "80%" = ≥80)
     if (minMatchScore) {
       const min = parseInt(minMatchScore);
@@ -369,36 +364,28 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
           </div>
         )}
 
-        {/* "Show all" shortcut + agent sync */}
-        {matchedCount > 0 && (
-          <div className="flex items-center justify-between">
+        {/* Agent sync button */}
+        {orgId && (
+          <div className="flex justify-end">
             <button
-              onClick={() => { setShowOnlyMatched(!showOnlyMatched); setMinMatchScore(''); }}
-              className="text-[10px] text-muted hover:text-accent transition-colors underline-offset-2 hover:underline"
+              onClick={handleAgentSync}
+              disabled={agentRunning}
+              title="סנכרון והעשרת הגשות"
+              className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg border font-medium transition-colors flex-shrink-0 ${
+                agentRunning
+                  ? 'bg-surf2 text-muted border-border cursor-not-allowed'
+                  : 'bg-surf2 text-muted border-border hover:border-accent/40 hover:text-accent'
+              }`}
             >
-              {showOnlyMatched ? `הצג את כל המאגר (${opportunities.length})` : `חזור להתאמות (${matchedCount})`}
+              {agentRunning ? (
+                <div className="w-3 h-3 border-2 border-muted border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 3v3M12 18v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M3 12h3M18 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12" />
+                </svg>
+              )}
+              {agentRunning ? 'מנתח...' : 'סנכרון'}
             </button>
-            {orgId && (
-              <button
-                onClick={handleAgentSync}
-                disabled={agentRunning}
-                title="סנכרון והעשרת הגשות"
-                className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg border font-medium transition-colors flex-shrink-0 ${
-                  agentRunning
-                    ? 'bg-surf2 text-muted border-border cursor-not-allowed'
-                    : 'bg-surf2 text-muted border-border hover:border-accent/40 hover:text-accent'
-                }`}
-              >
-                {agentRunning ? (
-                  <div className="w-3 h-3 border-2 border-muted border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 3v3M12 18v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M3 12h3M18 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12" />
-                  </svg>
-                )}
-                {agentRunning ? 'מנתח...' : 'סנכרון'}
-              </button>
-            )}
           </div>
         )}
 
@@ -667,9 +654,34 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
             <p className="text-sm text-muted">לא נמצאו תוצאות</p>
             <p className="text-xs text-muted2 mt-1">נסו לשנות את החיפוש או הסינון</p>
           </div>
-        ) : (
-          filtered.map(opp => <OpportunityCard key={opp.id} opp={opp} match={matchScores.get(opp.id)} orgId={orgId} funderMeta={opp.funder ? funderInfo[opp.funder] : undefined} />)
-        )}
+        ) : (() => {
+          const matched = filtered.filter(o => (matchScores.get(o.id)?.score ?? 0) >= 60);
+          const rest = filtered.filter(o => (matchScores.get(o.id)?.score ?? 0) < 60);
+          return (
+            <>
+              {matched.length > 0 && (
+                <>
+                  <div className="text-[10px] font-bold text-accent uppercase tracking-wide px-0.5 mb-1">
+                    מתאים לארגון שלכם ({matched.length})
+                  </div>
+                  {matched.map(opp => (
+                    <OpportunityCard key={opp.id} opp={opp} match={matchScores.get(opp.id)} orgId={orgId} funderMeta={opp.funder ? funderInfo[opp.funder] : undefined} />
+                  ))}
+                  {rest.length > 0 && (
+                    <div className="border-t border-border/50 pt-3 mt-1">
+                      <div className="text-[10px] font-bold text-muted uppercase tracking-wide px-0.5 mb-1">
+                        כל הקולות הקוראים ({rest.length})
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+              {rest.map(opp => (
+                <OpportunityCard key={opp.id} opp={opp} match={matchScores.get(opp.id)} orgId={orgId} funderMeta={opp.funder ? funderInfo[opp.funder] : undefined} />
+              ))}
+            </>
+          );
+        })()}
       </div>
     </div>
   );
