@@ -10,7 +10,8 @@ import { withRetry } from '@/lib/ai/retry';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// Vercel Cron or manual trigger with secret
+// Vercel Cron or manual trigger
+// Supports ?batch=0,1,2... to scan sources in chunks (Hobby plan = 10s timeout)
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
   const cronSecret = process.env.CRON_SECRET;
@@ -19,7 +20,11 @@ export async function GET(request: NextRequest) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const results = await scanAllSources();
+  const url = new URL(request.url);
+  const batchParam = url.searchParams.get('batch');
+  const batchIndex = batchParam !== null ? parseInt(batchParam) : -1;
+
+  const results = await scanAllSources(batchIndex >= 0 ? batchIndex : undefined);
   return Response.json(results);
 }
 
@@ -526,67 +531,75 @@ interface ScannedItem {
   contact_info?: string;
 }
 
-async function scanAllSources() {
+const BATCH_SIZE = 5; // sources per batch (Vercel Hobby = 10s timeout)
+
+async function scanAllSources(batchIndex?: number) {
   const supabase = createAdminClient();
   let totalNew = 0;
   let totalSkipped = 0;
   let deactivated = 0;
   const errors: string[] = [];
 
-  // === Step 1: Cleanup expired & stale ===
+  // Determine which sources to scan
+  const sourcesToScan = batchIndex !== undefined
+    ? SOURCES.slice(batchIndex * BATCH_SIZE, (batchIndex + 1) * BATCH_SIZE)
+    : SOURCES;
+  const isFirstBatch = batchIndex === undefined || batchIndex === 0;
+
+  // === Step 1: Cleanup expired & stale (only on first batch) ===
   const today = new Date().toISOString().split('T')[0];
   const currentYear = new Date().getFullYear();
 
-  // 1a. Deadline passed
-  const { data: expired } = await supabase
-    .from('opportunities')
-    .update({ active: false })
-    .lt('deadline', today)
-    .eq('active', true)
-    .not('deadline', 'is', null)
-    .select('id');
-  deactivated = expired?.length || 0;
+  if (isFirstBatch) {
+    // 1a. Deadline passed
+    const { data: expired } = await supabase
+      .from('opportunities')
+      .update({ active: false })
+      .lt('deadline', today)
+      .eq('active', true)
+      .not('deadline', 'is', null)
+      .select('id');
+    deactivated = expired?.length || 0;
 
-  // 1b. No deadline + older than 60 days = stale
-  const staleDate = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
-  const { data: stale } = await supabase
-    .from('opportunities')
-    .update({ active: false })
-    .eq('active', true)
-    .is('deadline', null)
-    .lt('scraped_at', staleDate)
-    .select('id');
-  deactivated += stale?.length || 0;
-
-  // 1c. Old years in title (2 years ago or more)
-  const oldYears = Array.from({ length: 5 }, (_, i) => String(currentYear - 2 - i));
-  // Also deactivate last year's grants (they're almost certainly expired)
-  const lastYear = String(currentYear - 1);
-  for (const year of [lastYear, ...oldYears]) {
-    const { data: old } = await supabase
+    // 1b. No deadline + older than 60 days = stale
+    const staleDate = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: stale } = await supabase
       .from('opportunities')
       .update({ active: false })
       .eq('active', true)
-      .ilike('title', `%${year}%`)
-      // Don't deactivate multi-year titles like "2025-26"
-      .not('title', 'ilike', `%${year}-${String(Number(year) + 1).slice(2)}%`)
+      .is('deadline', null)
+      .lt('scraped_at', staleDate)
       .select('id');
-    deactivated += old?.length || 0;
-  }
+    deactivated += stale?.length || 0;
 
-  // 1d. title = funder (fund profiles, not actual grants)
-  const { data: fundProfiles } = await supabase
-    .from('opportunities')
-    .select('id, title, funder')
-    .eq('active', true);
-  if (fundProfiles) {
-    const toDeactivate = fundProfiles.filter(o =>
-      o.title === o.funder ||
-      (o.title && o.title.toLowerCase().startsWith('funding in '))
-    ).map(o => o.id);
-    if (toDeactivate.length > 0) {
-      await supabase.from('opportunities').update({ active: false }).in('id', toDeactivate);
-      deactivated += toDeactivate.length;
+    // 1c. Old years in title (2 years ago or more)
+    const oldYears = Array.from({ length: 5 }, (_, i) => String(currentYear - 2 - i));
+    const lastYear = String(currentYear - 1);
+    for (const year of [lastYear, ...oldYears]) {
+      const { data: old } = await supabase
+        .from('opportunities')
+        .update({ active: false })
+        .eq('active', true)
+        .ilike('title', `%${year}%`)
+        .not('title', 'ilike', `%${year}-${String(Number(year) + 1).slice(2)}%`)
+        .select('id');
+      deactivated += old?.length || 0;
+    }
+
+    // 1d. title = funder (fund profiles, not actual grants)
+    const { data: fundProfiles } = await supabase
+      .from('opportunities')
+      .select('id, title, funder')
+      .eq('active', true);
+    if (fundProfiles) {
+      const toDeactivate = fundProfiles.filter(o =>
+        o.title === o.funder ||
+        (o.title && o.title.toLowerCase().startsWith('funding in '))
+      ).map(o => o.id);
+      if (toDeactivate.length > 0) {
+        await supabase.from('opportunities').update({ active: false }).in('id', toDeactivate);
+        deactivated += toDeactivate.length;
+      }
     }
   }
 
@@ -598,8 +611,8 @@ async function scanAllSources() {
   const existingTitles = new Set((existingData || []).map(e => e.title?.slice(0, 40)).filter(Boolean));
   const existingUrls = new Set((existingData || []).map(e => e.url).filter(Boolean));
 
-  // === Step 3: Scan all sources ===
-  for (const source of SOURCES) {
+  // === Step 3: Scan sources (batch or all) ===
+  for (const source of sourcesToScan) {
     try {
       const res = await fetch(source.url, {
         headers: {
@@ -834,12 +847,13 @@ async function scanAllSources() {
       new_items: totalNew,
       skipped: totalSkipped,
       errors: errors.length > 0 ? errors : null,
-      sources_scanned: SOURCES.length,
+      sources_scanned: sourcesToScan.length,
     });
   } catch { /* table might not exist */ }
 
   return {
-    scanned: SOURCES.length,
+    batch: batchIndex !== undefined ? batchIndex : 'all',
+    scanned: sourcesToScan.length,
     new_opportunities: totalNew,
     skipped: totalSkipped,
     deactivated_expired: deactivated,

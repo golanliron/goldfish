@@ -2,10 +2,14 @@
   "framework": "nextjs",
   "regions": ["fra1"],
   "crons": [
-    {
-      "path": "/api/cron/scan-sources",
-      "schedule": "0 6 * * *"
-    },
+    { "path": "/api/cron/scan-sources?batch=0", "schedule": "0 6 * * *" },
+    { "path": "/api/cron/scan-sources?batch=1", "schedule": "5 6 * * *" },
+    { "path": "/api/cron/scan-sources?batch=2", "schedule": "10 6 * * *" },
+    { "path": "/api/cron/scan-sources?batch=3", "schedule": "15 6 * * *" },
+    { "path": "/api/cron/scan-sources?batch=4", "schedule": "20 6 * * *" },
+    { "path": "/api/cron/scan-sources?batch=5", "schedule": "25 6 * * *" },
+    { "path": "/api/cron/scan-sources?batch=6", "schedule": "30 6 * * *" },
+    { "path": "/api/cron/scan-sources?batch=7", "schedule": "35 6 * * *" },
     {
       "path": "/api/cron/scan-federations",
       "schedule": "0 7 * * *"
