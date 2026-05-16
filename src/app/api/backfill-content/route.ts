@@ -1,11 +1,60 @@
 import { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { geminiOcrPdf } from '@/lib/ai/gemini';
+import { parseFileContent } from '@/lib/utils/file-parser';
 
 export const maxDuration = 300;
 
 // Keywords that indicate a PDF is a grant document (not nav/footer/logo)
 const GRANT_PDF_KEYWORDS = /מכרז|קול.קורא|הנחי|תנאי|נוהל|הזמנה|בקשה|טופס|מסמך|נספח|עזרה|הוראות|פרטים|תקנון|כללים|requirements|guidelines|application|terms|call.for|grant/i;
+
+// ===== Direct PDF URL handler =====
+// When the opportunity URL itself is a .pdf file, download and extract directly.
+
+async function fetchDirectPdfContent(url: string): Promise<string> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        'Accept': 'application/pdf,*/*',
+      },
+      redirect: 'follow',
+    });
+    clearTimeout(timeout);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const contentType = res.headers.get('content-type') ?? '';
+    // Validate it's actually a PDF (by content-type or URL)
+    if (!contentType.includes('pdf') && !url.toLowerCase().endsWith('.pdf')) {
+      throw new Error('Not a PDF response');
+    }
+
+    const buffer = Buffer.from(await res.arrayBuffer());
+    if (buffer.length < 500) throw new Error('PDF too small');
+    if (buffer.length > 15_000_000) throw new Error('PDF too large (>15MB)');
+
+    // Use existing parseFileContent which handles text-layer + Gemini OCR fallback
+    const text = await parseFileContent(buffer, 'application/pdf', url.split('/').pop() ?? 'grant.pdf');
+    return text.slice(0, 12000); // generous limit for grant docs
+  } catch (err) {
+    clearTimeout(timeout);
+    // Fallback: try Jina Reader (handles some PDF URLs)
+    try {
+      const jinaRes = await fetch(`https://r.jina.ai/${url}`, {
+        headers: { 'Accept': 'text/plain', 'X-Return-Format': 'text' },
+        signal: AbortSignal.timeout(25000),
+      });
+      if (jinaRes.ok) {
+        const text = await jinaRes.text();
+        if (text.length > 200) return text.slice(0, 12000);
+      }
+    } catch { /* all failed */ }
+    throw err;
+  }
+}
 
 async function fetchGrantPageContent(url: string): Promise<string> {
   const res = await fetch(url, {
@@ -81,11 +130,23 @@ export async function GET(request: NextRequest) {
 
   let updated = 0;
   let failed = 0;
+  const pdfDirect: string[] = [];
 
   for (const opp of opps) {
     if (!opp.url) continue;
     try {
-      const content = await fetchGrantPageContent(opp.url);
+      const isPdfUrl = /\.pdf(\?.*)?$/i.test(opp.url);
+      let content: string;
+
+      if (isPdfUrl) {
+        // URL itself is a PDF — download and extract directly
+        pdfDirect.push(opp.id);
+        content = await fetchDirectPdfContent(opp.url);
+      } else {
+        // Regular HTML page — fetch page + any linked PDFs
+        content = await fetchGrantPageContent(opp.url);
+      }
+
       if (content.length < 200) { failed++; continue; }
 
       const { error: updateErr } = await supabase
@@ -100,5 +161,5 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return Response.json({ total: opps.length, updated, failed });
+  return Response.json({ total: opps.length, updated, failed, pdf_direct: pdfDirect.length });
 }
