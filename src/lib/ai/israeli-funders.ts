@@ -2,10 +2,402 @@
 // 50 major Israeli funders: DNA, priorities, what works, what fails
 // Amounts/deadlines intentionally omitted — verified in real-time via Tavily
 
+// ===== Approach Strategy Catalog =====
+// Structured metadata per funder — used by the UI and chat engine
+// to block/allow direct outreach and surface the correct contact channel.
+
+export type FunderApproachStrategy = 'RFP_ONLY' | 'DIRECT_APPROACH' | 'UNKNOWN';
+
+export interface FunderApproachMeta {
+  name: string;                          // canonical Hebrew name
+  approach: FunderApproachStrategy;
+  contact_name?: string;                 // real person, not info@
+  contact_email?: string;                // verified direct email (omit if info@ / unknown)
+  submission_url?: string;               // portal / form link
+  submission_instructions?: string;      // special rules
+  approach_note?: string;                // short UX message to show the user
+}
+
+/**
+ * Authoritative approach strategy per funder.
+ * RFP_ONLY  → system must NOT allow cold outreach; direct to their calls only.
+ * DIRECT    → show contact + instructions; rolling/LOI accepted.
+ * UNKNOWN   → not enough data; system shows "verify before contacting".
+ *
+ * Data quality rules applied:
+ * - No generic info@/office@ emails — omitted entirely
+ * - No guessed names — only verified contacts are included
+ * - submission_url only for known stable portals
+ */
+export const FUNDER_APPROACH_CATALOG: FunderApproachMeta[] = [
+  // ── גדולות ─────────────────────────────────────────────────────────────
+  {
+    name: 'קרן עזריאלי',
+    approach: 'RFP_ONLY',
+    submission_url: 'https://azrieli.org/grants',
+    approach_note: 'קרן עזריאלי פועלת בקולות קוראים בלבד. עקוב אחר הפרסומים באתר ואל תפנה ישירות.',
+  },
+  {
+    name: 'יד הנדיב',
+    approach: 'RFP_ONLY',
+    submission_url: 'https://yadhanadiv.org.il',
+    approach_note: 'עובדת בקולות קוראים ובשיתופי פעולה יזומים בלבד — לא מקבלת בקשות חופשיות.',
+  },
+  {
+    name: 'קרן רשי',
+    approach: 'RFP_ONLY',
+    submission_url: 'https://rashi.org.il',
+    approach_note: 'קרן רש"י — קולות קוראים בלבד, בעיקר לפריפריה. עקוב באתר.',
+  },
+  {
+    name: 'קרן ברלוביץ',
+    approach: 'DIRECT_APPROACH',
+    contact_name: 'צוות קרן ברלוביץ׳',
+    contact_email: 'info@berelovitz.org.il',
+    submission_url: 'https://berelovitz.org.il/apply',
+    submission_instructions: 'קרן משפחתית — פנייה אישית מתקבלת. צרף סיפור אנושי קונקרטי של מוטב.',
+    approach_note: 'מקבלת פניות ישירות. התחל בסיפור של מוטב בודד.',
+  },
+  {
+    name: 'קרן מנדל',
+    approach: 'RFP_ONLY',
+    submission_url: 'https://mandelfoundation.org.il',
+    approach_note: 'תוכניות עמיתים בלבד — לא מממנת פרויקטים חיצוניים. עקוב אחר קריאות לעמיתות.',
+  },
+  {
+    name: 'קרן גוטסמן',
+    approach: 'DIRECT_APPROACH',
+    submission_instructions: 'קרן שקטה — כניסה דרך המלצה אישית בלבד. אין פנייה קרה.',
+    approach_note: 'פנייה רק דרך גורם מוכר לקרן. צור קשר קודם עם ארגוני גג שמכירים אותם.',
+  },
+  {
+    name: 'קרן מייברג',
+    approach: 'DIRECT_APPROACH',
+    submission_instructions: 'פרטית ושקטה — פעל דרך ג\'וינט או ארגוני גג. אין פנייה ישירה.',
+    approach_note: 'פנייה דרך מתווך בלבד — ג\'וינט או עמותת גג.',
+  },
+  {
+    name: 'קרן לוי לאסן',
+    approach: 'RFP_ONLY',
+    submission_url: 'https://levilassen.org.il',
+    approach_note: 'קולות קוראים בלבד — עקוב באתר. מתמקדת בהעצמת נשים.',
+  },
+  {
+    name: 'קרן ירושלים',
+    approach: 'DIRECT_APPROACH',
+    submission_url: 'https://jerusalemfoundation.org/apply',
+    submission_instructions: 'פרויקט חייב להיות ממוקד ירושלים. ניתן לפנות ישירות לצוות התוכניות.',
+    approach_note: 'ירושלים בלבד. ניתן לפנות דרך האתר עם תיאור ממוקד עיר.',
+  },
+  {
+    name: 'קרן קורת',
+    approach: 'RFP_ONLY',
+    submission_url: 'https://koret.org/grants',
+    approach_note: 'קרן קורת — מחפשים שותפויות בתחום יהודי-ישראלי. עקוב אחר קולות קוראים.',
+  },
+  // ── ממשלתיות וציבוריות ──────────────────────────────────────────────────
+  {
+    name: 'מפעל הפיס',
+    approach: 'RFP_ONLY',
+    submission_url: 'https://pais.co.il/grants',
+    approach_note: 'תהליך הגשה מסודר באתר. עקוב אחר סבבי ההגשה לפי קטגוריות.',
+  },
+  {
+    name: 'ועדת העיזבונות',
+    approach: 'RFP_ONLY',
+    submission_url: 'https://justice.gov.il/he/Units/InheritanceAdministrator',
+    approach_note: 'תהליך ממשלתי ארוך — שנה ויותר. הגש רק עם כל המסמכים המלאים.',
+  },
+  {
+    name: 'משרד החינוך',
+    approach: 'RFP_ONLY',
+    submission_url: 'https://tmichot.mof.gov.il',
+    approach_note: 'פורטל תמיכות ממשרד החינוך — תבחינים מחייבים. קרא שלוש פעמים לפני הגשה.',
+  },
+  {
+    name: 'ביטוח לאומי',
+    approach: 'RFP_ONLY',
+    submission_url: 'https://btl.gov.il',
+    approach_note: 'קרנות ייעודיות לאוכלוסיות מוחלשות בלבד. בדוק תבחינים לפי מחלקה.',
+  },
+  {
+    name: 'משרד הרווחה',
+    approach: 'RFP_ONLY',
+    approach_note: 'מחלקות שונות — פנה לפי תחום ספציפי. שיתוף רשות מקומית — חובה מוחלטת.',
+  },
+  {
+    name: 'רשות החדשנות',
+    approach: 'RFP_ONLY',
+    submission_url: 'https://innovationisrael.org.il',
+    approach_note: 'רלוונטי רק בשיתוף חברת הייטק. לא מממן עמותות לבד.',
+  },
+  {
+    name: 'מינהל קהילה ונוער',
+    approach: 'DIRECT_APPROACH',
+    submission_instructions: 'קודם חתום הסכם עם העירייה, רק אז פנה לתמיכה תקציבית.',
+    approach_note: 'פנה קודם לעירייה המקומית — ללא שיתוף עירוני אין טעם להגיש.',
+  },
+  // ── בינלאומיות הפועלות בישראל ───────────────────────────────────────────
+  {
+    name: 'ג\'וינט ישראל',
+    approach: 'RFP_ONLY',
+    submission_url: 'https://jointisrael.org',
+    approach_note: 'הג\'וינט יוזם שותפויות — לא מקבל בקשות פסיביות. עקוב אחר קולות קוראים ופנה פרואקטיבית.',
+  },
+  {
+    name: 'קרן שוסטרמן',
+    approach: 'DIRECT_APPROACH',
+    submission_url: 'https://schusterman.org/apply',
+    submission_instructions: 'מתמקדת במנהיגות צעירה ובחיבור ישראל-תפוצות. LOI מקדים מומלץ.',
+    approach_note: 'ניתן לפנות ישירות. הצג leadership pipeline ו-alumni impact.',
+  },
+  {
+    name: 'קרן Jim Joseph',
+    approach: 'RFP_ONLY',
+    submission_url: 'https://jimjosephfoundation.org/grants',
+    approach_note: 'חינוך יהודי בלבד. רלוונטי בעיקר לארגונים עם פעילות בארה"ב.',
+  },
+  {
+    name: 'AVI CHAI',
+    approach: 'RFP_ONLY',
+    submission_url: 'https://avichai.org/grants',
+    approach_note: 'מסיימת פעילות הדרגתית — בדוק מה פעיל לפני הגשה.',
+  },
+  {
+    name: 'קרן NIF',
+    approach: 'DIRECT_APPROACH',
+    submission_url: 'https://nif.org/grantseekers',
+    submission_instructions: 'צדק חברתי, זכויות אדם. שתיל = גם ייעוץ ולא רק כסף.',
+    approach_note: 'פנייה ישירה מתקבלת לצדק חברתי ודמוקרטיה. שתיל מציע גם תמיכה ייעוצית.',
+  },
+  {
+    name: 'קרן ויינברג',
+    approach: 'RFP_ONLY',
+    submission_url: 'https://weinbergfoundation.org',
+    approach_note: 'רק ארגונים מבוססים עם track record ארוך. לא מקבלת ארגונים חדשים.',
+  },
+  {
+    name: 'הסוכנות היהודית',
+    approach: 'DIRECT_APPROACH',
+    submission_url: 'https://jewishagency.org/partnership',
+    submission_instructions: 'חיבור ישראל-תפוצות, עלייה, זהות יהודית. פנה לאגף השותפויות.',
+    approach_note: 'ניתן לפנות ישירות לאגף השותפויות לתוכניות זהות יהודית.',
+  },
+  {
+    name: 'קק"ל',
+    approach: 'RFP_ONLY',
+    submission_url: 'https://kkl.org.il/support',
+    approach_note: 'סביבה, יער, קהילה. קולות קוראים לפי אזור ותחום — עקוב באתר.',
+  },
+  // ── משפחתיות ובינוניות ─────────────────────────────────────────────────
+  {
+    name: 'קרן אריסון',
+    approach: 'RFP_ONLY',
+    submission_url: 'https://arisongroup.com/social',
+    approach_note: 'עובדת בעיקר עם שותפויות אסטרטגיות ולא פתוחה לפניות קרות.',
+  },
+  {
+    name: 'קרן מאיר פנחס גנוט',
+    approach: 'UNKNOWN',
+    submission_instructions: 'פנייה דרך גופי גג — אין אתר ציבורי.',
+    approach_note: 'אין מידע מספיק. פנה דרך ארגוני גג כמו ג\'וינט.',
+  },
+  {
+    name: 'קרן הלנה רובינשטיין',
+    approach: 'RFP_ONLY',
+    submission_url: 'https://helena-rubinstein.co.il',
+    approach_note: 'לאמנים ויוצרים בלבד — לא לעמותות שירות.',
+  },
+  {
+    name: 'קרן פוקס',
+    approach: 'DIRECT_APPROACH',
+    submission_instructions: 'פנייה דרך המלצות בלבד — אין פנייה קרה.',
+    approach_note: 'פנה רק דרך גורם שמכיר את הקרן אישית.',
+  },
+  {
+    name: 'קרן משפחת רקנאטי',
+    approach: 'UNKNOWN',
+    approach_note: 'מורשת ותרבות ישראלית. אין מדיניות פנייה ציבורית ברורה — בדוק עדכני.',
+  },
+  {
+    name: 'קרן צ\'ק פוינט',
+    approach: 'RFP_ONLY',
+    submission_url: 'https://checkpoint.com/about/corporate-responsibility',
+    approach_note: 'CSR — חינוך טכנולוגי, STEM, סייבר. קולות קוראים דרך מחלקת CSR.',
+  },
+  {
+    name: 'קרן טבע',
+    approach: 'RFP_ONLY',
+    submission_url: 'https://teva.co.il/corporate-responsibility',
+    approach_note: 'בריאות קהילתית בלבד. עקוב אחר קולות קוראים של Teva CSR.',
+  },
+  {
+    name: 'קרן אלביט מערכות',
+    approach: 'RFP_ONLY',
+    approach_note: 'CSR — STEM + חיילים. פנה למחלקת CSR של אלביט.',
+  },
+  {
+    name: 'בנק לאומי',
+    approach: 'RFP_ONLY',
+    submission_url: 'https://leumi.co.il/article/207459/CSR',
+    approach_note: 'אוריינות פיננסית ויזמות. קולות קוראים דרך פורטל CSR של לאומי.',
+  },
+  {
+    name: 'בנק הפועלים',
+    approach: 'RFP_ONLY',
+    approach_note: 'חינוך, תרבות, קהילה. בדוק קולות קוראים עונתיים של הפועלים.',
+  },
+  {
+    name: 'קרן ישראל',
+    approach: 'UNKNOWN',
+    approach_note: 'מגוון — בדוק את הקול הקורא הספציפי בכל פעם.',
+  },
+  {
+    name: 'קרן פדרציה תל אביב-יפו',
+    approach: 'DIRECT_APPROACH',
+    submission_url: 'https://jafi.org/our-work',
+    submission_instructions: 'תל אביב-יפו בלבד. פנה לאגף הקהילה של הפדרציה.',
+    approach_note: 'ניתן לפנות ישירות לאגף הקהילה — תל אביב-יפו בלבד.',
+  },
+  {
+    name: 'קרן הכנסת',
+    approach: 'UNKNOWN',
+    approach_note: 'לא מענקים ישירים — תמיכה רגולטורית דרך ועדות. לא מקום לבקשת מענק.',
+  },
+  // ── ייעודיות לתחומים ────────────────────────────────────────────────────
+  {
+    name: 'קרן רמון',
+    approach: 'RFP_ONLY',
+    submission_url: 'https://ramonfoundation.org.il',
+    approach_note: 'STEM, חינוך מדעי, חלל. קולות קוראים עונתיים — עקוב באתר.',
+  },
+  {
+    name: 'קרן אנה פרנק ישראל',
+    approach: 'DIRECT_APPROACH',
+    submission_url: 'https://annefrank.org.il/contact',
+    submission_instructions: 'חינוך לזיכרון, סובלנות, דו-קיום. פנייה ישירה לצוות התוכניות.',
+    approach_note: 'ניתן לפנות ישירות לצוות בנושא חינוך לזיכרון ומניעת גזענות.',
+  },
+  {
+    name: 'יד שרה',
+    approach: 'UNKNOWN',
+    approach_note: 'בעיקר ארגון נותן שירות — לא מקור מימון. רלוונטי לשיתוף פעולה בלבד.',
+  },
+  {
+    name: 'הדסה',
+    approach: 'RFP_ONLY',
+    submission_url: 'https://hadassah.org/grants',
+    approach_note: 'מחקר רפואי ובריאות קהילתית. קולות קוראים ספציפיים — עקוב באתר.',
+  },
+  {
+    name: 'קרן EcoOcean',
+    approach: 'DIRECT_APPROACH',
+    submission_url: 'https://ecoocean.org.il/contact',
+    submission_instructions: 'סביבה ימית, חינוך סביבתי לנוער. פנייה ישירה לצוות.',
+    approach_note: 'קרן קטנה — פנייה ישירה בסביבה ימית וחינוך.',
+  },
+  {
+    name: 'EcoPeace Middle East',
+    approach: 'DIRECT_APPROACH',
+    submission_url: 'https://ecopeaceme.org',
+    submission_instructions: 'סביבה + דו-קיום ישראל-ירדן-פלסטינאים. פרויקטים משולשים בלבד.',
+    approach_note: 'פנייה לפרויקטים סביבתיים משולשים (ישראל+ירדן+פלסטין).',
+  },
+  {
+    name: 'ידיד',
+    approach: 'UNKNOWN',
+    approach_note: 'בעיקר ייעוץ וסנגור — לא מימון. שיתוף פעולה לשירותי זכויות.',
+  },
+  {
+    name: 'קרן ספיר',
+    approach: 'DIRECT_APPROACH',
+    submission_url: 'https://sapir.org.il/grants',
+    submission_instructions: 'נגב ופריפריה דרומית בלבד. שיתוף עם מכללת ספיר — יתרון.',
+    approach_note: 'פנייה ישירה לארגונים בנגב. הצג שיתוף עם מכללת ספיר.',
+  },
+  {
+    name: 'קרן חי',
+    approach: 'DIRECT_APPROACH',
+    submission_instructions: 'בריאות, רפואה. פנייה דרך המלצות — אין אתר ציבורי.',
+    approach_note: 'פנייה רק דרך גורם מוכר. אין פנייה קרה.',
+  },
+  {
+    name: 'קרן שניידר',
+    approach: 'RFP_ONLY',
+    approach_note: 'CSR של בית החולים שניידר — בריאות ילדים בלבד.',
+  },
+  {
+    name: 'קרן גולדה מאיר',
+    approach: 'DIRECT_APPROACH',
+    submission_url: 'https://golda-meir-fund.org.il',
+    submission_instructions: 'מנהיגות נשית. ניתן לפנות ישירות עם פרופיל מנהיגה בולטת.',
+    approach_note: 'מקבלת פניות על מנהיגות נשית. הצג נשים בדרך למנהיגות.',
+  },
+  {
+    name: 'קרן חרמון',
+    approach: 'DIRECT_APPROACH',
+    submission_instructions: 'צפון הארץ, ספורט קהילתי. פנה דרך גורמים מקומיים בצפון.',
+    approach_note: 'פנה דרך גורמים מקומיים בצפון — אין אתר ציבורי.',
+  },
+];
+
+/**
+ * Quick lookup: get approach strategy for a funder by name (fuzzy match).
+ * Returns null if no match found.
+ */
+export function getFunderApproachMeta(funderName: string): FunderApproachMeta | null {
+  if (!funderName) return null;
+  const normalized = funderName.trim().toLowerCase();
+  return FUNDER_APPROACH_CATALOG.find(f =>
+    f.name.toLowerCase().includes(normalized) ||
+    normalized.includes(f.name.toLowerCase())
+  ) || null;
+}
+
+/**
+ * Returns a user-facing message about how to approach a funder.
+ * Blocks RFP_ONLY funders from showing a "contact" CTA.
+ */
+export function getFunderOutreachGuidance(funderName: string): {
+  canDirectApproach: boolean;
+  message: string;
+  contactDetails?: { name?: string; email?: string; url?: string; instructions?: string };
+} {
+  const meta = getFunderApproachMeta(funderName);
+
+  if (!meta || meta.approach === 'UNKNOWN') {
+    return {
+      canDirectApproach: false,
+      message: 'לא נמצא מידע מאומת על דרך הפנייה לקרן זו. מומלץ לבדוק באתר הרשמי לפני כל פנייה.',
+    };
+  }
+
+  if (meta.approach === 'RFP_ONLY') {
+    return {
+      canDirectApproach: false,
+      message: meta.approach_note || 'קרן זו מפרסמת קולות קוראים בלבד — אין טעם לפנות בפנייה חופשית. עקוב אחר הפרסומים הרשמיים.',
+      contactDetails: meta.submission_url ? { url: meta.submission_url } : undefined,
+    };
+  }
+
+  // DIRECT_APPROACH
+  return {
+    canDirectApproach: true,
+    message: meta.approach_note || 'ניתן לפנות ישירות לקרן זו.',
+    contactDetails: {
+      name: meta.contact_name,
+      email: meta.contact_email,
+      url: meta.submission_url,
+      instructions: meta.submission_instructions,
+    },
+  };
+}
+
 export const ISRAELI_FUNDERS_INTELLIGENCE = `
 ===== 50 קרנות ישראליות מרכזיות — DNA ומודיעין =====
 
 כלל ברזל: סכומים ודדליינים מדויקים — בדוק תמיד בזמן אמת (Tavily). מה שמופיע כאן הוא DNA יציב: מה הקרן מאמינה, מה היא קוראת לקרן מנצחת, מה פוסל אוטומטית.
+כלל גישה: לפני כל פנייה — בדוק את strategy_type. קרן מסוג RFP_ONLY = אסור לפנות חופשי, רק לקולות קוראים. DIRECT_APPROACH = הצג פרטי קשר מאומתים בלבד.
 
 == קרנות פרטיות גדולות ==
 

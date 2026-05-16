@@ -3,8 +3,16 @@
 // Multi-tenant: all data is aggregated anonymously across orgs
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getFunderApproachMeta, type FunderApproachStrategy } from './israeli-funders';
 
 // ===== Types =====
+
+/**
+ * Approach strategy for a funder:
+ * - RFP_ONLY: publishes open calls only — never cold-contact. System blocks free-form outreach.
+ * - DIRECT_APPROACH: accepts rolling/LOI outreach — system shows exact contact details.
+ */
+export type FunderApproachStrategy = 'RFP_ONLY' | 'DIRECT_APPROACH' | 'UNKNOWN';
 
 export interface FunderProfile {
   funder_name: string;
@@ -24,6 +32,16 @@ export interface FunderProfile {
   funder_style?: string;
   writing_tips?: string;
   approval_rate?: number; // computed
+
+  // === Approach Strategy (NEW) ===
+  approach_strategy: FunderApproachStrategy;
+  contact_name?: string;          // real person name, not generic info@
+  contact_email?: string;         // verified direct email
+  contact_phone?: string;
+  submission_url?: string;        // direct link to form / portal
+  submission_instructions?: string; // special rules: "LOI first", "Rotary member required", etc.
+  approach_validated?: boolean;   // was contact info verified by AI/human?
+  approach_validated_at?: string; // ISO date
 }
 
 export interface OutcomeSignal {
@@ -164,6 +182,26 @@ export async function buildFunderProfiles(): Promise<{ created: number; updated:
       .limit(1)
       .single();
 
+    // Resolve approach strategy from catalog first, then auto-detect
+    const catalogMeta = getFunderApproachMeta(funderName);
+    let approachStrategy: FunderApproachStrategy = catalogMeta?.approach ?? 'UNKNOWN';
+
+    // Auto-detect from submission method if catalog has no entry
+    if (!catalogMeta && detectedSubmissionMethod) {
+      if (detectedSubmissionMethod === 'Portal') approachStrategy = 'RFP_ONLY';
+      else if (detectedSubmissionMethod === 'LOI' || detectedSubmissionMethod === 'Email') approachStrategy = 'DIRECT_APPROACH';
+    }
+
+    // Validate email: reject generic/spam addresses
+    const isValidContactEmail = (email: string | null): boolean => {
+      if (!email) return false;
+      const lower = email.toLowerCase();
+      const genericPrefixes = ['info@', 'office@', 'contact@', 'mail@', 'admin@', 'support@', 'webmaster@', 'noreply@', 'postmaster@'];
+      if (genericPrefixes.some(p => lower.startsWith(p))) return false;
+      if (!lower.includes('@') || !lower.includes('.')) return false;
+      return true;
+    };
+
     const profile: Record<string, unknown> = {
       funder_name: funderName,
       company_id: matchedCompany?.id || null,
@@ -174,10 +212,26 @@ export async function buildFunderProfiles(): Promise<{ created: number; updated:
       typical_amount_max: typicalMax,
       recurring_months: [...months].sort((a, b) => a - b),
       funder_style: style,
+      approach_strategy: approachStrategy,
       updated_at: new Date().toISOString(),
     };
-    // Only set contact_email and submission_method if discovered (don't overwrite existing)
-    if (detectedEmail) profile.contact_email = detectedEmail;
+
+    // Merge catalog contact data (trusted) — catalog wins over scraped data
+    if (catalogMeta) {
+      if (catalogMeta.contact_name) profile.contact_name = catalogMeta.contact_name;
+      if (catalogMeta.contact_email) profile.contact_email = catalogMeta.contact_email;
+      if (catalogMeta.submission_url) profile.submission_url = catalogMeta.submission_url;
+      if (catalogMeta.submission_instructions) profile.submission_instructions = catalogMeta.submission_instructions;
+      if (catalogMeta.contact_email) {
+        profile.approach_validated = true;
+        profile.approach_validated_at = new Date().toISOString();
+      }
+    } else {
+      // Only set scraped contact_email if it passes validation
+      if (isValidContactEmail(detectedEmail)) profile.contact_email = detectedEmail;
+    }
+
+    // Only set submission_method if discovered (don't overwrite existing)
     if (detectedSubmissionMethod) profile.submission_method = detectedSubmissionMethod;
 
     const { error } = await supabase
