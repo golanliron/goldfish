@@ -37,6 +37,10 @@
     {
       "path": "/api/cron/worker",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/process-documents",
+      "schedule": "0 * * * *"
     }
   ]
 }
