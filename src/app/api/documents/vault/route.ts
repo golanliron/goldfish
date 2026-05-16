@@ -14,8 +14,8 @@ import { REQUIRED_VAULT_DOCS } from '@/lib/vault-docs';
 export { REQUIRED_VAULT_DOCS };
 
 function detectDocType(filename: string, parsedText?: string | null): string | null {
-  // Test filename + first 500 chars of parsed content for better Hebrew doc detection
-  const text = `${filename} ${parsedText?.slice(0, 500) || ''}`;
+  // Search filename + full parsed text (up to 5000 chars) — Hebrew doc keywords can appear anywhere
+  const text = `${filename} ${parsedText?.slice(0, 5000) || ''}`;
   for (const req of REQUIRED_VAULT_DOCS) {
     if (req.pattern.test(text)) return req.key;
   }
@@ -27,9 +27,9 @@ export const GET = withAuth(async (_req, auth) => {
 
   const { data: docs, error } = await supabase
     .from('documents')
-    .select('id, filename, category, file_type, uploaded_at, metadata, storage_path, parsed_text')
+    .select('id, filename, category, file_type, uploaded_at, metadata, storage_path, parsed_text, status')
     .eq('org_id', auth.orgId)
-    .eq('status', 'ready')
+    .in('status', ['ready', 'processing'])
     .order('uploaded_at', { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -45,8 +45,9 @@ export const GET = withAuth(async (_req, auth) => {
     // then fall back to pattern-matching filename + parsed_text content
     const meta = (doc.metadata as Record<string, string>) || {};
     const storedVaultKey = meta.vault_key || null;
+    const parsedText = (doc as unknown as { parsed_text?: string | null }).parsed_text ?? null;
     const detectedVaultKey = storedVaultKey
-      ?? detectDocType(doc.filename, (doc as Record<string, unknown>).parsed_text as string | null);
+      ?? detectDocType(doc.filename, parsedText);
 
     return {
       id: doc.id,

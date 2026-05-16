@@ -142,7 +142,7 @@ function chunkText(text: string, maxChars: number = 2000): string[] {
 
 // Match by filename OR by content snippet (first 1000 chars)
 function detectVaultDocType(filename: string, contentSnippet?: string): typeof REQUIRED_VAULT_DOCS[number] | null {
-  const combined = `${filename} ${contentSnippet?.slice(0, 1000) || ''}`;
+  const combined = `${filename} ${contentSnippet?.slice(0, 5000) || ''}`;
   for (const req of REQUIRED_VAULT_DOCS) {
     if (req.pattern.test(combined)) return req;
   }
@@ -165,7 +165,7 @@ async function validateVaultDoc(text: string, filename: string): Promise<VaultVa
     return { vaultKey: null, vaultLabel: null, isGenuine: true, expiryDate: null, isExpired: false, warning: null };
   }
 
-  const snippet = text.slice(0, 3000);
+  const snippet = text.slice(0, 6000);
 
   // Ask Gemini: verify doc type + extract expiry date
   const prompt = `אתה מומחה לניתוח מסמכים רשמיים ישראליים.
