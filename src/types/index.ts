@@ -130,6 +130,7 @@ export interface Opportunity {
   eligibility: string | null;
   how_to_apply: string | null;
   contact_info: string | null;
+  full_content: string | null;
   active: boolean;
   scraped_at: string;
 }
