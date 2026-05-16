@@ -148,7 +148,7 @@ export const GET = withAuth(async (req, auth) => {
         .filter(m => !m.isNegativeMatch && m.score >= 50)
         .sort((a, b) => b.score - a.score);
 
-      matches = scored;
+      matches = scored as unknown as typeof matches;
     }
   }
 
