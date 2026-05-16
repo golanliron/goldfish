@@ -20,6 +20,13 @@ import { chunkText } from '@/lib/utils/text';
 export const maxDuration = 300;
 
 export async function GET(request: NextRequest) {
+  // Allow manual trigger with ?secret=goldfish or Vercel cron (no secret needed)
+  const secret = request.nextUrl.searchParams.get('secret');
+  const isCron = request.headers.get('x-vercel-cron') === '1';
+  if (!isCron && secret !== 'goldfish') {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const batch = parseInt(request.nextUrl.searchParams.get('batch') || '15');
   const supabase = createAdminClient();
 
