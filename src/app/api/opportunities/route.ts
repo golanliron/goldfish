@@ -18,6 +18,8 @@ export const GET = withAuth(async (req, auth) => {
       .from('opportunities')
       .select('*')
       .eq('active', true)
+      .not('url', 'is', null)
+      .neq('url', '')
       .order('deadline', { ascending: true, nullsFirst: false })
       .limit(500),
     orgId
@@ -49,7 +51,8 @@ export const GET = withAuth(async (req, auth) => {
   const opportunities = (oppRes.data || []).filter(
     (o: Record<string, unknown>) =>
       (!o.deadline || String(o.deadline) >= today) &&
-      o.type !== 'fund' // funds belong in the companies/funds tab, not here
+      o.type !== 'fund' && // funds belong in the companies/funds tab, not here
+      (o.url || o.application_url) // חייב לינק — בלי URL לא מציגים
   );
 
   // Pre-load funder intelligence for all active opportunities (used in scoring + display)
