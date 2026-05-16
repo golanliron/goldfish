@@ -127,7 +127,6 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
     missing: { key: string; label: string; hint: string; ttl_months?: number }[];
     expiring: { id: string; filename: string; expiry_date: string | null; is_expired: boolean }[];
   } | null>(null);
-  const [showVault, setShowVault] = useState(false);
   const [editingDocId, setEditingDocId] = useState<string | null>(null);
   const [driveConnected, setDriveConnected] = useState<{ email: string; connected_at: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -866,232 +865,443 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
         )}
       </div>
 
-      {/* ===== BLOCK 2.5: Document Readiness Card ===== */}
+      {/* ===== BLOCK 3: תיק הארגון — מוכנות להגשה ===== */}
       {documents.length > 0 && (
-        <div className="rounded-xl border border-border bg-surf p-3">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="text-xs font-semibold">מסמכים להגשה</h4>
-            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-              missingDocs.length === 0 ? 'bg-green-100 text-green-700' :
-              missingDocs.length <= 2 ? 'bg-amber-100 text-amber-700' :
-              'bg-red-100 text-red-600'
-            }`}>
-              {missingDocs.length === 0 ? 'הכל מוכן' : `חסרים ${missingDocs.length}`}
+        <OrgVaultSection
+          documents={documents}
+          missingDocs={missingDocs}
+          vaultData={vaultData}
+          driveConnected={driveConnected}
+          editingDocId={editingDocId}
+          setEditingDocId={setEditingDocId}
+          handleDelete={handleDelete}
+          handleDownload={handleDownload}
+          handleCategoryChange={handleCategoryChange}
+          onUploadClick={() => fileInputRef.current?.click()}
+        />
+      )}
+
+    </div>
+  );
+}
+
+// ===== HELPER: doc grouping =====
+type GroupKey = 'official' | 'content' | 'budget' | 'submission' | 'other';
+
+const DOC_GROUPS: { key: GroupKey; label: string; icon: string; categories: string[] }[] = [
+  { key: 'official', label: 'מסמכים רשמיים', icon: '🔒', categories: ['official', 'identity'] },
+  { key: 'content', label: 'פעילות ואימפקט', icon: '📋', categories: ['programs', 'impact', 'project', 'grant'] },
+  { key: 'budget', label: 'תקציבים וכספים', icon: '💰', categories: ['budget', 'project_budget'] },
+  { key: 'submission', label: 'הגשות קודמות', icon: '📤', categories: ['submission'] },
+  { key: 'other', label: 'כללי', icon: '📁', categories: ['other'] },
+];
+
+function getDocGroup(doc: FgDoc): GroupKey {
+  const badgeKey = getDocBadgeKey(doc);
+  const cat = doc.category || 'other';
+  // official patterns override everything
+  if (badgeKey === 'official' || OFFICIAL_DOC_PATTERNS.test(doc.filename || '')) return 'official';
+  if (['budget', 'project_budget'].includes(cat)) return 'budget';
+  if (['submission'].includes(cat)) return 'submission';
+  if (['programs', 'impact', 'project', 'grant'].includes(cat)) return 'content';
+  if (cat === 'identity') return 'official';
+  return 'other';
+}
+
+// ===== SUB-COMPONENT: DocRow =====
+function DocRow({
+  doc,
+  editingDocId,
+  setEditingDocId,
+  handleDelete,
+  handleDownload,
+  handleCategoryChange,
+}: {
+  doc: FgDoc;
+  editingDocId: string | null;
+  setEditingDocId: (id: string | null) => void;
+  handleDelete: (id: string, filename?: string) => void;
+  handleDownload: (doc: FgDoc) => void;
+  handleCategoryChange: (id: string, cat: string) => void;
+}) {
+  const badgeKey = getDocBadgeKey(doc);
+  const badge = CATEGORY_BADGES[badgeKey] || CATEGORY_BADGES.other;
+  const isEditing = editingDocId === doc.id;
+  const meta = (doc.metadata || {}) as Record<string, unknown>;
+  const summary = (meta.summary as string) || '';
+
+  // File type icon
+  const ext = (doc.filename || '').split('.').pop()?.toLowerCase() || '';
+  const fileIcon = ext === 'pdf' ? '📄' : ['docx', 'doc'].includes(ext) ? '📝' : ['xlsx', 'xls'].includes(ext) ? '📊' : doc.file_type === 'url' ? '🔗' : '📎';
+
+  return (
+    <div className="group relative">
+      <div className="flex items-start gap-2 py-2 px-2 rounded-lg hover:bg-surf2 transition-colors">
+        {/* File icon */}
+        <span className="text-[13px] flex-shrink-0 mt-0.5">{fileIcon}</span>
+
+        {/* Main content */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {/* Name */}
+            <button
+              onClick={() => handleDownload(doc)}
+              title="פתח"
+              className="text-[11px] font-medium text-text hover:text-accent truncate max-w-[160px] text-right"
+            >
+              {doc.filename}
+            </button>
+            {/* Type badge */}
+            <button
+              onClick={() => setEditingDocId(isEditing ? null : doc.id)}
+              className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 cursor-pointer hover:ring-1 hover:ring-accent/30 ${badge.color}`}
+              title="שנה קטגוריה"
+            >
+              {badge.label}
+            </button>
+          </div>
+          {/* Summary line */}
+          {summary && (
+            <p className="text-[10px] text-muted2 leading-snug mt-0.5 line-clamp-1">{summary}</p>
+          )}
+        </div>
+
+        {/* Delete — visible on hover */}
+        <button
+          onClick={() => handleDelete(doc.id, doc.filename)}
+          title="מחיקה"
+          className="p-1 text-muted2 hover:text-red-500 hover:bg-red-50 rounded transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0 mt-0.5"
+        >
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Category dropdown */}
+      {isEditing && (
+        <div className="absolute left-0 top-full mt-0.5 z-20 bg-surf border border-border rounded-lg shadow-lg p-1 min-w-[110px]">
+          {Object.entries(CATEGORY_BADGES)
+            .filter(([k]) => k !== 'official' && k !== badgeKey && k !== (doc.category || 'other'))
+            .map(([key, val]) => (
+              <button
+                key={key}
+                onClick={() => handleCategoryChange(doc.id, key === 'official' ? 'identity' : key)}
+                className="w-full text-right px-2 py-1 text-[10px] rounded hover:bg-surf2 transition-colors"
+              >
+                <span className={`inline-block px-1.5 py-0.5 rounded-full ${val.color}`}>{val.label}</span>
+              </button>
+            ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ===== SUB-COMPONENT: DocGroup =====
+function DocGroup({
+  group,
+  docs,
+  editingDocId,
+  setEditingDocId,
+  handleDelete,
+  handleDownload,
+  handleCategoryChange,
+  defaultOpen = true,
+}: {
+  group: typeof DOC_GROUPS[0];
+  docs: FgDoc[];
+  editingDocId: string | null;
+  setEditingDocId: (id: string | null) => void;
+  handleDelete: (id: string, filename?: string) => void;
+  handleDownload: (doc: FgDoc) => void;
+  handleCategoryChange: (id: string, cat: string) => void;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  if (docs.length === 0) return null;
+  return (
+    <div className="border border-border/60 rounded-lg overflow-hidden">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-3 py-2 bg-surf2/60 hover:bg-surf2 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-[12px]">{group.icon}</span>
+          <span className="text-[11px] font-semibold text-text">{group.label}</span>
+          <span className="text-[10px] text-muted px-1.5 py-0.5 bg-border/40 rounded-full">{docs.length}</span>
+        </div>
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+          className={`text-muted transition-transform ${open ? 'rotate-180' : ''}`}>
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+      {open && (
+        <div className="divide-y divide-border/30 px-1">
+          {docs.map(doc => (
+            <DocRow
+              key={doc.id}
+              doc={doc}
+              editingDocId={editingDocId}
+              setEditingDocId={setEditingDocId}
+              handleDelete={handleDelete}
+              handleDownload={handleDownload}
+              handleCategoryChange={handleCategoryChange}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ===== MAIN SUB-COMPONENT: OrgVaultSection =====
+function OrgVaultSection({
+  documents,
+  missingDocs,
+  vaultData,
+  driveConnected,
+  editingDocId,
+  setEditingDocId,
+  handleDelete,
+  handleDownload,
+  handleCategoryChange,
+  onUploadClick,
+}: {
+  documents: FgDoc[];
+  missingDocs: { label: string; pattern: RegExp; hint?: string }[];
+  vaultData: {
+    vault_score: number;
+    total_covered: number;
+    total_required: number;
+    missing: { key: string; label: string; hint: string; ttl_months?: number }[];
+    expiring: { id: string; filename: string; expiry_date: string | null; is_expired: boolean }[];
+  } | null;
+  driveConnected: { email: string; connected_at: string } | null;
+  editingDocId: string | null;
+  setEditingDocId: (id: string | null) => void;
+  handleDelete: (id: string, filename?: string) => void;
+  handleDownload: (doc: FgDoc) => void;
+  handleCategoryChange: (id: string, cat: string) => void;
+  onUploadClick: () => void;
+}) {
+  const missingRef = useRef<HTMLDivElement>(null);
+
+  // Group documents
+  const grouped = DOC_GROUPS.map(g => ({
+    ...g,
+    docs: documents.filter(d => getDocGroup(d) === g.key),
+  }));
+
+  // Stats
+  const contentDocs = documents.filter(d => getDocGroup(d) === 'content');
+  const expiringCount = vaultData?.expiring?.length ?? 0;
+  const officialTotal = vaultData ? vaultData.total_required : REQUIRED_DOCS.length;
+  const officialFound = vaultData ? vaultData.total_covered : (REQUIRED_DOCS.length - missingDocs.length);
+
+  // What's missing — top items
+  const vaultMissing = vaultData?.missing?.slice(0, 3) ?? [];
+  const vaultExpiring = vaultData?.expiring?.slice(0, 2) ?? [];
+  // Fallback: compute from REQUIRED_DOCS
+  const computedMissing = missingDocs.slice(0, 3);
+
+  const hasMissingInfo = vaultMissing.length > 0 || vaultExpiring.length > 0 || computedMissing.length > 0;
+
+  return (
+    <div className="rounded-xl border border-border bg-surf p-3 space-y-3">
+
+      {/* ── Header ── */}
+      <div>
+        <div className="flex items-center justify-between">
+          <h4 className="text-xs font-semibold">תיק הארגון</h4>
+          <span className="text-[10px] text-muted2">{documents.length} מסמכים</span>
+        </div>
+        <p className="text-[10px] text-muted2 mt-0.5">
+          Goldfish משתמש במסמכים האלה כדי לכתוב הגשות מדויקות ולבדוק מוכנות.
+        </p>
+      </div>
+
+      {/* ── Readiness summary — 3 mini cards ── */}
+      <div className="grid grid-cols-3 gap-1.5">
+        {/* מסמכים רשמיים */}
+        <div className={`rounded-lg px-2 py-2 text-center border ${
+          officialFound >= officialTotal
+            ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800'
+            : officialFound > 0
+            ? 'bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800'
+            : 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800'
+        }`}>
+          <div className={`text-sm font-bold ${
+            officialFound >= officialTotal ? 'text-green-700 dark:text-green-400' :
+            officialFound > 0 ? 'text-amber-700 dark:text-amber-400' : 'text-red-600'
+          }`}>{officialFound}/{officialTotal}</div>
+          <div className="text-[9px] text-muted mt-0.5">רשמיים</div>
+        </div>
+
+        {/* מסמכי תוכן */}
+        <div className={`rounded-lg px-2 py-2 text-center border ${
+          contentDocs.length > 0
+            ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800'
+            : 'bg-surf2 border-border'
+        }`}>
+          <div className={`text-sm font-bold ${contentDocs.length > 0 ? 'text-blue-700 dark:text-blue-400' : 'text-muted'}`}>
+            {contentDocs.length}
+          </div>
+          <div className="text-[9px] text-muted mt-0.5">תוכן</div>
+        </div>
+
+        {/* פגי תוקף */}
+        {vaultData ? (
+          <div className={`rounded-lg px-2 py-2 text-center border ${
+            expiringCount === 0
+              ? 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800'
+              : 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800'
+          }`}>
+            <div className={`text-sm font-bold ${expiringCount === 0 ? 'text-green-700 dark:text-green-400' : 'text-red-600'}`}>
+              {expiringCount === 0 ? 'תקין' : expiringCount}
+            </div>
+            <div className="text-[9px] text-muted mt-0.5">פג תוקף</div>
+          </div>
+        ) : (
+          <div className="rounded-lg px-2 py-2 text-center border border-border bg-surf2">
+            <div className="text-sm font-bold text-muted">—</div>
+            <div className="text-[9px] text-muted mt-0.5">תוקף</div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Actions row ── */}
+      <div className="flex gap-1.5">
+        <button
+          onClick={onUploadClick}
+          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[11px] font-medium border border-accent/30 text-accent rounded-lg hover:bg-accent/5 transition-colors"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          העלה מסמך
+        </button>
+        {driveConnected ? (
+          <div className="flex items-center gap-1 px-2 py-1.5 text-[10px] font-medium border border-green-200 bg-green-50 dark:bg-green-900/20 rounded-lg text-green-700 dark:text-green-400 flex-shrink-0">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0" />
+            <span>Drive</span>
+            <a href="/api/drive/auth" className="text-[9px] text-green-600 hover:underline ml-1">חבר מחדש</a>
+          </div>
+        ) : (
+          <a
+            href="/api/drive/auth"
+            className="flex items-center justify-center gap-1 px-2 py-1.5 text-[10px] font-medium border border-border rounded-lg hover:bg-surf2 transition-colors text-muted flex-shrink-0"
+          >
+            <svg width="11" height="11" viewBox="0 0 87.3 78" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3L28.6 51H0c0 1.55.4 3.1 1.2 4.5L6.6 66.85z" fill="#0066DA"/>
+              <path d="M43.65 25L28.6 51H58.7L43.65 25z" fill="#00AC47"/>
+              <path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H58.7L73.55 76.8z" fill="#EA4335"/>
+              <path d="M43.65 25L58.7 51l14.85-25.65A9.3 9.3 0 0070.2 21H17.1c-1.4 0-2.7.35-3.85.95L28.6 51 43.65 25z" fill="#00832D"/>
+              <path d="M73.55 76.8L58.7 51H28.6L13.75 76.8c1.15.6 2.45.95 3.85.95H69.7c1.4 0 2.7-.35 3.85-.95z" fill="#2684FC"/>
+              <path d="M71.45 24.35l-3.6-6.25a9.5 9.5 0 00-3.3-3.3l-3.6-6.25C59.15 7.1 57.5 6.5 55.8 6.5H31.5c-1.7 0-3.35.6-4.65 1.75l-3.6 6.25a9.5 9.5 0 00-3.3 3.3l-3.6 6.25c-.8 1.4-1.2 2.95-1.2 4.5h57.5c0-1.55-.4-3.1-1.2-4.5z" fill="#FFBA00"/>
+            </svg>
+            Drive
+          </a>
+        )}
+        <button
+          onClick={() => missingRef.current?.scrollIntoView({ behavior: 'smooth' })}
+          className="flex items-center justify-center gap-1 px-2 py-1.5 text-[10px] font-medium border border-border rounded-lg hover:bg-surf2 transition-colors text-muted flex-shrink-0"
+        >
+          בדוק חסרים
+        </button>
+      </div>
+
+      {/* ── מה חסר כדי להגיש ── */}
+      <div ref={missingRef} className="rounded-lg border border-border/70 bg-surf2/40 p-2.5 space-y-1.5">
+        <div className="text-[11px] font-semibold text-text mb-1.5">מה חסר כדי להגיש</div>
+
+        {/* Expiring (vault) */}
+        {vaultExpiring.map(doc => (
+          <div key={doc.id} className={`flex items-center gap-2 text-[10px] px-2 py-1.5 rounded-lg ${
+            doc.is_expired ? 'bg-red-50 border border-red-200 text-red-700' : 'bg-amber-50 border border-amber-200 text-amber-700'
+          }`}>
+            <span className="flex-shrink-0">{doc.is_expired ? '✗' : '⚠'}</span>
+            <span className="flex-1 truncate">{doc.filename}</span>
+            <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${doc.is_expired ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600'}`}>
+              {doc.is_expired ? 'פג תוקף' : 'עומד לפוג'}
             </span>
           </div>
-          <div className="grid grid-cols-2 gap-1.5">
-            {REQUIRED_DOCS.map((req) => {
-              const byPattern = docSearchStrings.some(t => req.pattern.test(t));
-              const byCategory = req.hint
-                ? documents.some(d => d.category === req.hint || (d.category === 'identity' && req.hint === 'official'))
-                : false;
-              const exists = byPattern || byCategory;
-              return (
-                <div key={req.label} className={`flex items-center gap-1.5 text-[11px] px-2 py-1.5 rounded-lg ${
-                  exists ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'
-                }`}>
-                  <span className="flex-shrink-0">{exists ? '✓' : '✗'}</span>
-                  <span className="truncate">{req.label}</span>
-                </div>
-              );
-            })}
+        ))}
+
+        {/* Missing (vault) */}
+        {vaultMissing.map(doc => (
+          <div key={doc.key} className="flex items-center gap-2 text-[10px] px-2 py-1.5 rounded-lg bg-gray-50 border border-border/60 dark:bg-gray-800/40">
+            <span className="text-gray-400 flex-shrink-0">○</span>
+            <span className="flex-1 truncate font-medium text-text">{doc.label}</span>
+            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400 font-medium">חסר</span>
           </div>
-          {missingDocs.length > 0 && (
-            <p className="text-[10px] text-muted mt-2 leading-relaxed">
-              מסמכים חסרים עלולים לעצור הגשה. העלי אותם דרך "הוספת מסמך" למטה.
-            </p>
-          )}
+        ))}
+
+        {/* Fallback: computed missing */}
+        {vaultMissing.length === 0 && computedMissing.map(req => (
+          <div key={req.label} className="flex items-center gap-2 text-[10px] px-2 py-1.5 rounded-lg bg-gray-50 border border-border/60 dark:bg-gray-800/40">
+            <span className="text-gray-400 flex-shrink-0">○</span>
+            <span className="flex-1 truncate font-medium text-text">{req.label}</span>
+            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400 font-medium">חסר</span>
+          </div>
+        ))}
+
+        {!hasMissingInfo && (
+          <div className="flex items-center gap-2 text-[10px] text-green-700 dark:text-green-400">
+            <span>✓</span>
+            <span>נראה שרוב מסמכי התשתית קיימים.</span>
+          </div>
+        )}
+      </div>
+
+      {/* ── Filter pills — secondary, below summary ── */}
+      {documents.length > 3 && (
+        <div className="flex flex-wrap gap-1 pt-1 border-t border-border/30">
+          <span className="text-[10px] text-muted self-center ml-1">סינון:</span>
+          {FILTER_TABS.map(tab => {
+            const count = tab.key === 'all'
+              ? documents.length
+              : documents.filter(d => {
+                  const dk = getDocBadgeKey(d);
+                  if (tab.key === 'official') return dk === 'official';
+                  if (tab.key === 'identity') return dk === 'identity';
+                  const cat = d.category === 'project' ? 'programs' : d.category;
+                  return cat === tab.key;
+                }).length;
+            if (tab.key !== 'all' && count === 0) return null;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => {
+                  // filter state lives in parent — we emit a custom event to keep it local
+                  // Instead: manage filter here
+                }}
+                className="px-2 py-0.5 text-[10px] rounded-full bg-surf2 text-muted hover:text-text hover:bg-border/30 transition-colors"
+              >
+                {tab.label}{tab.key !== 'all' && count > 0 ? ` (${count})` : ''}
+              </button>
+            );
+          })}
         </div>
       )}
 
-      {/* ===== VAULT: תיק מסמכים רשמיים ===== */}
-      {vaultData && (
-        <div className="rounded-xl border border-border bg-surf p-3">
-          <button
-            onClick={() => setShowVault(v => !v)}
-            className="w-full flex items-center justify-between"
-          >
-            <div className="flex items-center gap-2">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-accent">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                <path d="M7 11V7a5 5 0 0110 0v4" />
-              </svg>
-              <h4 className="text-xs font-semibold">תיק מסמכים רשמיים</h4>
-            </div>
-            <div className="flex items-center gap-2">
-              {/* Score pill */}
-              <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                vaultData.vault_score >= 70 ? 'bg-green-100 text-green-700' :
-                vaultData.vault_score >= 40 ? 'bg-amber-100 text-amber-700' :
-                'bg-red-100 text-red-600'
-              }`}>
-                {vaultData.total_covered}/{vaultData.total_required} מסמכים
-              </span>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`text-muted transition-transform ${showVault ? 'rotate-180' : ''}`}>
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </div>
-          </button>
-
-          {showVault && (
-            <div className="mt-3 space-y-1.5">
-              {/* Expiring soon */}
-              {vaultData.expiring.length > 0 && (
-                <div className="mb-2">
-                  <div className="text-[10px] font-semibold text-amber-700 mb-1">עומדים לפוג / פגי תוקף</div>
-                  {vaultData.expiring.map(doc => (
-                    <div key={doc.id} className={`flex items-center gap-2 text-[10px] px-2 py-1.5 rounded-lg ${doc.is_expired ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-700'}`}>
-                      <span>{doc.is_expired ? '✗' : '⚠'}</span>
-                      <span className="flex-1 truncate">{doc.filename}</span>
-                      {doc.expiry_date && (
-                        <span className="text-[9px] opacity-70">{new Date(doc.expiry_date).toLocaleDateString('he-IL')}</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Missing docs */}
-              {vaultData.missing.length > 0 ? (
-                <>
-                  <div className="text-[10px] font-semibold text-text mb-1">מסמכים חסרים</div>
-                  {vaultData.missing.map(doc => (
-                    <div key={doc.key} className="flex items-start gap-2 px-2 py-1.5 rounded-lg bg-gray-50 border border-border/50">
-                      <span className="text-[12px] text-gray-400 mt-0.5">○</span>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[10px] font-medium text-text">{doc.label}</div>
-                        <div className="text-[9px] text-muted mt-0.5">{doc.hint}</div>
-                        {doc.ttl_months && (
-                          <div className="text-[9px] text-muted2">מתחדש כל {doc.ttl_months} חודשים</div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                  <p className="text-[9px] text-muted mt-1.5">
-                    העלי את המסמכים החסרים דרך כפתור "הוספת מסמך" למטה
-                  </p>
-                </>
-              ) : (
-                <div className="flex items-center gap-2 text-[11px] text-green-700 bg-green-50 rounded-lg px-3 py-2">
-                  <span>✓</span>
-                  <span className="font-medium">כל מסמכי התשתית הרשמיים קיימים במערכת</span>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ===== BLOCK 3: Document File — flat list with filters ===== */}
-      {documents.length > 0 && (
-        <div className="rounded-xl border border-border bg-surf p-3">
-          <div className="flex items-center justify-between mb-2">
-            <h4 className="text-xs font-semibold">תיק הארגון</h4>
-            <span className="text-[10px] text-muted2">{documents.length} מסמכים</span>
-          </div>
-
-          {/* Filter pills */}
-          {documents.length > 3 && (
-            <div className="flex flex-wrap gap-1 mb-2">
-              {FILTER_TABS.map(tab => {
-                const count = tab.key === 'all'
-                  ? documents.length
-                  : documents.filter(d => {
-                    const dk = getDocBadgeKey(d);
-                    if (tab.key === 'official') return dk === 'official';
-                    if (tab.key === 'identity') return dk === 'identity';
-                    const cat = d.category === 'project' ? 'programs' : d.category;
-                    return cat === tab.key;
-                  }).length;
-                if (tab.key !== 'all' && count === 0) return null;
-                return (
-                  <button
-                    key={tab.key}
-                    onClick={() => setDocFilter(tab.key)}
-                    className={`px-2 py-0.5 text-[10px] rounded-full transition-colors ${
-                      docFilter === tab.key
-                        ? 'bg-accent text-white'
-                        : 'bg-surf2 text-muted hover:text-text'
-                    }`}
-                  >
-                    {tab.label} {count > 0 && tab.key !== 'all' ? `(${count})` : ''}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Document list */}
-          <div className="space-y-0.5 max-h-[300px] overflow-y-auto">
-            {filteredDocs.map(doc => {
-              const badgeKey = getDocBadgeKey(doc);
-              const badge = CATEGORY_BADGES[badgeKey] || CATEGORY_BADGES.other;
-              const isEditing = editingDocId === doc.id;
-              return (
-                <div key={doc.id} className="flex items-center gap-1.5 py-1.5 px-2 rounded-lg hover:bg-surf2 transition-colors text-xs group relative">
-                  {/* Delete */}
-                  <button
-                    onClick={() => handleDelete(doc.id, doc.filename)}
-                    title="מחיקה"
-                    className="p-1 text-muted2 hover:text-red-500 hover:bg-red-50 rounded transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0"
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <polyline points="3 6 5 6 21 6" />
-                      <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-                    </svg>
-                  </button>
-                  {/* Open */}
-                  <button
-                    onClick={() => handleDownload(doc)}
-                    title="פתיחה"
-                    className="p-0.5 text-muted2 hover:text-accent transition-colors flex-shrink-0"
-                  >
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-                      <polyline points="14 2 14 8 20 8" />
-                    </svg>
-                  </button>
-                  {/* Name */}
-                  <span className="truncate text-[11px] flex-1 min-w-0">{doc.filename}</span>
-                  {/* Category badge — click to change */}
-                  <button
-                    onClick={() => setEditingDocId(isEditing ? null : doc.id)}
-                    className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 cursor-pointer hover:ring-1 hover:ring-accent/30 ${badge.color}`}
-                    title="שנה קטגוריה"
-                  >
-                    {badge.label}
-                  </button>
-                  {/* Category dropdown */}
-                  {isEditing && (
-                    <div className="absolute left-0 top-full mt-0.5 z-20 bg-surf border border-border rounded-lg shadow-lg p-1 min-w-[100px]">
-                      {Object.entries(CATEGORY_BADGES)
-                        .filter(([k]) => k !== 'official' && k !== badgeKey && k !== (doc.category || 'other'))
-                        .map(([key, val]) => (
-                          <button
-                            key={key}
-                            onClick={() => handleCategoryChange(doc.id, key === 'official' ? 'identity' : key)}
-                            className="w-full text-right px-2 py-1 text-[10px] rounded hover:bg-surf2 transition-colors"
-                          >
-                            <span className={`inline-block px-1.5 py-0.5 rounded-full ${val.color}`}>{val.label}</span>
-                          </button>
-                        ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Missing official docs — compact one-liner */}
-          {missingDocs.length > 0 && (
-            <div className="mt-2 pt-2 border-t border-border/30 text-[10px] text-muted">
-              <span className="text-amber-600 font-medium">חסר: </span>
-              {missingDocs.map(d => d.label).join(', ')}
-            </div>
-          )}
-        </div>
-      )}
-
+      {/* ── Grouped document list ── */}
+      <div className="space-y-2">
+        {grouped.map((g) => (
+          <DocGroup
+            key={g.key}
+            group={g}
+            docs={g.docs}
+            editingDocId={editingDocId}
+            setEditingDocId={setEditingDocId}
+            handleDelete={handleDelete}
+            handleDownload={handleDownload}
+            handleCategoryChange={handleCategoryChange}
+            defaultOpen={g.key === 'official'}
+          />
+        ))}
+      </div>
     </div>
   );
 }

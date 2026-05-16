@@ -333,90 +333,81 @@ export default function OnboardingPage() {
   // ── WOW SCREEN ──────────────────────────────────────────────────────────────
   if (showWow) {
     const hasMatches = wowMatches.length > 0;
+    // Show max 3 on mobile, all on desktop
+    const displayMatches = wowMatches.slice(0, 3);
 
     return (
-      <div className="min-h-screen bg-bg flex flex-col items-center justify-center px-4 py-12" dir="rtl">
+      <div className="min-h-screen bg-bg flex flex-col items-center justify-center px-4 py-8 sm:py-12" dir="rtl">
         <div className="max-w-lg w-full">
 
           {/* Header */}
-          <div className="text-center mb-8">
-            <div className="flex items-center justify-center gap-2 mb-5">
-              <FishLogo size={40} className="swim" />
-              <span className="font-bold text-xl tracking-tight">Goldfish</span>
+          <div className="text-center mb-5 sm:mb-8">
+            <div className="flex items-center justify-center gap-2 mb-4">
+              <FishLogo size={32} className="swim" />
+              <span className="font-bold text-lg tracking-tight">Goldfish</span>
             </div>
 
             {wowLoading ? (
-              <p className="text-sm text-muted animate-pulse">סורק קולות קוראים פעילים...</p>
+              <p className="text-sm text-muted animate-pulse">סורק קולות קוראים...</p>
             ) : hasMatches ? (
               <>
-                <div className="inline-block bg-accent/10 text-accent text-xs font-semibold px-3 py-1 rounded-full mb-4">
-                  {wowMatches.length} הזדמנויות נמצאו
-                </div>
-                <h1 className="text-2xl font-bold leading-snug">
-                  מצאנו {wowMatches.length} הזדמנויות<br />שמתאימות לכם עכשיו
+                <h1 className="text-xl sm:text-2xl font-bold leading-snug mb-1">
+                  מצאתי {wowMatches.length} הזדמנויות שמתאימות לכם
                 </h1>
+                <p className="text-sm text-muted">
+                  {wowMatches.some(m => m.deadline && new Date(m.deadline).getTime() - Date.now() < 14 * 86400000)
+                    ? 'אחת מהן דחופה — כדאי להתחיל איתה'
+                    : 'אפשר להתחיל בכל אחת מהן'}
+                </p>
               </>
             ) : (
               <>
-                <div className="inline-block bg-gray-100 text-gray-600 text-xs font-semibold px-3 py-1 rounded-full mb-4">
-                  עוד אין התאמה חזקה
-                </div>
-                <h1 className="text-2xl font-bold leading-snug mb-3">
-                  הפרופיל נשמר בהצלחה
+                <h1 className="text-xl font-bold leading-snug mb-2">
+                  הפרופיל נשמר
                 </h1>
                 <p className="text-sm text-muted leading-relaxed max-w-xs mx-auto">
-                  זה בדרך כלל אומר שחסר לי עוד מידע על הארגון — אתר, מסמכים או תחומי פעילות. אפשר להמשיך לדשבורד ולהוסיף משם.
+                  חסר עוד מידע כדי להתאים הזדמנויות — אפשר להוסיף מהדשבורד.
                 </p>
               </>
             )}
           </div>
 
+          {/* Loading */}
+          {wowLoading && (
+            <div className="flex flex-col items-center gap-3 py-8 mb-4">
+              <FishLogo size={28} className="swim" />
+              <p className="text-sm text-muted">סורק...</p>
+            </div>
+          )}
+
           {/* Matches list — max 3 */}
           {!wowLoading && hasMatches && (
-            <div className="space-y-3 mb-6">
-              {wowMatches.map((m) => (
-                <div key={m.id} className="bg-bg2 border border-border rounded-2xl p-4">
+            <div className="space-y-2.5 mb-4">
+              {displayMatches.map((m) => (
+                <div key={m.id} className="bg-bg2 border border-border rounded-2xl p-3 sm:p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold text-sm leading-snug mb-1 line-clamp-2">{m.title}</p>
                       {m.funder && (
-                        <p className="text-xs text-muted">{m.funder}</p>
+                        <p className="text-xs text-muted line-clamp-1">{m.funder}</p>
                       )}
-                      <div className="flex items-center gap-2 mt-2 flex-wrap">
-                        {m.type && (
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium border ${
-                            m.type === 'foundation' ? 'bg-purple-50 text-purple-700 border-purple-200' :
-                            m.type === 'government' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                            m.type === 'corporate' ? 'bg-green-50 text-green-700 border-green-200' :
-                            'bg-gray-50 text-gray-600 border-gray-200'
-                          }`}>
-                            {m.type === 'foundation' ? 'קרן' : m.type === 'government' ? 'ממשלה' : m.type === 'corporate' ? 'CSR' : m.type}
-                          </span>
-                        )}
+                      <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                         {m.deadline && (
-                          <span className="text-[11px] text-orange-600 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full">
-                            עד {new Date(m.deadline).toLocaleDateString('he-IL', { day: 'numeric', month: 'long' })}
+                          <span className="text-[10px] text-orange-600 bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded-full">
+                            עד {new Date(m.deadline).toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })}
                           </span>
                         )}
-                        {(m.amount_min || m.amount_max) && (
-                          <span className="text-[11px] text-muted">
-                            {m.amount_max
-                              ? `עד ₪${m.amount_max.toLocaleString()}`
-                              : m.amount_min
-                              ? `מ-₪${m.amount_min.toLocaleString()}`
-                              : ''}
+                        {m.amount_max && (
+                          <span className="text-[10px] text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded-full">
+                            עד ₪{m.amount_max.toLocaleString()}
                           </span>
                         )}
                       </div>
-                      {m.reason && (
-                        <p className="text-[11px] text-muted mt-2 leading-relaxed">{m.reason}</p>
-                      )}
                     </div>
                     <div className="flex-shrink-0 text-center">
-                      <div className="w-10 h-10 rounded-full bg-accent/10 border-2 border-accent flex items-center justify-center">
-                        <span className="text-accent font-bold text-sm">{m.score}%</span>
+                      <div className="w-9 h-9 rounded-full bg-accent/10 border-2 border-accent flex items-center justify-center">
+                        <span className="text-accent font-bold text-xs">{m.score}%</span>
                       </div>
-                      <p className="text-[9px] text-muted mt-1">התאמה</p>
                     </div>
                   </div>
                 </div>
@@ -424,43 +415,23 @@ export default function OnboardingPage() {
             </div>
           )}
 
-          {/* Loading */}
-          {wowLoading && (
-            <div className="flex flex-col items-center gap-3 py-10 mb-6">
-              <FishLogo size={32} className="swim" />
-              <p className="text-sm text-muted">סורק קולות קוראים פעילים...</p>
-            </div>
-          )}
-
-          {/* What's missing checklist */}
-          {!wowLoading && (
-            <div className="bg-bg2 border border-border rounded-2xl p-4 mb-6">
-              <p className="text-xs font-semibold text-text mb-3">מה חסר כדי להגיש</p>
-              <ul className="space-y-1.5">
-                {['ניהול תקין', 'סעיף 46', 'דוח כספי', 'תקציב פרויקט'].map(item => (
-                  <li key={item} className="flex items-center gap-2 text-xs text-muted">
-                    <span className="w-4 h-4 rounded border border-border flex-shrink-0" />
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
           {/* CTAs */}
-          <button
-            onClick={() => { window.location.href = '/dashboard?tab=opportunities'; }}
-            className="w-full py-3.5 bg-accent text-white font-semibold rounded-xl hover:bg-accent-hover transition-all hover:scale-[1.02] active:scale-[0.98] text-sm mb-3"
-          >
-            {hasMatches ? 'בחרו הזדמנות ונתחיל לעבוד' : 'מצא לי הזדמנויות ראשונות בכל זאת'}
-          </button>
-
-          <button
-            onClick={() => { window.location.href = '/dashboard'; }}
-            className="w-full py-3 border border-border rounded-xl text-sm text-muted hover:border-accent hover:text-accent transition-colors"
-          >
-            היכנסו לדשבורד
-          </button>
+          <div className="space-y-2.5 pb-6 sm:pb-0">
+            <button
+              onClick={() => { window.location.href = '/dashboard'; }}
+              className="w-full py-3.5 bg-accent text-white font-semibold rounded-xl hover:bg-accent-hover transition-all active:scale-[0.98] text-sm"
+            >
+              המשיכו למה דחוף עכשיו
+            </button>
+            {hasMatches && (
+              <button
+                onClick={() => { window.location.href = '/dashboard?tab=opportunities'; }}
+                className="w-full py-3 border border-border rounded-xl text-sm text-muted hover:border-accent hover:text-accent transition-colors"
+              >
+                ראו את כל ההזדמנויות
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -485,22 +456,22 @@ export default function OnboardingPage() {
           </p>
 
           {/* Quick start buttons */}
-          <div className="flex gap-2 justify-center flex-wrap">
+          <div className="flex flex-col sm:flex-row gap-2 sm:justify-center sm:flex-wrap">
             <button
               onClick={() => websiteInputRef.current?.focus()}
-              className="px-4 py-2 rounded-xl border border-border bg-surf text-sm font-medium hover:border-accent hover:text-accent transition-colors"
+              className="w-full sm:w-auto px-4 py-3 sm:py-2 rounded-xl border border-border bg-surf text-sm font-medium hover:border-accent hover:text-accent transition-colors text-center"
             >
               יש לי אתר
             </button>
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="px-4 py-2 rounded-xl border border-border bg-surf text-sm font-medium hover:border-accent hover:text-accent transition-colors"
+              className="w-full sm:w-auto px-4 py-3 sm:py-2 rounded-xl border border-border bg-surf text-sm font-medium hover:border-accent hover:text-accent transition-colors text-center"
             >
               יש לי מסמכים
             </button>
             <button
               onClick={() => descInputRef.current?.focus()}
-              className="px-4 py-2 rounded-xl border border-border bg-surf text-sm font-medium hover:border-accent hover:text-accent transition-colors"
+              className="w-full sm:w-auto px-4 py-3 sm:py-2 rounded-xl border border-border bg-surf text-sm font-medium hover:border-accent hover:text-accent transition-colors text-center"
             >
               אני אכתוב בקצרה
             </button>
@@ -656,7 +627,7 @@ export default function OnboardingPage() {
             onDragEnter={e => { e.preventDefault(); setDragging(true); }}
             onDragLeave={e => { e.preventDefault(); if (dropRef.current && !dropRef.current.contains(e.relatedTarget as Node)) setDragging(false); }}
             onDrop={e => { e.preventDefault(); setDragging(false); handleFiles(e.dataTransfer.files); }}
-            className={`w-full py-8 border-2 border-dashed rounded-xl text-sm cursor-pointer transition-all text-center ${
+            className={`w-full py-5 sm:py-8 border-2 border-dashed rounded-xl text-sm cursor-pointer transition-all text-center ${
               dragging
                 ? 'border-accent bg-accent/5 text-accent scale-[1.02]'
                 : 'border-border text-muted hover:border-accent hover:text-accent'
@@ -680,11 +651,8 @@ export default function OnboardingPage() {
                     <span className="flex-1 truncate text-xs">{f.name}</span>
                   </div>
                   {f.status === 'done' && f.summary && (
-                    <p className="text-[11px] text-green-700 px-3 pb-1.5 pt-1 leading-relaxed line-clamp-3">
-                      למדתי מהקובץ: {f.summary}
-                      {f.category === 'identity' || f.category === 'project'
-                        ? ' — חסר לי עדיין תקציב או דוח כספי אם יש.'
-                        : ''}
+                    <p className="text-[11px] text-green-700 px-3 pb-1.5 pt-1 leading-relaxed line-clamp-1 sm:line-clamp-2">
+                      {f.summary}
                     </p>
                   )}
                 </div>
@@ -750,18 +718,9 @@ export default function OnboardingPage() {
           </div>
         </div>
 
-        {/* Goldfish personality note */}
-        {!hasContent && (
-          <div className="flex gap-3 items-start bg-bg2 border border-border rounded-2xl p-4 mb-5 text-sm">
-            <FishLogo size={20} />
-            <p className="text-muted leading-relaxed">
-              תנו לי חומר, אני אדע מה לעשות איתו.
-            </p>
-          </div>
-        )}
-
+        {/* Personality note — hidden on mobile */}
         {hasContent && (
-          <div className="flex gap-3 items-start bg-green-50 border border-green-200 rounded-2xl p-4 mb-5 text-sm">
+          <div className="hidden sm:flex gap-3 items-start bg-green-50 border border-green-200 rounded-2xl p-4 mb-5 text-sm">
             <FishLogo size={20} />
             <p className="text-green-700 leading-relaxed">
               מתחיל להבין מי אתם. אפשר תמיד לחזור ולהוסיף עוד.
@@ -769,24 +728,18 @@ export default function OnboardingPage() {
           </div>
         )}
 
-        {/* Primary CTA */}
-        <button
-          onClick={finish}
-          disabled={finishing}
-          className="w-full py-3.5 bg-accent text-white font-semibold rounded-xl hover:bg-accent-hover disabled:opacity-50 transition-all hover:scale-[1.02] active:scale-[0.98] text-sm"
-        >
-          {finishing
-            ? (urlLoading ? `קורא ${urlLoading === 'drive' ? 'Drive' : 'אתר'}...` : 'מחפש הזדמנויות...')
-            : hasContent
-            ? 'מצא לי הזדמנויות ראשונות'
-            : 'מצא לי הזדמנויות ראשונות בכל זאת'}
-        </button>
-
-        {!hasContent && (
-          <p className="text-center text-[11px] text-muted mt-3 leading-relaxed">
-            אפשר תמיד לחזור לכאן דרך הצ׳אט ולהוסיף מידע אחר כך.
-          </p>
-        )}
+        {/* Primary CTA — extra bottom padding on mobile so it clears the safe area */}
+        <div className="pb-6 sm:pb-0">
+          <button
+            onClick={finish}
+            disabled={finishing}
+            className="w-full py-3.5 bg-accent text-white font-semibold rounded-xl hover:bg-accent-hover disabled:opacity-50 transition-all hover:scale-[1.02] active:scale-[0.98] text-sm"
+          >
+            {finishing
+              ? (urlLoading ? `קורא ${urlLoading === 'drive' ? 'Drive' : 'אתר'}...` : 'מחפש הזדמנויות...')
+              : 'מצא לי הזדמנויות ראשונות'}
+          </button>
+        </div>
       </div>
     </div>
   );

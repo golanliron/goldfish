@@ -963,22 +963,14 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
         <p className="text-[10px] text-muted leading-snug mb-2 line-clamp-2">{match.reasoning}</p>
       )}
 
-      {/* 3 primary actions */}
-      <div className="flex gap-1.5 mt-2" onClick={e => e.stopPropagation()}>
-        {/* 1. Analyze in chat */}
-        <button
-          onClick={handleAnalyzeInChat}
-          className="flex-1 py-1.5 text-[10px] font-medium bg-surf2 border border-border text-muted rounded-lg hover:text-accent hover:border-accent/40 transition-colors"
-        >
-          נתח בצ׳אט
-        </button>
-
-        {/* 2. Create draft — primary */}
+      {/* Actions */}
+      <div className="mt-2 space-y-1.5" onClick={e => e.stopPropagation()}>
+        {/* Primary: Create draft — full width */}
         {orgId && (
           <button
             onClick={handlePrepareDraft}
             disabled={draftState !== 'idle' && draftState !== 'error'}
-            className="flex-[2] py-1.5 text-[11px] font-bold bg-orange-500 text-white rounded-lg hover:bg-orange-600 active:scale-[0.98] transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+            className="w-full py-2 text-[12px] font-bold bg-orange-500 text-white rounded-lg hover:bg-orange-600 active:scale-[0.98] transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
           >
             {(draftState === 'parsing' || draftState === 'analyzing' || draftState === 'generating') ? (
               <>
@@ -988,33 +980,41 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
             ) : draftState === 'done' ? (
               '✓ הטיוטה מוכנה'
             ) : (
-              'צור טיוטה לעריכה'
+              'צור טיוטה לעריכה ←'
             )}
           </button>
         )}
 
-        {/* 3. Open source / Google fallback */}
-        {sourceHref ? (
-          <a
-            href={sourceHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={e => e.stopPropagation()}
-            className="flex-1 py-1.5 text-[10px] font-bold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-center"
+        {/* Secondary actions row */}
+        <div className="flex gap-1.5">
+          <button
+            onClick={handleAnalyzeInChat}
+            className="flex-1 py-1.5 text-[10px] font-medium bg-surf2 border border-border text-muted rounded-lg hover:text-accent hover:border-accent/40 transition-colors"
           >
-            🔗 לקול הקורא
-          </a>
-        ) : (
-          <a
-            href={`https://www.google.com/search?q=${encodeURIComponent(opp.title + ' ' + (opp.funder || ''))}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={e => e.stopPropagation()}
-            className="flex-1 py-1.5 text-[10px] font-medium bg-surf2 border border-border text-muted rounded-lg hover:text-accent hover:border-accent/40 transition-colors text-center"
-          >
-            חפש בגוגל
-          </a>
-        )}
+            נתח בצ׳אט
+          </button>
+          {sourceHref ? (
+            <a
+              href={sourceHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={e => e.stopPropagation()}
+              className="flex-1 py-1.5 text-[10px] font-medium bg-surf2 border border-border text-muted rounded-lg hover:text-accent hover:border-accent/40 transition-colors text-center"
+            >
+              פתח מקור
+            </a>
+          ) : (
+            <a
+              href={`https://www.google.com/search?q=${encodeURIComponent(opp.title + ' ' + (opp.funder || ''))}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={e => e.stopPropagation()}
+              className="flex-1 py-1.5 text-[10px] font-medium bg-surf2 border border-border text-muted rounded-lg hover:text-accent hover:border-accent/40 transition-colors text-center"
+            >
+              חפש בגוגל
+            </a>
+          )}
+        </div>
       </div>
 
       {/* Draft done state — share URL */}
