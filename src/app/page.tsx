@@ -97,8 +97,8 @@ const STATS = [
 
 const ADVANTAGES = [
   {
-    title: 'חוסך 90% מהזמן',
-    desc: 'מה שלוקח 3 שעות חיפוש + 2 ימי כתיבה, Goldfish עושה בדקות.',
+    title: 'מוצא מה רלוונטי',
+    desc: 'לא עוד רשימת קולות קוראים. Goldfish מדרג לפי הארגון שלכם.',
     icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
         <circle cx="12" cy="12" r="10" />
@@ -107,8 +107,8 @@ const ADVANTAGES = [
     ),
   },
   {
-    title: 'מכיר 75 מקורות מימון',
-    desc: 'ממשלתי, פרטי, בינלאומי, עסקי. Goldfish מכסה את כולם.',
+    title: 'בודק אם אפשר להגיש',
+    desc: 'מסמכים, דדליין, התאמה, ומה חסר לפני שמתחילים.',
     icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
         <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" />
@@ -116,8 +116,8 @@ const ADVANTAGES = [
     ),
   },
   {
-    title: 'לא שוכח כלום',
-    desc: 'מעלים מסמך פעם אחת. Goldfish זוכר כל מספר, כל פרויקט, כל הישג.',
+    title: 'כותב טיוטה ראשונה',
+    desc: 'טיוטת הגשה עם נתונים מהמסמכים שלכם, לא טקסט גנרי.',
     icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
         <path d="M12 2L2 7l10 5 10-5-10-5z" />
@@ -127,8 +127,8 @@ const ADVANTAGES = [
     ),
   },
   {
-    title: 'התאמה אישית 100%',
-    desc: 'כל קול קורא מקבל ציון התאמה לפי הנתונים של הארגון שלך. לא סתם רשימה.',
+    title: 'זוכר את הארגון',
+    desc: 'כל מסמך שאתם מעלים הופך לחלק מהידע של Goldfish.',
     icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
         <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
@@ -136,7 +136,7 @@ const ADVANTAGES = [
     ),
   },
   {
-    title: 'כותב בלי בולשיט',
+    title: 'כותב בלי בלאבלא',
     desc: 'מספרים, עובדות, מבנה ברור. לא "אנו שמחים להגיש", אלא תכלס.',
     icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -148,7 +148,7 @@ const ADVANTAGES = [
     ),
   },
   {
-    title: 'שומר על דדליינים',
+    title: 'מתריע לפני הדדליין',
     desc: 'לוח שנה חי. התראות. אף הזדמנות לא נופלת בין הכיסאות.',
     icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -294,7 +294,7 @@ export default function LandingPage() {
       {/* Hero */}
       <section className="relative z-10 max-w-4xl mx-auto px-6 pt-20 pb-12 text-center">
         <div className="absolute top-6 right-6 bg-accent/10 backdrop-blur-sm border border-accent/30 rounded-full px-4 py-1.5 text-xs text-accent font-medium fade-up shadow-sm">
-          9 מתוך 10 עמותות לא יודעות על קולות קוראים שמתאימים להן.
+          קול קורא טוב לא עוזר אם גיליתם אותו אחרי הדדליין.
         </div>
         {/* Glow behind fish */}
         <div className="relative w-fit mx-auto mb-8 fade-up">
@@ -305,16 +305,18 @@ export default function LandingPage() {
           <FishLogo size={110} className="swim relative" />
         </div>
 
-        <h1 className="text-5xl sm:text-6xl md:text-7xl font-extrabold leading-tight mb-3 tracking-tight fade-up" style={{ animationDelay: '0.15s' }}>
-          Goldfish
+        <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold leading-tight mb-3 tracking-tight fade-up" style={{ animationDelay: '0.15s' }}>
+          גיוס משאבים לעמותות, בלי לפספס הזדמנויות.
         </h1>
-        <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold leading-tight mb-2 shimmer-text fade-up" style={{ animationDelay: '0.3s' }}>
-          דג זהב שדג מענקים מהמים
-        </h2>
-        <p className="text-sm text-muted mb-8 fade-up" style={{ animationDelay: '0.35s' }}>סורק · מתאים · כותב הגשות</p>
+        <p className="text-sm text-muted mb-4 fade-up" style={{ animationDelay: '0.25s' }}>
+          <span className="font-semibold text-accent">Goldfish</span> — דג זהב שדג מענקים מהמים
+        </p>
 
-        <p className="text-lg sm:text-xl text-text2 max-w-2xl mx-auto mb-12 leading-relaxed fade-up" style={{ animationDelay: '0.45s' }}>
-          מכיר את הארגון שלך בעל פה. סורק מאות קולות קוראים כל יום. יודע בדיוק מה מתאים לך. וכותב הגשות שקרנות לא יכולות לסרב להן.
+        <p className="text-lg sm:text-xl text-text2 max-w-2xl mx-auto mb-4 leading-relaxed fade-up" style={{ animationDelay: '0.35s' }}>
+          Goldfish קורא את מסמכי הארגון, מוצא קולות קוראים וקרנות שמתאימים לכם, ומכין טיוטות הגשה עם הנתונים האמיתיים שלכם.
+        </p>
+        <p className="text-sm text-muted mb-10 fade-up" style={{ animationDelay: '0.45s' }}>
+          תעלו אתר או מסמך. תוך דקות תדעו מה מתאים, מה דחוף, ומה חסר כדי להגיש.
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3 fade-up" style={{ animationDelay: '0.6s' }}>
@@ -323,7 +325,7 @@ export default function LandingPage() {
             className="group w-full sm:w-auto px-8 py-4 bg-accent text-white font-semibold rounded-2xl text-base hover:bg-accent-hover transition-all hover:shadow-xl hover:shadow-accent/25 hover:scale-105 active:scale-95"
           >
             <span className="flex items-center justify-center gap-2">
-              התחילו עכשיו
+              מצא לי הזדמנויות
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="transition-transform group-hover:-translate-x-1">
                 <line x1="19" y1="12" x2="5" y2="12" />
                 <polyline points="12 19 5 12 12 5" />
@@ -331,10 +333,10 @@ export default function LandingPage() {
             </span>
           </button>
           <a
-            href="#pricing"
+            href="#how"
             className="w-full sm:w-auto px-8 py-4 border border-border text-text2 font-medium rounded-2xl text-base hover:bg-surf2 transition-all hover:border-accent/30"
           >
-            תוכניות ומחירים
+            ראו איך זה עובד
           </a>
         </div>
       </section>
@@ -366,14 +368,14 @@ export default function LandingPage() {
             {/* User message */}
             <div className="flex justify-start">
               <div className="bg-accent text-white rounded-2xl rounded-br-sm px-4 py-2.5 max-w-[75%] text-sm">
-                מי אתה בעצם?
+                העליתי אתר ומצגת. יש משהו שמתאים לנו?
               </div>
             </div>
 
             {/* Goldfish reply 1 */}
             <div className="flex justify-end gap-2">
               <div className="bg-surf2 border border-border rounded-2xl rounded-bl-sm px-4 py-3 max-w-[85%] text-sm leading-relaxed">
-                דג זהב. שוחה בין קרנות, ממשלות ותורמים. מכיר את כולם בשם. תשלחו חומרים. תקנון, דוחות, הגשות, מה שיש. אני קורא, מבין ומסווג. אחר כך נדבר תכלס.
+                כן. מצאתי 3 הזדמנויות רלוונטיות. אחת דחופה, דדליין בעוד 9 ימים. חסר לכם דוח כספי ואישור ניהול תקין כדי להגיש בלי להיתקע. אתחיל מהקול הקורא הכי מתאים.
               </div>
               <div className="w-7 h-7 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0 mt-auto">
                 <FishLogo size={18} />
@@ -383,66 +385,14 @@ export default function LandingPage() {
             {/* User message 2 */}
             <div className="flex justify-start">
               <div className="bg-accent text-white rounded-2xl rounded-br-sm px-4 py-2.5 max-w-[75%] text-sm">
-                ומה אתה יודע לעשות?
+                כן, תתחיל ממנו.
               </div>
             </div>
 
-            {/* Goldfish reply 2 - capabilities */}
+            {/* Goldfish reply 2 */}
             <div className="flex justify-end gap-2">
-              <div className="bg-surf2 border border-border rounded-2xl rounded-bl-sm px-4 py-3 max-w-[85%] text-sm leading-relaxed space-y-3">
-                <p>אני לא נחמד וגם לא מפרגן סתם. ככה זה:</p>
-                <div className="space-y-2">
-                  <div className="flex items-start gap-2.5">
-                    <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: 'rgba(238,122,48,0.1)' }}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#EE7A30" strokeWidth="2">
-                        <circle cx="11" cy="11" r="8" />
-                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                      </svg>
-                    </div>
-                    <div>
-                      <span className="font-semibold text-[13px]">מאתר</span>
-                      <span className="text-muted text-[13px]"> קולות קוראים שמותאמים בדיוק לארגון שלך</span>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-2.5">
-                    <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: 'rgba(238,122,48,0.1)' }}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#EE7A30" strokeWidth="2">
-                        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-                        <polyline points="14 2 14 8 20 8" />
-                      </svg>
-                    </div>
-                    <div>
-                      <span className="font-semibold text-[13px]">כותב</span>
-                      <span className="text-muted text-[13px]"> הגשות כמו מקצוען. מספרים, לא בלאבלא</span>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-2.5">
-                    <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: 'rgba(238,122,48,0.1)' }}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#EE7A30" strokeWidth="2">
-                        <path d="M12 2L2 7l10 5 10-5-10-5z" />
-                        <path d="M2 17l10 5 10-5" />
-                        <path d="M2 12l10 5 10-5" />
-                      </svg>
-                    </div>
-                    <div>
-                      <span className="font-semibold text-[13px]">מכיר</span>
-                      <span className="text-muted text-[13px]"> את הארגון שלך יותר טוב ממך</span>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-2.5">
-                    <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: 'rgba(238,122,48,0.1)' }}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#EE7A30" strokeWidth="2">
-                        <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-                        <line x1="12" y1="9" x2="12" y2="13" />
-                        <line x1="12" y1="17" x2="12.01" y2="17" />
-                      </svg>
-                    </div>
-                    <div>
-                      <span className="font-semibold text-[13px]">מעיר</span>
-                      <span className="text-muted text-[13px]"> דדליינים ודחיפות. לא מחכה שתשאלו</span>
-                    </div>
-                  </div>
-                </div>
+              <div className="bg-surf2 border border-border rounded-2xl rounded-bl-sm px-4 py-3 max-w-[85%] text-sm leading-relaxed">
+                אני מנתח את הדרישות ומכין טיוטה ראשונה לעריכה.
               </div>
               <div className="w-7 h-7 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0 mt-auto">
                 <FishLogo size={18} />
@@ -575,7 +525,7 @@ export default function LandingPage() {
         <RevealSection>
           <h2 className="text-2xl sm:text-3xl font-bold text-center mb-3">למה Goldfish?</h2>
           <p className="text-center text-muted mb-12 max-w-lg mx-auto">
-            6 סיבות לתת לדג עתיק לעשות את העבודה
+            מה שGoldfish עושה בפועל, צעד אחרי צעד
           </p>
         </RevealSection>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -609,18 +559,18 @@ export default function LandingPage() {
           {[
             {
               step: '1',
-              title: 'מעלים מסמכים',
-              desc: 'One pager, מצגת, דוח כספי. Goldfish קורא, מבין ומסווג אוטומטית.',
+              title: 'מעלים אתר או מסמך',
+              desc: 'מצגת, דוח שנתי, תקציב או הגשה קודמת.',
             },
             {
               step: '2',
-              title: 'מקבלים התאמות',
-              desc: 'ציון התאמה אישי לכל קול קורא. רואים מה שווה ומה לא.',
+              title: 'Goldfish מוצא התאמות',
+              desc: 'קולות קוראים, קרנות וחברות שמתאימות לפרופיל שלכם.',
             },
             {
               step: '3',
-              title: 'לוחצים "כתוב הגשה"',
-              desc: 'Goldfish קורא את הקול הקורא, ומוציא טיוטה מלאה. תוך דקות.',
+              title: 'מתחילים לעבוד',
+              desc: 'ניתוח קול קורא, בדיקת מסמכים, וטיוטת הגשה לעריכה.',
             },
           ].map((item, i) => (
             <RevealSection key={item.step} type="reveal-scale" delay={`stagger-${i + 1}`}>
@@ -667,9 +617,9 @@ export default function LandingPage() {
       {/* WhatsApp Bot section */}
       <section id="whatsapp" className="relative z-10 max-w-5xl mx-auto px-6 pb-24">
         <RevealSection>
-          <h2 className="text-2xl sm:text-3xl font-bold text-center mb-3">גם בוואטסאפ</h2>
+          <h2 className="text-2xl sm:text-3xl font-bold text-center mb-3">Goldfish גם בוואטסאפ</h2>
           <p className="text-center text-muted mb-12 max-w-lg mx-auto">
-            לא צריך לפתוח דפדפן. Goldfish עובד ישר מהוואטסאפ.
+            קבלו התראה כשיש קול קורא דחוף, שאלו מה חסר להגשה, ובקשו טיוטה בלי לפתוח מחשב.
           </p>
         </RevealSection>
 
@@ -693,7 +643,7 @@ export default function LandingPage() {
                 {/* User message */}
                 <div className="flex justify-start">
                   <div className="bg-white rounded-lg rounded-br-sm px-3 py-2 max-w-[80%] shadow-sm">
-                    <p className="text-[12px]">יש משהו חדש בשבילנו?</p>
+                    <p className="text-[12px]">יש קול קורא שמתאים לנו?</p>
                     <p className="text-[9px] text-gray-400 text-left mt-0.5">10:32</p>
                   </div>
                 </div>
@@ -702,11 +652,7 @@ export default function LandingPage() {
                 <div className="flex justify-end">
                   <div className="rounded-lg rounded-bl-sm px-3 py-2 max-w-[85%] shadow-sm" style={{ background: '#DCF8C6' }}>
                     <p className="text-[12px] leading-relaxed">
-                      כן. 3 קולות קוראים חדשים השבוע שמתאימים לכם:<br /><br />
-                      1. *משרד החינוך* טכנולוגיות למידה. ציון 91%. דדליין 30.06<br />
-                      2. *ג׳וינט תבת* תעסוקה בחינוך. ציון 87%. דדליין 08.07<br />
-                      3. *קק״ל* פרויקטים קהילתיים. ציון 83%<br /><br />
-                      רוצה שאכתוב טיוטה למשרד החינוך? זה הכי דחוף.
+                      יש קול קורא שמתאים לכם. דדליין בעוד 6 ימים. חסר דוח כספי. רוצה שאכין טיוטה?
                     </p>
                     <p className="text-[9px] text-gray-500 text-left mt-0.5">10:32</p>
                   </div>
@@ -774,9 +720,9 @@ export default function LandingPage() {
       {/* Marketplace Overview */}
       <section className="relative z-10 max-w-5xl mx-auto px-6 pb-24">
         <RevealSection>
-          <h2 className="text-2xl sm:text-3xl font-bold text-center mb-3">הכל במקום אחד</h2>
+          <h2 className="text-2xl sm:text-3xl font-bold text-center mb-3">לא עוד מאגר. רשימת עבודה.</h2>
           <p className="text-center text-muted mb-12 max-w-lg mx-auto">
-            411 קולות קוראים. 957 חברות וקרנות. Goldfish מחבר ביניהם.
+            Goldfish מדרג את ההזדמנויות לפי הארגון שלכם: מה מתאים, מה דחוף, ומה אפשר להגיש עכשיו.
           </p>
         </RevealSection>
 
@@ -875,7 +821,7 @@ export default function LandingPage() {
               <div className="text-center mb-6">
                 <span className="text-4xl font-extrabold" style={{ color: '#EE7A30' }}>750</span>
                 <span className="text-sm text-muted mr-1">₪ / חודש</span>
-                <p className="text-[11px] text-muted mt-1">או 6,000₪ לשנה</p>
+                <p className="text-[11px] text-muted mt-1">או 6,000₪ לשנה · פחות מעלות של טיוטת הגשה אחת בחודש</p>
               </div>
               <ul className="space-y-2.5 text-[13px] text-text2 mb-8 flex-1">
                 {[
@@ -905,7 +851,7 @@ export default function LandingPage() {
                 className="group w-full py-3 bg-accent text-white font-semibold rounded-xl text-base hover:bg-accent-hover transition-all hover:shadow-md hover:scale-[1.02] active:scale-95"
               >
                 <span className="flex items-center justify-center gap-2">
-                  התחילו עכשיו
+                  מצא לי הזדמנויות
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="transition-transform group-hover:-translate-x-1">
                     <line x1="19" y1="12" x2="5" y2="12" />
                     <polyline points="12 19 5 12 12 5" />
@@ -940,8 +886,8 @@ export default function LandingPage() {
         <div className="bg-surf border border-border rounded-3xl p-10 sm:p-14 border-glow relative overflow-hidden">
           <div className="absolute inset-0 opacity-[0.03]" style={{ background: 'radial-gradient(circle at center, #EE7A30, transparent 70%)' }} />
           <FishLogo size={56} className="swim mx-auto mb-6 relative" />
-          <h2 className="text-2xl sm:text-3xl font-bold mb-3 relative">750₪ בחודש. הדג שדג לך מענקים.</h2>
-          <p className="text-sm text-muted2 mb-1 relative">סורק, מתאים, כותב הגשות. כל יום, בלי לבזבז לך זמן.</p>
+          <h2 className="text-2xl sm:text-3xl font-bold mb-3 relative">תנו ל-Goldfish למצוא את ההזדמנות הראשונה שלכם.</h2>
+          <p className="text-sm text-muted2 mb-1 relative">העלו אתר או מסמך, וקבלו התאמות ראשונות תוך דקות.</p>
           <p className="text-muted mb-8 max-w-md mx-auto relative">
             בלי התחייבות. אפשר לבטל בכל רגע.
           </p>
@@ -950,7 +896,7 @@ export default function LandingPage() {
             className="group relative px-10 py-4 bg-accent text-white font-semibold rounded-2xl text-base hover:bg-accent-hover transition-all hover:shadow-xl hover:shadow-accent/25 hover:scale-105 active:scale-95"
           >
             <span className="flex items-center justify-center gap-2">
-              התחילו עכשיו
+              מצא לי הזדמנויות
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="transition-transform group-hover:-translate-x-1">
                 <line x1="19" y1="12" x2="5" y2="12" />
                 <polyline points="12 19 5 12 12 5" />
