@@ -292,37 +292,46 @@ export default function LandingPage() {
       </div>
 
       {/* Hero */}
-      <section className="relative z-10 max-w-4xl mx-auto px-6 pt-20 pb-12 text-center">
-        <div className="absolute top-6 right-6 bg-accent/10 backdrop-blur-sm border border-accent/30 rounded-full px-4 py-1.5 text-xs text-accent font-medium fade-up shadow-sm">
+      <section className="relative z-10 max-w-4xl mx-auto px-5 pt-10 sm:pt-20 pb-10 sm:pb-12 text-center">
+        {/* Badge — hidden on very small screens, shown sm+ */}
+        <div className="hidden sm:block absolute top-6 right-6 bg-accent/10 backdrop-blur-sm border border-accent/30 rounded-full px-4 py-1.5 text-xs text-accent font-medium fade-up shadow-sm">
           קול קורא טוב לא עוזר אם גיליתם אותו אחרי הדדליין.
         </div>
-        {/* Glow behind fish */}
-        <div className="relative w-fit mx-auto mb-8 fade-up">
-          <div
-            className="absolute -inset-16 rounded-full glow-pulse"
-            style={{ background: 'radial-gradient(circle, #EE7A30 0%, transparent 70%)' }}
-          />
-          <FishLogo size={110} className="swim relative" />
+        {/* Badge — mobile inline */}
+        <div className="sm:hidden inline-flex items-center gap-1.5 bg-accent/10 border border-accent/30 rounded-full px-3 py-1 text-[11px] text-accent font-medium mb-5 fade-up">
+          <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+          קול קורא טוב לא עוזר אם גיליתם אותו אחרי הדדליין.
         </div>
 
-        <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold leading-tight mb-3 tracking-tight fade-up" style={{ animationDelay: '0.15s' }}>
-          גיוס משאבים לעמותות, בלי לפספס הזדמנויות.
+        {/* Glow behind fish */}
+        <div className="relative w-fit mx-auto mb-5 sm:mb-8 fade-up">
+          <div
+            className="absolute -inset-12 sm:-inset-16 rounded-full glow-pulse"
+            style={{ background: 'radial-gradient(circle, #EE7A30 0%, transparent 70%)' }}
+          />
+          <FishLogo size={80} className="swim relative sm:hidden" />
+          <FishLogo size={110} className="swim relative hidden sm:block" />
+        </div>
+
+        <h1 className="text-3xl sm:text-5xl md:text-6xl font-extrabold leading-tight mb-3 tracking-tight fade-up" style={{ animationDelay: '0.15s' }}>
+          גיוס משאבים לעמותות,{' '}
+          <span className="block sm:inline">בלי לפספס הזדמנויות.</span>
         </h1>
-        <p className="text-sm text-muted mb-4 fade-up" style={{ animationDelay: '0.25s' }}>
+        <p className="text-xs sm:text-sm text-muted mb-4 fade-up" style={{ animationDelay: '0.25s' }}>
           <span className="font-semibold text-accent">Goldfish</span> — דג זהב שדג מענקים מהמים
         </p>
 
-        <p className="text-lg sm:text-xl text-text2 max-w-2xl mx-auto mb-4 leading-relaxed fade-up" style={{ animationDelay: '0.35s' }}>
+        <p className="text-base sm:text-xl text-text2 max-w-2xl mx-auto mb-3 leading-relaxed fade-up" style={{ animationDelay: '0.35s' }}>
           Goldfish קורא את מסמכי הארגון, מוצא קולות קוראים וקרנות שמתאימים לכם, ומכין טיוטות הגשה עם הנתונים האמיתיים שלכם.
         </p>
-        <p className="text-sm text-muted mb-10 fade-up" style={{ animationDelay: '0.45s' }}>
+        <p className="text-xs sm:text-sm text-muted mb-8 sm:mb-10 fade-up" style={{ animationDelay: '0.45s' }}>
           תעלו אתר או מסמך. תוך דקות תדעו מה מתאים, מה דחוף, ומה חסר כדי להגיש.
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3 fade-up" style={{ animationDelay: '0.6s' }}>
           <button
             onClick={() => router.push('/signup')}
-            className="group w-full sm:w-auto px-8 py-4 bg-accent text-white font-semibold rounded-2xl text-base hover:bg-accent-hover transition-all hover:shadow-xl hover:shadow-accent/25 hover:scale-105 active:scale-95"
+            className="group w-full sm:w-auto px-8 py-3.5 sm:py-4 bg-accent text-white font-semibold rounded-2xl text-base hover:bg-accent-hover transition-all hover:shadow-xl hover:shadow-accent/25 hover:scale-105 active:scale-95"
           >
             <span className="flex items-center justify-center gap-2">
               מצא לי הזדמנויות
@@ -334,7 +343,7 @@ export default function LandingPage() {
           </button>
           <a
             href="#how"
-            className="w-full sm:w-auto px-8 py-4 border border-border text-text2 font-medium rounded-2xl text-base hover:bg-surf2 transition-all hover:border-accent/30"
+            className="text-sm text-text2 font-medium py-2 hover:text-accent transition-colors underline underline-offset-2 sm:no-underline sm:px-8 sm:py-4 sm:border sm:border-border sm:rounded-2xl sm:hover:bg-surf2 sm:hover:border-accent/30"
           >
             ראו איך זה עובד
           </a>
@@ -374,7 +383,7 @@ export default function LandingPage() {
 
             {/* Goldfish reply 1 */}
             <div className="flex justify-end gap-2">
-              <div className="bg-surf2 border border-border rounded-2xl rounded-bl-sm px-4 py-3 max-w-[85%] text-sm leading-relaxed">
+              <div className="bg-surf2 border border-border rounded-2xl rounded-bl-sm px-4 py-3 max-w-[90%] text-sm leading-relaxed">
                 כן. מצאתי 3 הזדמנויות רלוונטיות. אחת דחופה, דדליין בעוד 9 ימים. חסר לכם דוח כספי ואישור ניהול תקין כדי להגיש בלי להיתקע. אתחיל מהקול הקורא הכי מתאים.
               </div>
               <div className="w-7 h-7 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0 mt-auto">
