@@ -993,27 +993,19 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
           >
             נתח בצ׳אט
           </button>
-          {sourceHref ? (
-            <a
-              href={sourceHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={e => e.stopPropagation()}
-              className="flex-1 py-1.5 text-[10px] font-medium bg-surf2 border border-border text-muted rounded-lg hover:text-accent hover:border-accent/40 transition-colors text-center"
-            >
-              פתח מקור
-            </a>
-          ) : (
-            <a
-              href={`https://www.google.com/search?q=${encodeURIComponent(opp.title + ' ' + (opp.funder || ''))}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={e => e.stopPropagation()}
-              className="flex-1 py-1.5 text-[10px] font-medium bg-surf2 border border-border text-muted rounded-lg hover:text-accent hover:border-accent/40 transition-colors text-center"
-            >
-              חפש בגוגל
-            </a>
-          )}
+          <a
+            href={sourceHref || `https://www.google.com/search?q=${encodeURIComponent(opp.title + ' ' + (opp.funder || ''))}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={e => e.stopPropagation()}
+            className="flex-1 py-1.5 text-[10px] font-medium bg-surf2 border border-border text-muted rounded-lg hover:text-accent hover:border-accent/40 transition-colors text-center flex items-center justify-center gap-1"
+            title={sourceHref ? 'פתח את קול הקורא המקורי' : 'חפש בגוגל'}
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+            </svg>
+            {sourceHref ? 'פתח מקור' : 'חפש בגוגל'}
+          </a>
         </div>
       </div>
 
