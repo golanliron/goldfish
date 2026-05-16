@@ -170,7 +170,7 @@ async function enrichCompanies() {
   // Priority: companies with website but no description, then companies without website
   const { data: withWebsite } = await supabase
     .from('companies')
-    .select('id, name, website, description, contact_email, contact_phone, interests, csr_rank')
+    .select('id, name, website, description, contact_email, contact_phone, contact_name, interests, csr_rank')
     .eq('company_type', 'business')
     .eq('active', true)
     .not('website', 'is', null)
@@ -179,7 +179,7 @@ async function enrichCompanies() {
 
   const { data: withoutWebsite } = await supabase
     .from('companies')
-    .select('id, name, website, description, contact_email, contact_phone, interests, csr_rank')
+    .select('id, name, website, description, contact_email, contact_phone, contact_name, interests, csr_rank')
     .eq('company_type', 'business')
     .eq('active', true)
     .is('website', null)
@@ -282,6 +282,9 @@ async function enrichCompanies() {
     } catch (e) {
       errors.push(`${company.name}: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
+
+    // Throttle: 1.5s between iterations to stay within Gemini + Jina rate limits
+    await new Promise(r => setTimeout(r, 1500));
   }
 
   // Log

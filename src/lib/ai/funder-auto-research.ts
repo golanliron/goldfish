@@ -130,7 +130,7 @@ async function extractFunderProfile(
   funderName: string,
   searchResults: SearchResult[]
 ): Promise<Omit<FunderResearchResult, 'found' | 'funderName' | 'sources' | 'savedToDb'>> {
-  if (!searchResults.length) return {};
+  if (!searchResults.length) return { approachStrategy: 'UNKNOWN' } as Omit<FunderResearchResult, 'found' | 'funderName' | 'sources' | 'savedToDb'>;
 
   const rawText = searchResults
     .map(r => `${r.title}\n${r.content}`)
@@ -172,7 +172,7 @@ ${rawText}
   try {
     const raw = await geminiCall(prompt, 600, 0.1);
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return {};
+    if (!jsonMatch) return { approachStrategy: 'UNKNOWN' } as Omit<FunderResearchResult, 'found' | 'funderName' | 'sources' | 'savedToDb'>;
     const parsed = JSON.parse(jsonMatch[0]);
 
     // Validate application_url — must be https, not just homepage
@@ -215,6 +215,7 @@ ${rawText}
       applicationUrl,
       submissionMethod,
       contactEmail,
+      approachStrategy: 'UNKNOWN' as const,
       focusAreas: parsed.focus_areas?.filter(Boolean) || [],
       targetPopulations: parsed.target_populations?.filter(Boolean) || [],
       regions: parsed.regions?.filter(Boolean) || [],
@@ -227,7 +228,7 @@ ${rawText}
       grantSizes: parsed.grant_sizes || undefined,
     };
   } catch {
-    return {};
+    return { approachStrategy: 'UNKNOWN' } as Omit<FunderResearchResult, 'found' | 'funderName' | 'sources' | 'savedToDb'>;
   }
 }
 
@@ -454,11 +455,11 @@ export async function autoResearchFunder(
   return {
     found: true,
     funderName,
+    ...profile,
     approachStrategy,
     approachBlocked: approachStrategy === 'RFP_ONLY'
       ? `${funderName} נראית כמפרסמת קולות קוראים בלבד — לא מומלץ לשלוח מייל קר.`
       : undefined,
-    ...profile,
     contactEmail: validatedEmail,
     matchAnalysis,
     dataQualityScore: qualityScore,
