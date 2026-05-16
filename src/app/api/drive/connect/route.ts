@@ -1,8 +1,6 @@
 import { NextRequest } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { geminiClassify, geminiExtract, geminiSummarize, geminiOcrPdf, geminiParseXlsx } from '@/lib/ai/gemini';
-import { embedBatch } from '@/lib/ai/rag';
-import { chunkText } from '@/lib/utils/text';
+import { geminiOcrPdf, geminiParseXlsx } from '@/lib/ai/gemini';
 
 export const maxDuration = 60;
 
@@ -380,41 +378,21 @@ async function processFiles(
       const text = await downloadAndParseDriveFile(file.id, file.name, file.mimeType, accessToken);
       if (text.length < 20) { failedNames.push(file.name); return; }
 
-      const [category, metadata, summary] = await Promise.all([
-        geminiClassify(text),
-        geminiExtract(text),
-        geminiSummarize(text),
-      ]);
-
       const fileType = file.mimeType?.includes('pdf') ? 'pdf'
         : file.mimeType?.includes('document') || file.mimeType?.includes('wordprocessing') ? 'docx'
         : file.mimeType?.includes('spreadsheet') ? 'xlsx' : 'other';
 
-      const { data: doc } = await supabase.from('documents').insert({
+      // Save immediately as 'processing' — no Gemini during import (avoids 504 on large folders)
+      await supabase.from('documents').insert({
         org_id: orgId,
         filename: file.name,
         file_type: fileType,
         storage_path: `drive://${file.id}`,
-        category,
+        category: 'other',
         parsed_text: text.slice(0, 50000),
-        metadata: { ...metadata, summary, drive_file_id: file.id, mime_type: file.mimeType },
-        status: 'ready',
-      }).select('id').single();
-
-      if (doc) {
-        const chunks = chunkText(text);
-        let embeddings: number[][] = [];
-        try { embeddings = await embedBatch(chunks); } catch { /* save without vectors */ }
-        for (let i = 0; i < chunks.length; i++) {
-          await supabase.from('document_chunks').insert({
-            document_id: doc.id,
-            org_id: orgId,
-            content: chunks[i],
-            embedding: embeddings[i] ?? null,
-            metadata: { category, filename: file.name, source: 'drive_oauth' },
-          });
-        }
-      }
+        metadata: { drive_file_id: file.id, mime_type: file.mimeType },
+        status: 'processing',
+      });
 
       successCount++;
     } catch (e) {
@@ -423,9 +401,9 @@ async function processFiles(
     }
   };
 
-  // Process in batches of 5 to stay within 60s timeout
-  for (let i = 0; i < supportedFiles.length; i += 5) {
-    await Promise.all(supportedFiles.slice(i, i + 5).map(processFile));
+  // Process in batches of 10 — no Gemini calls so fast enough
+  for (let i = 0; i < supportedFiles.length; i += 10) {
+    await Promise.all(supportedFiles.slice(i, i + 10).map(processFile));
   }
 
   const message = failedNames.length === 0
@@ -481,22 +459,14 @@ async function processFilesWithApiKey(
       try {
         const text = await downloadWithKey(file.id, file.name, file.mimeType);
         if (text.length < 20) { failedNames.push(file.name); return; }
-        const [category, metadata, summary] = await Promise.all([geminiClassify(text), geminiExtract(text), geminiSummarize(text)]);
-        const { data: doc } = await supabase.from('documents').insert({
+        // Save immediately as 'processing' — Gemini classify/embed runs via backfill cron
+        await supabase.from('documents').insert({
           org_id: orgId, filename: file.name, file_type: 'other',
-          storage_path: `drive://${file.id}`, category,
+          storage_path: `drive://${file.id}`, category: 'other',
           parsed_text: text.slice(0, 50000),
-          metadata: { ...metadata, summary, drive_file_id: file.id },
-          status: 'ready',
-        }).select('id').single();
-        if (doc) {
-          const chunks = chunkText(text);
-          let embeddings: number[][] = [];
-          try { embeddings = await embedBatch(chunks); } catch { /* */ }
-          for (let j = 0; j < chunks.length; j++) {
-            await supabase.from('document_chunks').insert({ document_id: doc.id, org_id: orgId, content: chunks[j], embedding: embeddings[j] ?? null, metadata: { category, filename: file.name, source: 'drive_apikey' } });
-          }
-        }
+          metadata: { drive_file_id: file.id },
+          status: 'processing',
+        });
         successCount++;
       } catch (e) { console.error(`Drive apikey file error [${file.name}]:`, e); failedNames.push(file.name); }
     }));
