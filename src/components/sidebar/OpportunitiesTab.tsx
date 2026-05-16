@@ -133,7 +133,7 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
   };
 
   const loadOpportunities = () => {
-    fetch(`/api/opportunities${orgId ? `?org_id=${orgId}` : ''}`)
+    fetch(`/api/opportunities${orgId ? `?org_id=${orgId}` : ''}`, { credentials: 'include' })
       .then(r => r.json())
       .then((data) => {
         const { taxonomy: tax, opportunities: opps, matches: m, profileCompleteness: pc, funderInfo: fi, upcomingRecurrences: ur } = data;
@@ -1173,7 +1173,7 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
                   onClick={e => {
                     e.stopPropagation();
                     setLoadingReadiness(true);
-                    fetch(`/api/opportunities/readiness?org_id=${orgId}&opportunity_id=${opp.id}`)
+                    fetch(`/api/opportunities/readiness?org_id=${orgId}&opportunity_id=${opp.id}`, { credentials: 'include' })
                       .then(r => r.json())
                       .then(data => { setReadiness(data as ReadinessData); setLoadingReadiness(false); })
                       .catch(() => setLoadingReadiness(false));
@@ -1270,7 +1270,7 @@ function DocProgressBar({ opportunityId, orgId }: { opportunityId: string; orgId
   const load = () => {
     if (data || loading) return;
     setLoading(true);
-    fetch(`/api/opportunities/doc-gap?org_id=${orgId}&opportunity_id=${opportunityId}`)
+    fetch(`/api/opportunities/doc-gap?org_id=${orgId}&opportunity_id=${opportunityId}`, { credentials: 'include' })
       .then(r => r.json())
       .then(d => { setData(d as DocGapData); setLoading(false); })
       .catch(() => setLoading(false));
@@ -1368,7 +1368,7 @@ function DocChecklist({ opportunityId, orgId }: { opportunityId: string; orgId: 
   const load = () => {
     if (data || loading) return;
     setLoading(true);
-    fetch(`/api/opportunities/doc-gap?org_id=${orgId}&opportunity_id=${opportunityId}`)
+    fetch(`/api/opportunities/doc-gap?org_id=${orgId}&opportunity_id=${opportunityId}`, { credentials: 'include' })
       .then(r => r.json())
       .then(d => { setData(d as DocGapData); setLoading(false); })
       .catch(() => setLoading(false));
