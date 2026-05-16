@@ -29,6 +29,18 @@ export default function SidebarPanel({ stage, orgId, initialTab }: SidebarPanelP
     if (initialTab) setActiveTab(initialTab);
   }, [initialTab]);
 
+  // Listen for tab switch events (e.g. from WhatUrgentNow dashboard cards)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const tab = (e as CustomEvent<string>).detail as SidebarTab;
+      if (tab && ['org', 'opportunities', 'business', 'foundations'].includes(tab)) {
+        setActiveTab(tab);
+      }
+    };
+    window.addEventListener('fishgold:activeTab', handler);
+    return () => window.removeEventListener('fishgold:activeTab', handler);
+  }, []);
+
   // On mobile, hide the tab bar (bottom nav handles it)
   const isMobileView = initialTab !== undefined;
 
