@@ -127,7 +127,19 @@ function DashboardInner({ children }: { children: React.ReactNode }) {
 
     const closeSidebar = () => switchTab('chat');
     window.addEventListener('fishgold:closeSidebar', closeSidebar);
-    return () => window.removeEventListener('fishgold:closeSidebar', closeSidebar);
+
+    const handleActiveTab = (e: Event) => {
+      const tab = (e as CustomEvent).detail;
+      if (tab && ['opportunities', 'org', 'business', 'foundations', 'chat', 'urgent'].includes(tab)) {
+        setMobileTab(tab);
+      }
+    };
+    window.addEventListener('fishgold:activeTab', handleActiveTab);
+
+    return () => {
+      window.removeEventListener('fishgold:closeSidebar', closeSidebar);
+      window.removeEventListener('fishgold:activeTab', handleActiveTab);
+    };
   }, []);
 
   if (loading) {
