@@ -116,6 +116,87 @@ const SOURCES = [
     url: 'https://www.gov.il/he/departments/topics/support-and-funding-for-public-institutions/govil-landing-page',
     funder: 'משרד האוצר',
   },
+  // Additional Israeli sources
+  {
+    name: 'משרד הנגב והגליל — קולות קוראים',
+    url: 'https://www.gov.il/he/departments/topics/negev-galil-programs/govil-landing-page',
+    funder: 'משרד הנגב, הגליל והחוסן הלאומי',
+  },
+  {
+    name: 'SocialMap — קולות קוראים',
+    url: 'https://socialmap.org.il/hakol-kore',
+    funder: '',
+  },
+  {
+    name: 'גיידסטאר — קולות קוראים',
+    url: 'https://www.guidestar.org.il/search-announcements',
+    funder: '',
+  },
+  {
+    name: 'שפ"י — שירות פסיכולוגי ייעוצי',
+    url: 'https://shefi.education.gov.il/publication/voices-calling/',
+    funder: 'שפ"י — משרד החינוך',
+  },
+  {
+    name: 'ג׳וינט — אלכא',
+    url: 'https://www.jdc.org.il/program/elka/',
+    funder: 'ג׳וינט ישראל',
+  },
+  {
+    name: 'קרן אבי חי',
+    url: 'https://avichai.org.il/grants/',
+    funder: 'קרן אבי חי',
+  },
+  {
+    name: 'קרן ברכה — מענקים',
+    url: 'https://www.berachafoundation.org/grants',
+    funder: 'קרן ברכה',
+  },
+  {
+    name: 'Hadassah Foundation',
+    url: 'https://hadassahfoundation.org/grants/',
+    funder: 'Hadassah Foundation',
+  },
+  {
+    name: 'Israel Grantwatch — נוער',
+    url: 'https://israel.grantwatch.com/cat/47/youth.html',
+    funder: '',
+  },
+  {
+    name: 'Israel Grantwatch — חינוך',
+    url: 'https://israel.grantwatch.com/cat/3/education.html',
+    funder: '',
+  },
+  {
+    name: 'Israel Grantwatch — שירותים חברתיים',
+    url: 'https://israel.grantwatch.com/cat/32/social-services.html',
+    funder: '',
+  },
+  {
+    name: 'משרד הרווחה — מכרזים ציבוריים',
+    url: 'https://www.gov.il/he/departments/topics/ministry-of-welfare-tenders/govil-landing-page',
+    funder: 'משרד הרווחה',
+  },
+  {
+    name: 'רשות החדשנות — כל הקולות',
+    url: 'https://innovationisrael.org.il/kol_kore/',
+    funder: 'רשות החדשנות',
+  },
+  {
+    name: 'Menomadin Foundation',
+    url: 'https://menomadinfoundation.com/he/grants/',
+    funder: 'Menomadin Foundation',
+  },
+  {
+    name: 'קרן מנדל — מלגות ותכניות',
+    url: 'https://www.mandelfoundation.org.il/programs',
+    funder: 'קרן מנדל',
+  },
+  {
+    name: 'UJA Federation NY — Israel Grants',
+    url: 'https://www.ujafedny.org/grants-and-scholarships/',
+    funder: 'UJA Federation New York',
+  },
 ];
 
 // ============================================================
