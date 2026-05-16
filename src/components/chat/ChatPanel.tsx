@@ -38,11 +38,12 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-const TAB_WELCOME: Record<string, string> = {
-  org: 'עברנו לפרופיל הארגון. כאן אתם יכולים להעלות עוד מסמכים, לינקים, מצגות. כאן נדייק את הארגון שלכם הכי טוב שיש. אם אני כותב משהו לא נכון — תדייקו אותי. ככל שאני מכיר יותר, ההגשות שלי חדות יותר.',
-  opportunities: 'עברנו להגשות. הנה הקולות הקוראים הפתוחים שמתאימים לפרופיל שלכם. שאלו אותי על קול קורא ספציפי, בקשו טיוטת הגשה, או תבדקו דדליינים.',
-  business: 'עברנו לחברות. אני יודע לחפש חברות שמתאימות לארגון שלכם, לנתח אותן, ולנסח מיילי פנייה שלא נשמעים כמו template.',
-  foundations: 'עברנו לקרנות ופדרציות. אני מכיר מאות קרנות ויודע מה כל אחת מחפשת. שאלו אותי על קרן ספציפית או בקשו שאמצא התאמות.',
+const TAB_LABELS: Record<string, string> = {
+  chat: 'שיחה כללית',
+  org: 'הארגון שלי',
+  opportunities: 'הזדמנויות פתוחות',
+  business: 'חברות ועסקים',
+  foundations: 'קרנות ופדרציות',
 };
 
 const TAB_QUICK_ACTIONS: Record<string, { label: string; prompt: string }[]> = {
@@ -70,12 +71,10 @@ interface ChatPanelProps {
 }
 
 export default function ChatPanel({ orgId, userId, onStageChange }: ChatPanelProps) {
-  const makeWelcome = (tab: string): ChatMessage[] => {
-    const content = tab === 'chat' ? FISHGOLD_WELCOME : (TAB_WELCOME[tab] || FISHGOLD_WELCOME);
-    return [{ id: `welcome-${tab}`, role: 'assistant', content, timestamp: new Date().toISOString() }];
+  const makeWelcome = (): ChatMessage[] => {
+    return [{ id: 'welcome', role: 'assistant', content: FISHGOLD_WELCOME, timestamp: new Date().toISOString() }];
   };
-  const tabMessagesRef = useRef<Record<string, ChatMessage[]>>({ chat: makeWelcome('chat') });
-  const [messages, setMessages] = useState<ChatMessage[]>(tabMessagesRef.current.chat);
+  const [messages, setMessages] = useState<ChatMessage[]>(makeWelcome());
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -128,7 +127,6 @@ export default function ChatPanel({ orgId, userId, onStageChange }: ChatPanelPro
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    tabMessagesRef.current[activeTabRef.current] = messages;
   }, [messages]);
 
   // Auto-resize textarea
@@ -250,18 +248,9 @@ export default function ChatPanel({ orgId, userId, onStageChange }: ChatPanelPro
     };
     const tabHandler = (e: Event) => {
       const tab = (e as CustomEvent).detail || 'chat';
-      // Save current tab messages
-      setMessages(prev => {
-        tabMessagesRef.current[activeTabRef.current] = prev;
-        return prev;
-      });
       activeTabRef.current = tab;
       setActiveTab(tab);
-      // Restore or create messages for new tab
-      if (!tabMessagesRef.current[tab]) {
-        tabMessagesRef.current[tab] = makeWelcome(tab);
-      }
-      setMessages([...tabMessagesRef.current[tab]]);
+      // Chat history stays continuous — only activeTab context changes
     };
     const loadConvHandler = async (e: Event) => {
       const { conversationId: convId } = (e as CustomEvent).detail || {};
@@ -520,6 +509,10 @@ ${rejectionLines ? `\n${rejectionLines}\nתנתח את הדחייה: מה הית
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>
           היסטוריה
         </button>
+        {/* Context indicator */}
+        <span className="text-[11px] text-muted/70 px-2 py-1 rounded-md bg-accent/5 border border-accent/10">
+          עוזר עם: <span className="text-accent font-medium">{TAB_LABELS[activeTab] || 'שיחה כללית'}</span>
+        </span>
         <button
           onClick={startNewChat}
           className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] text-muted hover:text-accent hover:bg-surf2 rounded-lg transition-colors"
