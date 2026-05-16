@@ -221,12 +221,24 @@ export async function geminiDeepAnalysis(text: string, orgContext?: string, orgN
 נתח לעומק את המסמך הבא והחזר JSON תקין בלבד.
 ${contextSection}${orgFilter}
 
+קטגוריות אפשריות — קרא בקפידה:
+- official: מסמכים רשמיים/משפטיים — אישור ניהול תקין, ניהול ספרים, סעיף 46, ניכוי מס, תעודת רישום, חברי ועד, בעלות חשבון, פרוטוקול, תקנון עמותה
+- identity: מצגת היכרות, תיאור ארגוני, נרטיב, חזון, אודות, מודל פעולה
+- programs: תיאורי תוכניות ספציפיות, שירותים, פעילויות, מודל הפעלה
+- budget: דוחות כספיים שנתיים, מאזנים, תקציב מאושר של הארגון
+- project_budget: תקציב פרויקט ספציפי, הצעת מחיר, עלויות תוכנית
+- grant: קולות קוראים, מיפוי קרנות, תנאי סף, מעקב בקשות
+- submission: הגשות לקרנות שנכתבו, בקשות מענק, טפסי הגשה ממולאים
+- impact: דוחות אימפקט, מחקרי הערכה, נתוני תוצאות, סקרים
+- linkedin: פרופיל LinkedIn, פוסטים ברשת חברתית
+- other: כל דבר אחר
+
 המסמך לניתוח:
 ${text.slice(0, 100000)}
 
 החזר JSON עם המבנה הבא:
 {
-  "category": "identity|budget|project|grant|submission|impact|linkedin|other",
+  "category": "identity|official|programs|budget|project_budget|grant|submission|impact|linkedin|other",
   "metadata": {
     "name": "שם הארגון",
     "theory_of_change": "תיאוריית השינוי: בעיה → פעולה → תוצאה",

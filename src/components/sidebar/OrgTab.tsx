@@ -24,11 +24,14 @@ const CATEGORY_BADGES: Record<string, { label: string; color: string }> = {
 // Official doc patterns — identity in DB but "רשמי" in display
 const OFFICIAL_DOC_PATTERNS = /ניהול תקין|ניהול ספרים|סעיף 46|אישור 46|ניכוי מס|תעודת רישום|חברי ועד|בעלות חשבון|פרוטוקול ועד|רישום עמותה/i;
 
-function getDocBadgeKey(doc: { filename?: string; category?: string }): string {
+function getDocBadgeKey(doc: { filename?: string; category?: string; metadata?: unknown }): string {
   const cat = doc.category || 'other';
   // If category is already official — keep it
   if (cat === 'official') return 'official';
-  // If it's "identity" but matches official patterns, show as "רשמי"
+  // If metadata has vault_key — it's an official doc
+  const meta = (doc.metadata || {}) as Record<string, unknown>;
+  if (meta.vault_key) return 'official';
+  // If it's "identity"/"other" but matches official patterns in filename, show as "רשמי"
   if ((cat === 'identity' || cat === 'other') && doc.filename && OFFICIAL_DOC_PATTERNS.test(doc.filename)) {
     return 'official';
   }
@@ -381,7 +384,12 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
     const byCategory = req.hint
       ? documents.some(d => d.category === req.hint && d.file_type !== 'url')
       : false;
-    return !byPattern && !byCategory;
+    // Also check vault_key in metadata — matches req.label to vault keys
+    const byVaultKey = documents.some(d => {
+      const vk = ((d.metadata || {}) as Record<string, unknown>).vault_key as string | undefined;
+      return vk && req.pattern.test(vk.replace(/_/g, ' '));
+    });
+    return !byPattern && !byCategory && !byVaultKey;
   });
 
   // Knowledge completeness
@@ -878,6 +886,7 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
           handleDownload={handleDownload}
           handleCategoryChange={handleCategoryChange}
           onUploadClick={() => fileInputRef.current?.click()}
+          onVaultRefresh={loadData}
         />
       )}
 
@@ -1068,6 +1077,7 @@ function OrgVaultSection({
   handleDownload,
   handleCategoryChange,
   onUploadClick,
+  onVaultRefresh,
 }: {
   documents: FgDoc[];
   missingDocs: { label: string; pattern: RegExp; hint?: string }[];
@@ -1085,8 +1095,30 @@ function OrgVaultSection({
   handleDownload: (doc: FgDoc) => void;
   handleCategoryChange: (id: string, cat: string) => void;
   onUploadClick: () => void;
+  onVaultRefresh?: () => void;
 }) {
   const missingRef = useRef<HTMLDivElement>(null);
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillResult, setBackfillResult] = useState<string | null>(null);
+
+  const runBackfill = async () => {
+    setBackfilling(true);
+    setBackfillResult(null);
+    try {
+      const res = await fetch('/api/documents/backfill-vault', { method: 'POST' });
+      const data = await res.json();
+      if (data.updated === 0) {
+        setBackfillResult('כל המסמכים כבר מסווגים');
+      } else {
+        setBackfillResult(`סווגו ${data.updated} מסמכים`);
+        onVaultRefresh?.();
+      }
+    } catch {
+      setBackfillResult('שגיאה בסיווג');
+    } finally {
+      setBackfilling(false);
+    }
+  };
 
   // Group documents
   const grouped = DOC_GROUPS.map(g => ({
@@ -1115,8 +1147,21 @@ function OrgVaultSection({
       <div>
         <div className="flex items-center justify-between">
           <h4 className="text-xs font-semibold">תיק הארגון</h4>
-          <span className="text-[10px] text-muted2">{documents.length} מסמכים</span>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-muted2">{documents.length} מסמכים</span>
+            <button
+              onClick={runBackfill}
+              disabled={backfilling}
+              title="סרוק מחדש את כל המסמכים וזהה מסמכים רשמיים"
+              className="text-[9px] px-2 py-0.5 rounded-full border border-border bg-surf2 hover:bg-surf2/80 text-muted transition-colors disabled:opacity-50"
+            >
+              {backfilling ? 'סורק...' : 'זהה מסמכים'}
+            </button>
+          </div>
         </div>
+        {backfillResult && (
+          <div className="text-[10px] text-green-600 dark:text-green-400 mt-1">{backfillResult}</div>
+        )}
         <p className="text-[10px] text-muted2 mt-0.5">
           Goldfish משתמש במסמכים האלה כדי לכתוב הגשות מדויקות ולבדוק מוכנות.
         </p>
