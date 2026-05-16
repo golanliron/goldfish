@@ -129,6 +129,7 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
   } | null>(null);
   const [showVault, setShowVault] = useState(false);
   const [editingDocId, setEditingDocId] = useState<string | null>(null);
+  const [driveConnected, setDriveConnected] = useState<{ email: string; connected_at: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
 
@@ -147,6 +148,10 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
       fetch(`/api/documents/vault`)
         .then(r => r.json())
         .then(v => setVaultData(v))
+        .catch(() => {}),
+      fetch(`/api/drive/status?org_id=${orgId}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d?.connected) setDriveConnected({ email: d.email, connected_at: d.connected_at }); })
         .catch(() => {}),
     ]);
   };
@@ -477,8 +482,18 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
               {missing.map((b) => (
                 <button
                   key={b.category}
-                  onClick={() => {/* scroll to upload or open chat */}}
-                  className="w-full text-right text-[10px] text-accent hover:underline truncate"
+                  onClick={() => {
+                    if (b.category === 'submissions') {
+                      window.dispatchEvent(new CustomEvent('fishgold:openUpload'));
+                    } else {
+                      // Navigate to org tab and scroll to profile form
+                      window.dispatchEvent(new CustomEvent('fishgold:activeTab', { detail: 'org' }));
+                      setTimeout(() => {
+                        document.getElementById('org-profile-form')?.scrollIntoView({ behavior: 'smooth' });
+                      }, 100);
+                    }
+                  }}
+                  className="w-full text-right text-[10px] text-accent hover:underline truncate cursor-pointer"
                 >
                   + {b.cta}
                 </button>
@@ -495,7 +510,7 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
 
       {/* ===== BLOCK 1: Org Identity Card ===== */}
       {profile?.name && (
-        <div className="bg-surf rounded-xl border border-border p-4 slide-in-right">
+        <div id="org-profile-form" className="bg-surf rounded-xl border border-border p-4 slide-in-right">
           <div className="flex items-start justify-between mb-2">
             <h3 className="font-semibold text-sm">{editing ? (
               <input
@@ -780,21 +795,29 @@ export default function OrgTab({ stage, orgId }: OrgTabProps) {
           </button>
         </div>
 
-        {/* Google Drive OAuth connect button */}
-        <a
-          href="/api/drive/auth"
-          className="flex items-center justify-center gap-2 w-full py-1.5 text-[11px] font-medium border border-border rounded-lg hover:bg-surface transition-colors text-muted"
-        >
-          <svg width="14" height="14" viewBox="0 0 87.3 78" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3L28.6 51H0c0 1.55.4 3.1 1.2 4.5L6.6 66.85z" fill="#0066DA"/>
-            <path d="M43.65 25L28.6 51H58.7L43.65 25z" fill="#00AC47"/>
-            <path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H58.7L73.55 76.8z" fill="#EA4335"/>
-            <path d="M43.65 25L58.7 51l14.85-25.65A9.3 9.3 0 0070.2 21H17.1c-1.4 0-2.7.35-3.85.95L28.6 51 43.65 25z" fill="#00832D"/>
-            <path d="M73.55 76.8L58.7 51H28.6L13.75 76.8c1.15.6 2.45.95 3.85.95H69.7c1.4 0 2.7-.35 3.85-.95z" fill="#2684FC"/>
-            <path d="M71.45 24.35l-3.6-6.25a9.5 9.5 0 00-3.3-3.3l-3.6-6.25C59.15 7.1 57.5 6.5 55.8 6.5H31.5c-1.7 0-3.35.6-4.65 1.75l-3.6 6.25a9.5 9.5 0 00-3.3 3.3l-3.6 6.25c-.8 1.4-1.2 2.95-1.2 4.5h57.5c0-1.55-.4-3.1-1.2-4.5z" fill="#FFBA00"/>
-          </svg>
-          חבר Google Drive (גישה לתיקיות פרטיות)
-        </a>
+        {/* Google Drive OAuth connect button / status */}
+        {driveConnected ? (
+          <div className="flex items-center gap-2 w-full py-1.5 px-3 text-[11px] font-medium border border-green-200 bg-green-50 rounded-lg text-green-700">
+            <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+            <span className="flex-1 truncate">מחובר לגוגל דרייב — {driveConnected.email}</span>
+            <a href="/api/drive/auth" className="text-[10px] text-green-600 hover:underline flex-shrink-0">חבר מחדש</a>
+          </div>
+        ) : (
+          <a
+            href="/api/drive/auth"
+            className="flex items-center justify-center gap-2 w-full py-1.5 text-[11px] font-medium border border-border rounded-lg hover:bg-surface transition-colors text-muted"
+          >
+            <svg width="14" height="14" viewBox="0 0 87.3 78" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M6.6 66.85l3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3L28.6 51H0c0 1.55.4 3.1 1.2 4.5L6.6 66.85z" fill="#0066DA"/>
+              <path d="M43.65 25L28.6 51H58.7L43.65 25z" fill="#00AC47"/>
+              <path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H58.7L73.55 76.8z" fill="#EA4335"/>
+              <path d="M43.65 25L58.7 51l14.85-25.65A9.3 9.3 0 0070.2 21H17.1c-1.4 0-2.7.35-3.85.95L28.6 51 43.65 25z" fill="#00832D"/>
+              <path d="M73.55 76.8L58.7 51H28.6L13.75 76.8c1.15.6 2.45.95 3.85.95H69.7c1.4 0 2.7-.35 3.85-.95z" fill="#2684FC"/>
+              <path d="M71.45 24.35l-3.6-6.25a9.5 9.5 0 00-3.3-3.3l-3.6-6.25C59.15 7.1 57.5 6.5 55.8 6.5H31.5c-1.7 0-3.35.6-4.65 1.75l-3.6 6.25a9.5 9.5 0 00-3.3 3.3l-3.6 6.25c-.8 1.4-1.2 2.95-1.2 4.5h57.5c0-1.55-.4-3.1-1.2-4.5z" fill="#FFBA00"/>
+            </svg>
+            חבר Google Drive (גישה לתיקיות פרטיות)
+          </a>
+        )}
 
         {/* Free text (collapsible) */}
         <details className="group">
