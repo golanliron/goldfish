@@ -315,15 +315,27 @@ export function extractOrgDNA(
 
   const fullText = textParts.join(' ').toLowerCase();
 
-  // Extract populations
-  const populations = POPULATION_PATTERNS
+  // Extract populations — prefer explicit stored arrays, then fall back to text patterns
+  const storedPopulations = Array.isArray(profile?.populations)
+    ? (profile!.populations as string[]).filter(p => POPULATION_PATTERNS.some(pp => pp.key === p))
+    : [];
+  const detectedPopulations = POPULATION_PATTERNS
     .filter(p => p.patterns.test(fullText))
     .map(p => p.key);
+  const populations = storedPopulations.length > 0
+    ? [...new Set([...storedPopulations, ...detectedPopulations])]
+    : detectedPopulations;
 
-  // Extract domains
-  const domains = DOMAIN_PATTERNS
+  // Extract domains — prefer explicit stored arrays, then fall back to text patterns
+  const storedDomains = Array.isArray(profile?.domains)
+    ? (profile!.domains as string[]).filter(d => DOMAIN_PATTERNS.some(dd => dd.key === d))
+    : [];
+  const detectedDomains = DOMAIN_PATTERNS
     .filter(d => d.patterns.test(fullText))
     .map(d => d.key);
+  const domains = storedDomains.length > 0
+    ? [...new Set([...storedDomains, ...detectedDomains])]
+    : detectedDomains;
 
   // Extract sub-domains (only those whose parent domain is detected)
   const subDomains = SUB_DOMAIN_PATTERNS
@@ -335,10 +347,16 @@ export function extractOrgDNA(
     .filter(i => i.patterns.test(fullText))
     .map(i => i.key);
 
-  // Extract geography
-  const geography = GEO_PATTERNS
+  // Extract geography — prefer explicit stored regions, then fall back to text patterns
+  const storedRegions = Array.isArray(profile?.regions)
+    ? (profile!.regions as string[]).filter(r => GEO_PATTERNS.some(g => g.key === r))
+    : [];
+  const detectedGeo = GEO_PATTERNS
     .filter(g => g.patterns.test(fullText))
     .map(g => g.key);
+  const geography = storedRegions.length > 0
+    ? [...new Set([...storedRegions, ...detectedGeo])]
+    : detectedGeo;
 
   // Extract age groups
   const ageGroups = AGE_PATTERNS

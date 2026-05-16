@@ -117,10 +117,11 @@ export const GET = withAuth(async (req, auth) => {
     }
   }
 
-  let matches = matchRes.data || [];
+  const savedMatches = matchRes.data || [];
 
-  // If no saved matches but we have a profile, do DNA-based matching
-  if (matches.length === 0 && profileRes.data && orgId) {
+  // Always run DNA-based matching if we have a profile — saved matches may be stale or sparse
+  let matches = savedMatches;
+  if (profileRes.data && orgId) {
     const profileData = (profileRes.data as { data: Record<string, unknown> }).data || {};
 
     // Use AI-extracted DNA if available (stored in profile), else fall back to regex
@@ -159,7 +160,10 @@ export const GET = withAuth(async (req, auth) => {
         })
         .sort((a, b) => b.score - a.score);
 
-      matches = scored as unknown as typeof matches;
+      // Merge: DNA-scored results + any saved matches not already covered
+      const scoredIds = new Set(scored.map(s => (s as unknown as { opportunity_id: string }).opportunity_id));
+      const extraSaved = savedMatches.filter(sm => !scoredIds.has(sm.opportunity_id));
+      matches = [...scored, ...extraSaved] as unknown as typeof matches;
     }
   }
 
