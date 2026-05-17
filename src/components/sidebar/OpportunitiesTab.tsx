@@ -186,13 +186,21 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
       });
   };
 
+  // Load once on mount (catalog without matches if no orgId).
+  // Re-load when orgId becomes available so matches/scores are added.
+  const prevOrgIdRef = useRef<string | null>(null);
   useEffect(() => {
-    loadOpportunities();
+    const orgIdChanged = prevOrgIdRef.current !== orgId;
+    prevOrgIdRef.current = orgId;
+    // First mount: always load. Subsequent renders: only reload if orgId changed.
+    if (orgIdChanged) {
+      loadOpportunities();
+    }
     return () => {
       if (agentPollRef.current) clearInterval(agentPollRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [orgId]);
 
   const handleAgentSync = async () => {
     if (!orgId || agentRunning) return;

@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { withAuth } from '@/lib/api-auth';
+import { getAuthContext } from '@/lib/api-auth';
 import { extractOrgDNA } from '@/lib/ai/org-dna';
 import { scoreOpportunityDNA, type FunderIntel } from '@/lib/ai/scoring-service';
-import { calculateReadiness, findUpcomingRecurrences } from '@/lib/ai/funder-learning';
+import { findUpcomingRecurrences } from '@/lib/ai/funder-learning';
 import { opportunitiesLog } from '@/lib/logger';
 
-export const GET = withAuth(async (req, auth) => {
-  const orgId = auth.orgId;
+// Public catalog: any logged-in user sees all active opportunities.
+// Matches/scores are added only when orgId is available.
+// No 401 — the catalog is accessible to all authenticated sessions.
+export async function GET(req: NextRequest) {
+  const auth = await getAuthContext(req);
+  const orgId = auth?.orgId ?? null;
   const supabase = createAdminClient();
   const today = new Date().toISOString().split('T')[0];
 
@@ -18,8 +22,6 @@ export const GET = withAuth(async (req, auth) => {
       .from('opportunities')
       .select('*')
       .eq('active', true)
-      .not('url', 'is', null)
-      .neq('url', '')
       .order('deadline', { ascending: true, nullsFirst: false })
       .limit(500),
     orgId
@@ -48,12 +50,97 @@ export const GET = withAuth(async (req, auth) => {
           .limit(20),
   ]);
 
+  opportunitiesLog.info({ oppRes_count: oppRes.data?.length, oppRes_error: oppRes.error?.message }, 'opportunities raw fetch');
+
   const opportunities = (oppRes.data || []).filter(
     (o: Record<string, unknown>) =>
       (!o.deadline || String(o.deadline) >= today) &&
       o.type !== 'fund' && // funds belong in the companies/funds tab, not here
       (o.url || o.application_url) // חייב לינק — בלי URL לא מציגים
   );
+
+  opportunitiesLog.info({ filtered_count: opportunities.length }, 'opportunities after filter');
+
+  // ── RELIABILITY CLASSIFICATION (server-side, no DB migration) ──────────────
+  // Classifies each opportunity into one of 4 tiers based on link + content quality.
+  // Tiers (in display priority order): direct > general > needs_enrichment > placeholder
+
+  function classifyLinkQuality(url: string | null | undefined, appUrl: string | null | undefined): 'direct' | 'general' | 'unknown' {
+    const u = appUrl || url || '';
+    if (!u) return 'unknown';
+    // Direct: specific page/form/call/PDF/slug with ID
+    if (/\/(form|apply|application|grant|call|rfp|submit|request|proposal|project|program)\b/i.test(u)) return 'direct';
+    if (/[?&](grant|call|program|id|pid|gid|ref)=/i.test(u)) return 'direct';
+    if (/\.pdf([?#]|$)/i.test(u)) return 'direct'; // PDF = direct document
+    if (/BlobFolder|rfp\//i.test(u)) return 'direct'; // gov.il blob/rfp folders
+    if (/forms\.(monday|typeform|jotform|google)\./i.test(u)) return 'direct'; // form platforms
+    if (/\d{4,}/.test(u) && u.split('/').length > 4) return 'direct'; // path with numeric ID
+    // General: listing pages, homepages, broad sections
+    if (/^https?:\/\/[^/]+\/?$/.test(u)) return 'general';
+    if (/\/(grants?|funds?|opportunities|support|assistance|tenders?|calls?|kolotkorim|kol_kore|hakol-kore|search-announcements)\/?$/i.test(u)) return 'general';
+    if (/\/(grants-and-scholarships|grants-page|apply\/?$)\/?$/i.test(u)) return 'general';
+    if (/gov\.il\/he\/(departments|pages\/support-tests|departments\/topics\/[^/]+\/govil-landing)\/?$/i.test(u)) return 'general';
+    // Specific enough path
+    if (u.split('/').length >= 5) return 'direct';
+    return 'general';
+  }
+
+  // Round/suspicious deadline: exactly last day of a month (common in AI-generated records)
+  function isSuspiciousDeadline(deadline: string | null | undefined): boolean {
+    if (!deadline) return false;
+    const d = new Date(deadline);
+    const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    return d.getDate() === lastDay || d.getDate() === 1; // first or last of month
+  }
+
+  type ReliabilityTier = 'direct' | 'general' | 'needs_enrichment' | 'placeholder';
+
+  function classifyReliability(o: Record<string, unknown>): ReliabilityTier {
+    const lq = classifyLinkQuality(o.url as string | null, o.application_url as string | null);
+    const hasAppUrl = !!(o.application_url);
+    const hasDescription = !!(o.description) && String(o.description).length >= 80;
+    const isManual = String(o.source || '').toLowerCase() === 'manual';
+    const suspiciousDeadline = isSuspiciousDeadline(o.deadline as string | null);
+
+    // Tier 1: direct link, or has application_url
+    if (lq === 'direct' || hasAppUrl) return 'direct';
+
+    // Tier 4: placeholder = manual + general/unknown link + no description + round deadline
+    if (isManual && !hasDescription && suspiciousDeadline) return 'placeholder';
+
+    // Tier 3: needs enrichment = no application_url and link is not direct (lq is general|unknown here)
+    if (!hasAppUrl) return 'needs_enrichment';
+
+    // Tier 2: general
+    return 'general';
+  }
+
+  const enrichedOpportunities = opportunities.map((o: Record<string, unknown>) => ({
+    ...o,
+    link_quality: classifyLinkQuality(o.url as string | null, o.application_url as string | null),
+    reliability: classifyReliability(o),
+  }));
+
+  // Summary stats
+  const summaryStats = {
+    total_active: enrichedOpportunities.length,
+    has_application_url: enrichedOpportunities.filter((o: Record<string, unknown>) => !!(o.application_url)).length,
+    direct: enrichedOpportunities.filter((o: Record<string, unknown>) => o.reliability === 'direct').length,
+    general: enrichedOpportunities.filter((o: Record<string, unknown>) => o.reliability === 'general').length,
+    needs_enrichment: enrichedOpportunities.filter((o: Record<string, unknown>) => o.reliability === 'needs_enrichment').length,
+    placeholder: enrichedOpportunities.filter((o: Record<string, unknown>) => o.reliability === 'placeholder').length,
+    missing_descriptions: enrichedOpportunities.filter((o: Record<string, unknown>) => !o.description || String(o.description).length < 80).length,
+  };
+
+  opportunitiesLog.info(summaryStats, 'opportunities reliability summary');
+
+  // Sort by reliability tier first, then keep deadline order within tier
+  const TIER_ORDER: Record<string, number> = { direct: 0, general: 1, needs_enrichment: 2, placeholder: 3 };
+  enrichedOpportunities.sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
+    const ta = TIER_ORDER[a.reliability as string] ?? 2;
+    const tb = TIER_ORDER[b.reliability as string] ?? 2;
+    return ta - tb;
+  });
 
   // Pre-load funder intelligence for all active opportunities (used in scoring + display)
   const allFunderNames = [...new Set(
@@ -136,7 +223,7 @@ export const GET = withAuth(async (req, auth) => {
     }
 
     if (orgDna.populations.length > 0 || orgDna.domains.length > 0) {
-      const scored = opportunities
+      const scored = enrichedOpportunities
         .map((opp: Record<string, unknown>) => {
           const funderName = String(opp.funder || '');
           const fi = funderIntelMap.get(funderName) as FunderIntel | undefined;
@@ -212,12 +299,13 @@ export const GET = withAuth(async (req, auth) => {
 
   return NextResponse.json({
     taxonomy: taxRes.data || [],
-    opportunities,
+    opportunities: enrichedOpportunities,
     matches,
     profileCompleteness,
     funderInfo,
     upcomingRecurrences,
     hotOpportunities,
+    summaryStats,
   });
 
   } catch (error) {
@@ -233,4 +321,4 @@ export const GET = withAuth(async (req, auth) => {
       { status: 500 },
     );
   }
-});
+}
