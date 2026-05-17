@@ -47,7 +47,7 @@
       "schedule": "0 10 * * *"
     },
     {
-      "path": "/api/cron/enrich-direct-links?batch=20&dryRun=false",
+      "path": "/api/cron/enrich-direct-links?batch=20&dryRun=true",
       "schedule": "0 11 * * *"
     }
   ]
