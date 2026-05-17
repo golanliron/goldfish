@@ -31,7 +31,24 @@ export async function GET(request: NextRequest) {
 // ============================================================
 // SOURCES — Israeli grant aggregators, government, foundations
 // ============================================================
-const SOURCES = [
+// ============================================================
+// SOURCE PIPELINE TIERS
+// approved_pipeline  — QA passed, runs daily automatically
+// next_dryrun        — pending DryRun before auto-save enabled (dryRun: true)
+// browser_required   — JS-rendered, needs Playwright (disabled: true)
+// funder_profile_only — no open call, do not save as opportunity
+// ============================================================
+
+interface Source {
+  name: string;
+  url: string;
+  funder: string;
+  dryRun?: boolean;    // true = scan but never write to DB (DryRun mode)
+  disabled?: boolean;  // true = skip entirely (browser_required or not ready)
+}
+
+const SOURCES: Source[] = [
+  // ── approved_pipeline ──────────────────────────────────────
   {
     name: 'שתיל',
     url: 'https://shatil.org.il/%D7%A7%D7%A8%D7%A0%D7%95%D7%AA-%D7%95%D7%A7%D7%95%D7%9C%D7%95%D7%AA-%D7%A7%D7%95%D7%A8%D7%90%D7%99%D7%9D/',
@@ -199,6 +216,42 @@ const SOURCES = [
     name: 'UJA Federation NY — Israel Grants',
     url: 'https://www.ujafedny.org/grants-and-scholarships/',
     funder: 'UJA Federation New York',
+  },
+
+  // ── next_dryrun — DryRun only, no DB write until QA approved ──
+  // To promote to approved_pipeline: remove dryRun:true after reviewing DryRun report
+  {
+    name: 'משרד האוצר — תמיחות (tmichot)',
+    url: 'https://tmichot.mof.gov.il/call-for-proposals',
+    funder: 'משרד האוצר',
+    dryRun: true,
+  },
+  {
+    name: 'משרד החינוך — פורטל קולות קוראים (POB)',
+    url: 'https://pob.education.gov.il/kolotkorim/kolkore',
+    funder: 'משרד החינוך',
+    dryRun: true,
+  },
+  {
+    name: 'משרד הבריאות — קולות קוראים',
+    url: 'https://www.gov.il/he/departments/topics/ministry-of-health-calls/govil-landing-page',
+    funder: 'משרד הבריאות',
+    dryRun: true,
+  },
+  {
+    name: 'שוויון חברתי — קולות קוראים',
+    url: 'https://www.gov.il/he/departments/topics/equality-programs/govil-landing-page',
+    funder: 'משרד השוויון החברתי',
+    dryRun: true,
+  },
+
+  // ── browser_required — JS-rendered, needs Playwright ──────
+  // disabled:true = skipped entirely until Playwright is available
+  {
+    name: 'SocialMap — קולות קוראים',
+    url: 'https://socialmap.org.il/hakol-kore',
+    funder: '',
+    disabled: true, // JS-rendered, returns empty HTML without browser
   },
 ];
 
@@ -535,11 +588,14 @@ async function scanAllSources(batchIndex?: number) {
   let deactivated = 0;
   const errors: string[] = [];
 
-  // Determine which sources to scan
+  // Determine which sources to scan — skip disabled sources entirely
+  const activeSources = SOURCES.filter(s => !s.disabled);
   const sourcesToScan = batchIndex !== undefined
-    ? SOURCES.slice(batchIndex * BATCH_SIZE, (batchIndex + 1) * BATCH_SIZE)
-    : SOURCES;
+    ? activeSources.slice(batchIndex * BATCH_SIZE, (batchIndex + 1) * BATCH_SIZE)
+    : activeSources;
   const isFirstBatch = batchIndex === undefined || batchIndex === 0;
+  const dryRunSources = new Set(sourcesToScan.filter(s => s.dryRun).map(s => s.name));
+  const dryRunResults: { source: string; found: number; would_insert: number; samples: string[] }[] = [];
 
   // === Step 1: Cleanup expired & stale (only on first batch) ===
   const today = new Date().toISOString().split('T')[0];
@@ -771,6 +827,21 @@ async function scanAllSources(batchIndex?: number) {
           }
         }
 
+        // DryRun mode: log what would be inserted, but don't write to DB
+        if (dryRunSources.has(source.name)) {
+          let drEntry = dryRunResults.find(d => d.source === source.name);
+          if (!drEntry) {
+            drEntry = { source: source.name, found: 0, would_insert: 0, samples: [] };
+            dryRunResults.push(drEntry);
+          }
+          drEntry.found++;
+          drEntry.would_insert++;
+          if (drEntry.samples.length < 10) {
+            drEntry.samples.push(`${item.title.slice(0, 80)} | ${item.url?.slice(0, 60) || 'no-url'}`);
+          }
+          continue; // skip actual insert
+        }
+
         const { data: inserted, error: insertErr } = await supabase.from('opportunities').insert({
           title: item.title.slice(0, 300),
           description: item.description?.slice(0, 1000) || null,
@@ -847,6 +918,7 @@ async function scanAllSources(batchIndex?: number) {
     skipped: totalSkipped,
     deactivated_expired: deactivated,
     errors,
+    dry_run_report: dryRunResults.length > 0 ? dryRunResults : undefined,
     timestamp: new Date().toISOString(),
   };
 }

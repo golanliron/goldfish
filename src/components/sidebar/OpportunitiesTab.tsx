@@ -17,15 +17,23 @@ interface OpportunitiesTabProps {
   orgId: string | null;
 }
 
-const TYPE_LABELS: Record<OpportunityType, string> = {
+const TYPE_LABELS: Record<string, string> = {
   kok: 'קול קורא',
+  grant: 'מענק',
+  prize: 'פרס',
+  fellowship: 'מלגה',
+  tender: 'מכרז',
   fund: 'קרן',
   business: 'עסקי',
   endowment: 'הקדש',
 };
 
-const TYPE_COLORS: Record<OpportunityType, string> = {
+const TYPE_COLORS: Record<string, string> = {
   kok: 'bg-blue-100 text-blue-700',
+  grant: 'bg-blue-100 text-blue-700',
+  prize: 'bg-purple-100 text-purple-700',
+  fellowship: 'bg-indigo-100 text-indigo-700',
+  tender: 'bg-gray-100 text-gray-700',
   fund: 'bg-green-100 text-green-700',
   business: 'bg-purple-100 text-purple-700',
   endowment: 'bg-amber-100 text-amber-700',
@@ -94,7 +102,7 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedPopulation, setSelectedPopulation] = useState('');
   const [selectedType, setSelectedType] = useState<OpportunityType | ''>('');
-  const [showOnlyMatched, setShowOnlyMatched] = useState(true);
+  const [showOnlyMatched, setShowOnlyMatched] = useState(false);
   const [minMatchScore, setMinMatchScore] = useState<'' | '60' | '70' | '80' | '90'>('');
   const [showTimeline, setShowTimeline] = useState(false);
   const [selectedRegion, setSelectedRegion] = useState('');
@@ -133,12 +141,34 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
   };
 
   const loadOpportunities = () => {
-    fetch(`/api/opportunities${orgId ? `?org_id=${orgId}` : ''}`, { credentials: 'include' })
-      .then(r => r.json())
+    const headers: Record<string, string> = {};
+    if (orgId) headers['x-org-id'] = orgId;
+
+    fetch(`/api/opportunities${orgId ? `?org_id=${orgId}` : ''}`, {
+      credentials: 'include',
+      headers,
+    })
+      .then(async r => {
+        const data = await r.json();
+        if (r.status === 401) {
+          console.error('[GoldFish Opportunities] 401 Unauthorized — session missing or expired');
+          setLoading(false);
+          return null;
+        }
+        console.log('[GoldFish Opportunities] API response:', {
+          http_status: r.status,
+          status_error: data.error,
+          opportunities_count: data.opportunities?.length,
+          matches_count: data.matches?.length,
+          sample_opp: data.opportunities?.[0] ? { title: data.opportunities[0].title, type: data.opportunities[0].type, url: data.opportunities[0].url, app_url: data.opportunities[0].application_url } : null,
+        });
+        return data;
+      })
       .then((data) => {
+        if (!data) return;
         const { taxonomy: tax, opportunities: opps, matches: m, profileCompleteness: pc, funderInfo: fi, upcomingRecurrences: ur } = data;
         if (tax) setTaxonomy(tax as TaxItem[]);
-        if (opps) setOpportunities(opps as Opportunity[]);
+        if (Array.isArray(opps)) setOpportunities(opps as Opportunity[]);
         if (m && m.length > 0) {
           const map = new Map<string, MatchScore>();
           m.forEach((ms: MatchScore) => map.set(ms.opportunity_id, ms));
@@ -150,7 +180,10 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
         if (data.hotOpportunities && Array.isArray(data.hotOpportunities)) setHotOpportunities(data.hotOpportunities as HotOpportunity[]);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch((err) => {
+        console.error('[GoldFish Opportunities] fetch error:', err);
+        setLoading(false);
+      });
   };
 
   useEffect(() => {
@@ -376,8 +409,13 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
           </div>
         )}
 
-        {/* When no profile — show all with nudge */}
-        {matchScores.size === 0 && opportunities.length > 0 && (
+        {/* When no matches computed: if has orgId → soft info, else → nudge to complete profile */}
+        {matchScores.size === 0 && opportunities.length > 0 && orgId && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-[11px] text-blue-700">
+            עוד לא חושבו התאמות לארגון. בינתיים מוצגים כל הקולות הקוראים.
+          </div>
+        )}
+        {matchScores.size === 0 && opportunities.length > 0 && !orgId && (
           <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-start gap-2">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#D97706" strokeWidth="2" className="flex-shrink-0 mt-0.5">
               <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
@@ -679,14 +717,23 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
           </div>
         )}
 
-        {filtered.length === 0 ? (
+        {opportunities.length === 0 ? (
+          <div className="text-center py-8">
+            <p className="text-sm text-muted">לא נמצאו קולות קוראים פעילים במאגר כרגע.</p>
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="text-center py-8">
             <p className="text-sm text-muted">לא נמצאו תוצאות</p>
             <p className="text-xs text-muted2 mt-1">נסו לשנות את החיפוש או הסינון</p>
           </div>
         ) : (() => {
-          const matched = filtered.filter(o => (matchScores.get(o.id)?.score ?? 0) >= 60);
-          const rest = filtered.filter(o => (matchScores.get(o.id)?.score ?? 0) < 60);
+          // Split by reliability: placeholders go last under their own heading
+          const getReliability = (o: Opportunity) => (o as unknown as Record<string, unknown>).reliability as string | undefined;
+          const verified = filtered.filter(o => getReliability(o) !== 'placeholder');
+          const placeholders = filtered.filter(o => getReliability(o) === 'placeholder');
+
+          const matched = verified.filter(o => (matchScores.get(o.id)?.score ?? 0) >= 60);
+          const rest = verified.filter(o => (matchScores.get(o.id)?.score ?? 0) < 60);
           return (
             <>
               {matched.length > 0 && (
@@ -709,6 +756,19 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
               {rest.map(opp => (
                 <OpportunityCard key={opp.id} opp={opp} match={matchScores.get(opp.id)} orgId={orgId} funderMeta={opp.funder ? funderInfo[opp.funder] : undefined} />
               ))}
+              {placeholders.length > 0 && (
+                <>
+                  <div className="border-t border-border/50 pt-3 mt-2">
+                    <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wide px-0.5 mb-1">
+                      דורש אימות ({placeholders.length})
+                    </div>
+                    <p className="text-[9px] text-gray-400 px-0.5 mb-2">קולות קוראים שחסר להם מידע לאימות — ייתכן שהם מדויקים אך לא ניתן להציג לינק ישיר</p>
+                  </div>
+                  {placeholders.map(opp => (
+                    <OpportunityCard key={opp.id} opp={opp} match={matchScores.get(opp.id)} orgId={orgId} funderMeta={opp.funder ? funderInfo[opp.funder] : undefined} />
+                  ))}
+                </>
+              )}
             </>
           );
         })()}
@@ -915,8 +975,13 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
     : '';
 
 
-  // Status tag logic
+  const reliability = (opp as unknown as Record<string, unknown>).reliability as string | undefined;
+
+  // Status tag logic — placeholders never show "high match" since data is unverified
   const statusTag: { label: string; cls: string } = (() => {
+    if (reliability === 'placeholder') {
+      return { label: 'דורש אימות', cls: 'bg-gray-100 text-gray-500 border-gray-200' };
+    }
     if (daysLeft !== null && daysLeft >= 0 && daysLeft <= 14) {
       return { label: 'דחוף', cls: 'bg-red-100 text-red-700 border-red-200' };
     }
@@ -969,8 +1034,8 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
             {match.score}% התאמה
           </span>
         )}
-        {opp.type && (
-          <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium mr-auto ${TYPE_COLORS[opp.type]}`}>
+        {opp.type && TYPE_LABELS[opp.type] && (
+          <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium mr-auto ${TYPE_COLORS[opp.type] || 'bg-gray-100 text-gray-600'}`}>
             {TYPE_LABELS[opp.type]}
           </span>
         )}
@@ -982,6 +1047,17 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
       {/* Funder */}
       {opp.funder && (
         <p className="text-[11px] text-muted mb-1.5">{opp.funder}</p>
+      )}
+
+      {/* Reliability indicators */}
+      {(opp as unknown as Record<string, unknown>).reliability === 'placeholder' && (
+        <span className="text-[9px] text-gray-400 bg-gray-50 border border-gray-200 rounded px-1.5 py-0.5 mb-1 inline-block">דורש אימות</span>
+      )}
+      {((opp as unknown as Record<string, unknown>).reliability === 'needs_enrichment' || (opp as unknown as Record<string, unknown>).reliability === 'general') && (
+        <div className="text-[9px] text-gray-400 mb-1">לינק כללי לגוף המממן</div>
+      )}
+      {(!opp.description || opp.description.length < 80) && (opp as unknown as Record<string, unknown>).reliability !== 'placeholder' && (
+        <div className="text-[9px] text-amber-500 mb-1">חסר מידע לניתוח מלא</div>
       )}
 
       {/* Meta: amount + deadline */}
