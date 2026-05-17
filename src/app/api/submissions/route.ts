@@ -6,7 +6,7 @@ import { randomUUID } from 'crypto';
 import { z } from 'zod';
 
 const SubmissionRequestSchema = z.object({
-  rfp_id: z.string().min(1, 'rfp_id הוא שדה חובה'),
+  rfp_id: z.string().optional().nullable(),
   opportunity_id: z.string().optional(),
   skip_existing_check: z.boolean().optional(), // force new draft even if one exists
 });
@@ -65,8 +65,17 @@ export const POST = withAuth(async (req, auth) => {
   }
 
   // ── Load all context in parallel ──────────────────────────────────────────
-  const [rfpRes, profileRes, docsRes, memoryRes, pastSubsRes] = await Promise.all([
-    supabase.from('rfp_parsed').select('*').eq('id', rfp_id).single(),
+  const rfpQuery = rfp_id
+    ? supabase.from('rfp_parsed').select('*').eq('id', rfp_id).single()
+    : Promise.resolve({ data: null, error: null });
+
+  const oppQuery = opportunity_id
+    ? supabase.from('opportunities').select('title, funder, description, deadline, amount_min, amount_max, url, application_url, requirements, full_content, eligibility, how_to_apply').eq('id', opportunity_id).single()
+    : Promise.resolve({ data: null, error: null });
+
+  const [rfpRes, oppRes, profileRes, docsRes, memoryRes, pastSubsRes] = await Promise.all([
+    rfpQuery,
+    oppQuery,
     supabase.from('org_profiles').select('data').eq('org_id', org_id).single(),
     supabase.from('documents').select('filename, category, metadata, parsed_text').eq('org_id', org_id).limit(10),
     supabase.from('org_memory').select('key, value').eq('org_id', org_id).limit(30),
@@ -74,13 +83,32 @@ export const POST = withAuth(async (req, auth) => {
       .eq('org_id', org_id).not('outcome', 'is', null).limit(10),
   ]);
 
-  const rfp = rfpRes.data;
+  // If no rfp_parsed row, build a minimal one from the opportunity
+  let rfp = rfpRes.data;
+  if (!rfp && oppRes.data) {
+    const o = oppRes.data as Record<string, unknown>;
+    rfp = {
+      rfp_title: o.title || 'קול קורא',
+      funder_name: o.funder || '',
+      funder_type: 'other',
+      deadline: o.deadline || null,
+      max_amount: o.amount_max || null,
+      questions: [],
+      required_documents: [],
+      eligibility: o.eligibility || {},
+      evaluation_criteria: [],
+      raw_text: [o.description, o.requirements, o.full_content, o.how_to_apply].filter(Boolean).join('\n\n'),
+      rfp_url: o.url || o.application_url || null,
+      application_url: o.application_url || o.url || null,
+    };
+  }
+
+  if (!rfp) return NextResponse.json({ error: 'RFP not found — please provide rfp_id or opportunity_id' }, { status: 404 });
+
   const profile = (profileRes.data?.data as Record<string, unknown>) || {};
   const docs = docsRes.data || [];
   const orgMemory = memoryRes.data || [];
   const pastSubs = pastSubsRes.data || [];
-
-  if (!rfp) return NextResponse.json({ error: 'RFP not found' }, { status: 404 });
 
   const questions = (rfp.questions as { id: string; question: string; max_chars?: number }[]) || [];
   const requiredDocs = (rfp.required_documents as string[]) || [];

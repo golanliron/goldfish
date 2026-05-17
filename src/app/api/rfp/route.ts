@@ -134,7 +134,20 @@ ${rawText.slice(0, 60000)}
     rfpData = JSON.parse(clean);
   } catch (e) {
     console.error('[rfp] Gemini parse error:', e);
-    return NextResponse.json({ error: 'שגיאה בניתוח קול הקורא' }, { status: 500 });
+    // Fallback: build a basic rfp structure from what we have rather than failing
+    rfpData = {
+      funder_name: String(funder || ''),
+      funder_type: 'other',
+      rfp_title: String(title || url || 'קול קורא'),
+      deadline: deadline ? (() => { try { return new Date(String(deadline)).toISOString().slice(0, 10); } catch { return null; } })() : null,
+      max_amount: amount_max ? Number(amount_max) : null,
+      application_url: null,
+      eligibility: { org_types: [], regions: [], populations: [], other: [] },
+      questions: [],
+      required_documents: [],
+      evaluation_criteria: [],
+      summary: description ? String(description).slice(0, 300) : '',
+    };
   }
 
   // 3. Save to rfp_parsed

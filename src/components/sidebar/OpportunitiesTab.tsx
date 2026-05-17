@@ -980,9 +980,11 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
         });
         const rfpFallbackData = await rfpFallbackRes.json();
         if (!rfpFallbackRes.ok || !rfpFallbackData.rfp_id) {
-          throw new Error('לא הצלחתי ליצור טיוטה — נסי להדביק את תוכן הקול הקורא ישירות.');
+          // Both rfp calls failed — skip rfp entirely, go direct to submissions with opportunity_id only
+          rfpData = { rfp_id: null };
+        } else {
+          rfpData = rfpFallbackData;
         }
-        rfpData = rfpFallbackData;
         setDraftError('לא הצלחתי לקרוא את כל הקול הקורא. יצרתי טיוטה בסיסית לעריכה.');
       }
 
