@@ -196,6 +196,13 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
     if (orgIdChanged) {
       loadOpportunities();
     }
+    // Clear any stale agent state from a previous session
+    setAgentRunning(false);
+    setAgentToast(null);
+    if (agentPollRef.current) {
+      clearInterval(agentPollRef.current);
+      agentPollRef.current = null;
+    }
     return () => {
       if (agentPollRef.current) clearInterval(agentPollRef.current);
     };
