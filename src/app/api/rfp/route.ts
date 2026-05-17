@@ -51,20 +51,36 @@ export const maxDuration = 120; // seconds — Vercel Pro/Team plan
 
 // POST /api/rfp — parse a grant call (URL or text) and generate a draft submission
 export const POST = withAuth(async (req, auth) => {
-  const { url, text, opportunity_id } = await req.json();
+  const body = await req.json() as Record<string, string | number | null | undefined>;
+  const { url, text, opportunity_id, title, description, requirements, full_content, funder, deadline, amount_min, amount_max } = body;
   const org_id = auth.orgId;
   if (!url && !text) return NextResponse.json({ error: 'Missing url or text' }, { status: 400 });
 
   const supabase = createAdminClient();
 
   // 1. Fetch raw text if URL provided (multi-layer fallback)
-  let rawText = text || '';
+  let rawText = (text as string) || '';
   if (url && !rawText) {
-    rawText = await fetchRfpContent(url);
+    rawText = await fetchRfpContent(url as string);
   }
 
+  // If URL fetch failed, build fallback rawText from opportunity fields passed in body
   if (!rawText || rawText.length < 20) {
-    return NextResponse.json({ error: 'לא הצלחתי לקרוא את קול הקורא. נסי להדביק את הטקסט ישירות.' }, { status: 400 });
+    const fallbackParts = [
+      title ? `שם הקול הקורא: ${title}` : '',
+      funder ? `גוף מממן: ${funder}` : '',
+      deadline ? `דדליין: ${deadline}` : '',
+      (amount_min || amount_max) ? `סכום: ${amount_min || ''}${amount_max ? `–${amount_max}` : ''} ₪` : '',
+      description ? `תיאור:\n${description}` : '',
+      requirements ? `דרישות:\n${requirements}` : '',
+      full_content ? `תוכן מלא:\n${String(full_content).slice(0, 10000)}` : '',
+      url ? `קישור מקורי: ${url}` : '',
+    ].filter(Boolean).join('\n\n');
+    if (fallbackParts.length > 20) {
+      rawText = fallbackParts;
+    } else {
+      return NextResponse.json({ error: 'לא הצלחתי לקרוא את קול הקורא. נסי להדביק את הטקסט ישירות.' }, { status: 400 });
+    }
   }
 
   // 2. Parse RFP with Gemini

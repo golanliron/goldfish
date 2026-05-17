@@ -910,7 +910,10 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
       // Step 1: Check for existing draft first (fast, no AI)
       const existingRes = await fetch('/api/submissions/check?' + new URLSearchParams({
         opportunity_id: opp.id,
-      }));
+      }), {
+        credentials: 'include',
+        headers: orgId ? { 'x-org-id': orgId } : {},
+      });
       if (existingRes.ok) {
         const existingData = await existingRes.json();
         if (existingData.share_url) {
@@ -925,26 +928,70 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
 
       // Step 2: Parse the RFP (so submission engine gets structured questions)
       setDraftState('parsing');
+      const oppExtra = opp as unknown as Record<string, unknown>;
       const rfpRes = await fetch('/api/rfp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           org_id: orgId,
           url: opp.application_url || opp.url || null,
           text: !(opp.application_url || opp.url)
-            ? [opp.title, opp.description, opp.eligibility, opp.how_to_apply].filter(Boolean).join('\n')
+            ? [opp.title, opp.description, oppExtra.eligibility, oppExtra.how_to_apply].filter(Boolean).join('\n')
             : null,
           opportunity_id: opp.id,
+          // Fallback fields used if URL fetch fails
+          title: opp.title || null,
+          description: opp.description || null,
+          funder: opp.funder || null,
+          deadline: opp.deadline || null,
+          amount_min: opp.amount_min || null,
+          amount_max: opp.amount_max || null,
+          requirements: oppExtra.requirements || null,
+          full_content: oppExtra.full_content || null,
         }),
       });
-      const rfpData = await rfpRes.json();
-      if (!rfpRes.ok || !rfpData.rfp_id) throw new Error(rfpData.error || 'שגיאה בניתוח קול הקורא');
+      let rfpData = await rfpRes.json();
+
+      if (!rfpRes.ok || !rfpData.rfp_id) {
+        // Fallback: retry with plain text from card fields
+        console.warn('[Goldfish] /api/rfp failed, retrying with text fallback:', rfpData.error);
+        const fallbackText = [
+          opp.title,
+          opp.funder ? `גוף מממן: ${opp.funder}` : '',
+          opp.description,
+          oppExtra.requirements as string || '',
+          oppExtra.full_content as string || '',
+        ].filter(Boolean).join('\n\n') || `קול קורא: ${opp.title}`;
+
+        const rfpFallbackRes = await fetch('/api/rfp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            text: fallbackText,
+            opportunity_id: opp.id,
+            title: opp.title,
+            funder: opp.funder,
+            deadline: opp.deadline,
+            amount_min: opp.amount_min,
+            amount_max: opp.amount_max,
+          }),
+        });
+        const rfpFallbackData = await rfpFallbackRes.json();
+        if (!rfpFallbackRes.ok || !rfpFallbackData.rfp_id) {
+          throw new Error('לא הצלחתי ליצור טיוטה — נסי להדביק את תוכן הקול הקורא ישירות.');
+        }
+        rfpData = rfpFallbackData;
+        setDraftError('לא הצלחתי לקרוא את כל הקול הקורא. יצרתי טיוטה בסיסית לעריכה.');
+      }
 
       // Step 3: Generate draft (fit analysis runs in parallel inside the API)
       setDraftState('generating');
       const subRes = await fetch('/api/submissions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           rfp_id: rfpData.rfp_id,
           opportunity_id: opp.id,
@@ -1200,6 +1247,9 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
             {draftIsExisting ? '✓ טיוטה קיימת' : '✓ טיוטה נוצרה'}
             {draftTitle ? ` — ${draftTitle}` : ''}
           </div>
+          {draftError && (
+            <div className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">{draftError}</div>
+          )}
           <div className="flex items-center gap-2">
             <a
               href={shareUrl}
