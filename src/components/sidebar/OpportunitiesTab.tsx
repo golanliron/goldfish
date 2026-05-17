@@ -1014,7 +1014,18 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
     return { label: 'שווה בדיקה', cls: 'bg-amber-100 text-amber-700 border-amber-200' };
   })();
 
-  const sourceHref = opp.application_url || opp.source_url || opp.url || null;
+  // Link priority: application_url (direct form) > url (source page) > google fallback
+  const sourceHref = opp.application_url || opp.url || null;
+  const sourceBtnLabel = opp.application_url
+    ? 'פתח קול קורא / הגשה'
+    : opp.url
+      ? 'פתח מקור'
+      : 'חפש בגוגל';
+  const linkQualityLabel = (opp as Record<string, unknown>).link_quality === 'direct'
+    ? 'לינק ישיר'
+    : (opp as Record<string, unknown>).link_quality === 'general'
+      ? 'לינק כללי'
+      : null;
 
   const handleAnalyzeInChat = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1054,6 +1065,11 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
         {opp.type && TYPE_LABELS[opp.type] && (
           <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium mr-auto ${TYPE_COLORS[opp.type] || 'bg-gray-100 text-gray-600'}`}>
             {TYPE_LABELS[opp.type]}
+          </span>
+        )}
+        {linkQualityLabel && (
+          <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${linkQualityLabel === 'לינק ישיר' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+            {linkQualityLabel}
           </span>
         )}
       </div>
@@ -1139,13 +1155,13 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
             target="_blank"
             rel="noopener noreferrer"
             onClick={e => e.stopPropagation()}
-            className="flex-1 py-1.5 text-[10px] font-medium bg-surf2 border border-border text-muted rounded-lg hover:text-accent hover:border-accent/40 transition-colors text-center flex items-center justify-center gap-1"
-            title={sourceHref ? 'פתח את קול הקורא המקורי' : 'חפש בגוגל'}
+            className={`flex-1 py-1.5 text-[10px] font-medium border rounded-lg transition-colors text-center flex items-center justify-center gap-1 ${opp.application_url ? 'bg-accent/10 border-accent/40 text-accent hover:bg-accent/20' : 'bg-surf2 border-border text-muted hover:text-accent hover:border-accent/40'}`}
+            title={opp.application_url ? 'פתח ישירות לטופס / קול קורא' : sourceHref ? 'פתח את קול הקורא המקורי' : 'חפש בגוגל'}
           >
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
             </svg>
-            {sourceHref ? 'פתח מקור' : 'חפש בגוגל'}
+            {sourceBtnLabel}
           </a>
         </div>
       </div>
