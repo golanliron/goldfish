@@ -309,10 +309,13 @@ export async function GET(req: NextRequest) {
   });
 
   } catch (error) {
-    opportunitiesLog.error({ err: error, org_id: orgId }, 'opportunities unexpected error');
+    const errMsg = error instanceof Error ? error.message : String(error);
+    const errStack = error instanceof Error ? error.stack?.slice(0, 500) : undefined;
+    opportunitiesLog.error({ err: errMsg, stack: errStack, org_id: orgId }, 'opportunities unexpected error');
     return NextResponse.json(
       {
         error: 'שגיאה בטעינת ההזדמנויות. נסי שוב בעוד מספר דקות.',
+        debug_error: errMsg, // temporary — for diagnosis
         taxonomy: [],
         opportunities: [],
         matches: [],
