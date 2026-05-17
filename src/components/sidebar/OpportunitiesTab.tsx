@@ -883,89 +883,85 @@ function FitAnalysisCard({ analysis, onProceed, onCancel }: { analysis: FitAnaly
 
 function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; match?: MatchScore; orgId?: string | null; funderMeta?: FunderInfoMap[string] }) {
   const [expanded, setExpanded] = useState(false);
-  const [draftState, setDraftState] = useState<'idle' | 'parsing' | 'analyzing' | 'fit_review' | 'generating' | 'done' | 'error'>('idle');
+  const [draftState, setDraftState] = useState<'idle' | 'checking' | 'parsing' | 'generating' | 'done' | 'error'>('idle');
   const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [draftTitle, setDraftTitle] = useState<string | null>(null);
+  const [draftIsExisting, setDraftIsExisting] = useState(false);
   const [draftError, setDraftError] = useState<string | null>(null);
-  const [fitAnalysis, setFitAnalysis] = useState<FitAnalysis | null>(null);
-  const [pendingRfpId, setPendingRfpId] = useState<string | null>(null);
   const [readiness, setReadiness] = useState<ReadinessData | null>(null);
   const [loadingReadiness, setLoadingReadiness] = useState(false);
 
   const handlePrepareDraft = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!orgId) return;
-    setDraftState('parsing');
+
+    // If draft already done — open it directly
+    if (draftState === 'done' && shareUrl) {
+      window.open(shareUrl, '_blank');
+      return;
+    }
+
+    setDraftState('checking');
     setDraftError(null);
     setShareUrl(null);
-    setFitAnalysis(null);
+    setDraftIsExisting(false);
 
     try {
-      // Step 1: Parse the RFP
+      // Step 1: Check for existing draft first (fast, no AI)
+      const existingRes = await fetch('/api/submissions/check?' + new URLSearchParams({
+        opportunity_id: opp.id,
+      }));
+      if (existingRes.ok) {
+        const existingData = await existingRes.json();
+        if (existingData.share_url) {
+          setShareUrl(existingData.share_url);
+          setDraftTitle(opp.title);
+          setDraftIsExisting(true);
+          setDraftState('done');
+          window.open(existingData.share_url, '_blank');
+          return;
+        }
+      }
+
+      // Step 2: Parse the RFP (so submission engine gets structured questions)
+      setDraftState('parsing');
       const rfpRes = await fetch('/api/rfp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           org_id: orgId,
           url: opp.application_url || opp.url || null,
-          text: !(opp.application_url || opp.url) ? [opp.title, opp.description, opp.eligibility, opp.how_to_apply].filter(Boolean).join('\n') : null,
+          text: !(opp.application_url || opp.url)
+            ? [opp.title, opp.description, opp.eligibility, opp.how_to_apply].filter(Boolean).join('\n')
+            : null,
           opportunity_id: opp.id,
         }),
       });
       const rfpData = await rfpRes.json();
       if (!rfpRes.ok || !rfpData.rfp_id) throw new Error(rfpData.error || 'שגיאה בניתוח קול הקורא');
 
-      // Step 2: Analyze fit
-      setDraftState('analyzing');
-      const analyzeRes = await fetch('/api/submissions/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ org_id: orgId, rfp_id: rfpData.rfp_id }),
-      });
-      const analyzeData = await analyzeRes.json();
-
-      if (analyzeRes.ok && analyzeData.analysis) {
-        setPendingRfpId(rfpData.rfp_id);
-        setFitAnalysis(analyzeData.analysis);
-        setDraftState('fit_review');
-        return; // Wait for user confirmation
-      }
-
-      // If analysis fails, proceed directly
-      await generateDraft(orgId, rfpData.rfp_id);
-    } catch (err) {
-      setDraftError(err instanceof Error ? err.message : 'שגיאה לא צפויה');
-      setDraftState('error');
-    }
-  };
-
-  const generateDraft = async (orgIdParam: string, rfpIdParam: string) => {
-    setDraftState('generating');
-    try {
+      // Step 3: Generate draft (fit analysis runs in parallel inside the API)
+      setDraftState('generating');
       const subRes = await fetch('/api/submissions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ org_id: orgIdParam, rfp_id: rfpIdParam, opportunity_id: opp.id }),
+        body: JSON.stringify({
+          rfp_id: rfpData.rfp_id,
+          opportunity_id: opp.id,
+        }),
       });
       const subData = await subRes.json();
       if (!subRes.ok || !subData.share_url) throw new Error(subData.error || 'שגיאה ביצירת הטיוטה');
+
       setShareUrl(subData.share_url);
+      setDraftTitle(subData.rfp_title || opp.title);
+      setDraftIsExisting(false);
       setDraftState('done');
+      window.open(subData.share_url, '_blank');
     } catch (err) {
       setDraftError(err instanceof Error ? err.message : 'שגיאה לא צפויה');
       setDraftState('error');
     }
-  };
-
-  const handleProceedFromAnalysis = () => {
-    if (!orgId || !pendingRfpId) return;
-    setFitAnalysis(null);
-    generateDraft(orgId, pendingRfpId);
-  };
-
-  const handleCancelAnalysis = () => {
-    setFitAnalysis(null);
-    setPendingRfpId(null);
-    setDraftState('idle');
   };
 
   const daysLeft = opp.deadline
@@ -1021,27 +1017,49 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
     : opp.url
       ? 'פתח מקור'
       : 'חפש בגוגל';
-  const linkQualityLabel = (opp as Record<string, unknown>).link_quality === 'direct'
+  const linkQualityLabel = (opp as unknown as Record<string, unknown>).link_quality === 'direct'
     ? 'לינק ישיר'
-    : (opp as Record<string, unknown>).link_quality === 'general'
+    : (opp as unknown as Record<string, unknown>).link_quality === 'general'
       ? 'לינק כללי'
       : null;
 
   const handleAnalyzeInChat = (e: React.MouseEvent) => {
     e.stopPropagation();
-    const parts = [`נתח את הקול הקורא הזה: דרישות, התאמה לארגון, סיכוי, ומה חסר כדי להגיש.`];
-    parts.push(`\nשם: ${opp.title}`);
-    if (opp.funder) parts.push(`מממן: ${opp.funder}`);
-    if (opp.deadline) parts.push(`דדליין: ${new Date(opp.deadline).toLocaleDateString('he-IL')}`);
-    if (opp.amount_max) parts.push(`סכום מקסימלי: ${opp.amount_max.toLocaleString()} ₪`);
-    if (opp.eligibility) parts.push(`תנאי סף: ${opp.eligibility}`);
-    if (opp.description) parts.push(`\nתיאור: ${opp.description.slice(0, 600)}`);
-    if (opp.full_content && opp.full_content.length > 200) {
-      parts.push(`\n===== תוכן קול הקורא =====\n${opp.full_content.slice(0, 4000)}`);
-    }
-    const detail = parts.join('\n');
+
+    // Build structured opportunity context for deep analysis
+    const oppContext: Record<string, unknown> = {
+      id: opp.id,
+      title: opp.title,
+      funder: opp.funder || null,
+      deadline: opp.deadline ? new Date(opp.deadline).toLocaleDateString('he-IL') : null,
+      daysLeft: opp.deadline ? Math.ceil((new Date(opp.deadline).getTime() - Date.now()) / 86400000) : null,
+      amount_min: opp.amount_min || null,
+      amount_max: opp.amount_max || null,
+      eligibility: opp.eligibility || null,
+      description: opp.description ? opp.description.slice(0, 800) : null,
+      how_to_apply: (opp as unknown as Record<string, unknown>).how_to_apply || null,
+      requirements: (opp as unknown as Record<string, unknown>).requirements || null,
+      url: opp.url || null,
+      application_url: opp.application_url || null,
+      full_content: opp.full_content && opp.full_content.length > 200
+        ? opp.full_content.slice(0, 5000)
+        : null,
+      match_score: match?.score ?? null,
+      match_reasoning: match?.reasoning ?? null,
+      match_pillars: match?.pillars ?? null,
+      funder_style: funderMeta?.style ?? null,
+      funder_approval_rate: funderMeta?.approval_rate ?? null,
+      funder_writing_tips: funderMeta?.writing_tips ?? null,
+    };
+
+    // Dispatch to ChatPanel with full opportunity context
     window.dispatchEvent(new CustomEvent('fishgold:closeSidebar'));
-    setTimeout(() => window.dispatchEvent(new CustomEvent('fishgold:send', { detail })), 50);
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('fishgold:activeTab', { detail: 'opportunities' }));
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('fishgold:analyzeOpportunity', { detail: oppContext }));
+      }, 30);
+    }, 50);
   };
 
   return (
@@ -1126,16 +1144,25 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
         {orgId && (
           <button
             onClick={handlePrepareDraft}
-            disabled={draftState !== 'idle' && draftState !== 'error'}
-            className="w-full py-2 text-[12px] font-bold bg-orange-500 text-white rounded-lg hover:bg-orange-600 active:scale-[0.98] transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+            disabled={draftState === 'checking' || draftState === 'parsing' || draftState === 'generating'}
+            className={`w-full py-2 text-[12px] font-bold rounded-lg active:scale-[0.98] transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 ${
+              draftState === 'done'
+                ? 'bg-green-600 hover:bg-green-700 text-white'
+                : 'bg-orange-500 hover:bg-orange-600 text-white'
+            }`}
           >
-            {(draftState === 'parsing' || draftState === 'analyzing' || draftState === 'generating') ? (
+            {(draftState === 'checking' || draftState === 'parsing' || draftState === 'generating') ? (
               <>
                 <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                {draftState === 'parsing' ? 'קורא...' : draftState === 'analyzing' ? 'מנתח...' : 'כותב...'}
+                {draftState === 'checking' ? 'בודק...' : draftState === 'parsing' ? 'קורא קול קורא...' : 'כותב טיוטה...'}
               </>
             ) : draftState === 'done' ? (
-              '✓ הטיוטה מוכנה'
+              <>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+                </svg>
+                {draftIsExisting ? 'פתח טיוטה קיימת →' : 'פתח טיוטה לעריכה →'}
+              </>
             ) : (
               'צור טיוטה לעריכה ←'
             )}
@@ -1166,38 +1193,34 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
         </div>
       </div>
 
-      {/* Draft done state — share URL */}
+      {/* Draft done state — banner */}
       {draftState === 'done' && shareUrl && (
-        <div className="mt-2 bg-green-50 border border-green-200 rounded-lg p-2 space-y-1" onClick={e => e.stopPropagation()}>
-          <a
-            href={shareUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 text-[10px] text-blue-600 hover:underline font-medium"
-          >
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
-              <polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" />
-            </svg>
-            פתח דף עריכה שיתופי
-          </a>
-          <button
-            onClick={() => { setDraftState('idle'); setShareUrl(null); }}
-            className="text-[9px] text-muted hover:underline"
-          >
-            הכן טיוטה חדשה
-          </button>
-        </div>
-      )}
-
-      {/* Fit review */}
-      {draftState === 'fit_review' && fitAnalysis && (
-        <div onClick={e => e.stopPropagation()}>
-          <FitAnalysisCard
-            analysis={fitAnalysis}
-            onProceed={handleProceedFromAnalysis}
-            onCancel={handleCancelAnalysis}
-          />
+        <div className="mt-2 bg-green-50 border border-green-200 rounded-lg p-2.5 space-y-1.5" onClick={e => e.stopPropagation()}>
+          <div className="text-[11px] font-semibold text-green-800">
+            {draftIsExisting ? '✓ טיוטה קיימת' : '✓ טיוטה נוצרה'}
+            {draftTitle ? ` — ${draftTitle}` : ''}
+          </div>
+          <div className="flex items-center gap-2">
+            <a
+              href={shareUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-[10px] bg-green-700 text-white px-2.5 py-1 rounded-md hover:bg-green-800 font-medium"
+            >
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+              </svg>
+              פתח לעריכה
+            </a>
+            {!draftIsExisting && (
+              <button
+                onClick={() => { setDraftState('idle'); setShareUrl(null); setDraftTitle(null); }}
+                className="text-[9px] text-green-600 hover:underline"
+              >
+                צור טיוטה חדשה
+              </button>
+            )}
+          </div>
         </div>
       )}
 

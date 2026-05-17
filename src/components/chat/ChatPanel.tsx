@@ -283,15 +283,94 @@ export default function ChatPanel({ orgId, userId, onStageChange }: ChatPanelPro
 
     const openUploadHandler = () => fileInputRef.current?.click();
 
+    const analyzeOpportunityHandler = async (e: Event) => {
+      const opp = (e as CustomEvent).detail as Record<string, unknown>;
+      if (!opp || !opp.title) return;
+
+      // Show "analyzing" placeholder message immediately
+      const thinkingId = crypto.randomUUID();
+      const thinkingMsg: import('@/types').ChatMessage = {
+        id: thinkingId,
+        role: 'assistant',
+        content: `מנתח את הקול הקורא "${opp.title}"...`,
+        timestamp: new Date().toISOString(),
+      };
+      setMessages(prev => [...prev, thinkingMsg]);
+
+      // Try to fetch URL content if available and no full_content
+      let fetchedContent = '';
+      const targetUrl = (opp.application_url || opp.url) as string | null;
+      if (targetUrl && !opp.full_content) {
+        try {
+          const res = await fetch('/api/learn-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: targetUrl, org_id: orgId, dry_run: true }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.summary) {
+              fetchedContent = `\n===== תוכן שנשלף מהמקור =====\n${data.summary.slice(0, 3000)}`;
+            }
+          }
+        } catch {
+          // non-blocking — continue without fetched content
+        }
+      }
+
+      // Remove the "analyzing..." placeholder
+      setMessages(prev => prev.filter(m => m.id !== thinkingId));
+
+      // Build the structured analysis prompt
+      const parts: string[] = [];
+      parts.push(`[ניתוח קול קורא — ${opp.title}]`);
+      parts.push(`\nמממן: ${opp.funder || 'לא ידוע'}`);
+      if (opp.deadline) parts.push(`דדליין: ${opp.deadline}${opp.daysLeft !== null ? ` (בעוד ${opp.daysLeft} ימים)` : ''}`);
+      if (opp.amount_min || opp.amount_max) {
+        const amtMin = opp.amount_min ? Number(opp.amount_min).toLocaleString() : null;
+        const amtMax = opp.amount_max ? Number(opp.amount_max).toLocaleString() : null;
+        parts.push(`סכום: ${amtMin && amtMax ? `${amtMin}–${amtMax} ₪` : amtMax ? `עד ${amtMax} ₪` : `מ-${amtMin} ₪`}`);
+      }
+      if (opp.eligibility) parts.push(`תנאי סף: ${opp.eligibility}`);
+      if (opp.how_to_apply) parts.push(`אופן הגשה: ${String(opp.how_to_apply).slice(0, 400)}`);
+      if (opp.description) parts.push(`\nתיאור: ${opp.description}`);
+      if (opp.full_content) parts.push(`\n===== תוכן קול הקורא =====\n${opp.full_content}`);
+      if (fetchedContent) parts.push(fetchedContent);
+      if (!fetchedContent && !opp.full_content && targetUrl) {
+        parts.push(`\n[לא הצלחתי לשלוף תוכן מ-${targetUrl} — מנתח לפי הנתונים הקיימים]`);
+      }
+      if (opp.match_score !== null) {
+        parts.push(`\nציון התאמה: ${opp.match_score}%`);
+        if (opp.match_reasoning) parts.push(`נימוק: ${opp.match_reasoning}`);
+      }
+      if (opp.funder_style) parts.push(`סגנון המממן: ${opp.funder_style}`);
+      if (opp.funder_writing_tips) parts.push(`טיפים לכתיבה: ${opp.funder_writing_tips}`);
+
+      parts.push(`\n\nנתח את הקול הקורא הזה לעומק:`);
+      parts.push(`1. מה הקול הקורא מבקש ולמי הוא מיועד`);
+      parts.push(`2. האם הארגון יכול להגיש ישירות או דרך שותף`);
+      parts.push(`3. דדליין — מה דחוף`);
+      parts.push(`4. מסמכים נדרשים לפי הקול הקורא`);
+      parts.push(`5. תנאי סף — האם הארגון עומד בהם`);
+      parts.push(`6. מה חסר בתיק הארגון`);
+      parts.push(`7. סיכונים ואי-התאמות`);
+      parts.push(`8. המלצה: להגיש / לבדוק / לא מתאים / דורש שותף`);
+      parts.push(`9. הצעד הבא המומלץ`);
+
+      await sendMessageRef.current(parts.join('\n'));
+    };
+
     window.addEventListener('fishgold:send', handler);
     window.addEventListener('fishgold:activeTab', tabHandler);
     window.addEventListener('fishgold:loadConversation', loadConvHandler);
     window.addEventListener('fishgold:openUpload', openUploadHandler);
+    window.addEventListener('fishgold:analyzeOpportunity', analyzeOpportunityHandler);
     return () => {
       window.removeEventListener('fishgold:send', handler);
       window.removeEventListener('fishgold:activeTab', tabHandler);
       window.removeEventListener('fishgold:loadConversation', loadConvHandler);
       window.removeEventListener('fishgold:openUpload', openUploadHandler);
+      window.removeEventListener('fishgold:analyzeOpportunity', analyzeOpportunityHandler);
     };
   }, [orgId]);
 
