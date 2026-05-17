@@ -128,11 +128,27 @@ const DIRECT_URL_PATTERNS = [
 
 function isDirectUrl(url: string): boolean {
   if (!url) return false;
-  // Must have enough path depth to be specific
-  const pathSegments = new URL(url).pathname.split('/').filter(Boolean).length;
+  let parsed: URL;
+  try { parsed = new URL(url); } catch { return false; }
+
+  const path = parsed.pathname;
+  const pathSegments = path.split('/').filter(Boolean);
+
+  // ── Reject homepages / root domains first ─────────────────────────────────
+  if (pathSegments.length === 0) return false; // https://call.gov.il/
+  if (pathSegments.length === 1 && pathSegments[0].length <= 2) return false; // /he /en
+
+  // ── Reject known general gov.il page patterns ─────────────────────────────
+  // /he/departments/... landing pages, /he/pages/... (generic info), /he/topics/...
+  if (/\/he\/(departments|topics|pages)\//i.test(path) && !(/\/he\/pages\/molsa/i.test(path))) return false;
+  // govil-landing-page suffix = always a listing/landing
+  if (path.endsWith('govil-landing-page')) return false;
+
+  // ── Now check positive direct patterns ────────────────────────────────────
   if (DIRECT_URL_PATTERNS.some(re => re.test(url))) return true;
-  // Deep path with numeric ID
-  if (pathSegments >= 4 && /\d{4,}/.test(url)) return true;
+  // Deep path with numeric ID (e.g. mr.gov.il/ilgstorefront/he/p/4000609035)
+  if (pathSegments.length >= 4 && /\d{4,}/.test(path)) return true;
+
   return false;
 }
 
