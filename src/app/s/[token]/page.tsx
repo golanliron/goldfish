@@ -479,9 +479,35 @@ export default function SharedSubmissionPage() {
 
         {/* Submission content */}
         <div className="space-y-4">
-          {(editing ? editContent : submission.content).map((block, i) => (
+          {(editing ? editContent : submission.content).map((block, i) => {
+            const isMetaBlock = block.id === '_rfp_info' || block.id === '_goldfish_notes' || block.id === '_missing';
+            const isReadonly = (block as SubmissionBlock & { readonly?: boolean }).readonly || block.id === '_rfp_info' || block.id === '_goldfish_notes';
+
+            // Meta blocks: styled differently, never editable
+            if (isMetaBlock) {
+              const metaBg =
+                block.id === '_rfp_info' ? 'bg-blue-50 border-blue-100' :
+                block.id === '_goldfish_notes' ? 'bg-orange-50 border-orange-100' :
+                'bg-amber-50 border-amber-100';
+              const metaText =
+                block.id === '_rfp_info' ? 'text-blue-800' :
+                block.id === '_goldfish_notes' ? 'text-orange-800' :
+                'text-amber-800';
+              return (
+                <div key={block.id} className={`rounded-2xl border p-5 ${metaBg}`}>
+                  <div className={`text-xs font-bold mb-2 ${metaText}`}>{block.question}</div>
+                  <div className={`text-sm whitespace-pre-wrap leading-relaxed ${metaText}`}>
+                    {block.answer}
+                  </div>
+                </div>
+              );
+            }
+
+            // Regular editable blocks
+            const editIdx = editing ? editContent.findIndex(b => b.id === block.id) : i;
+            return (
             <div key={block.id} className="bg-white rounded-2xl border border-gray-200 p-6">
-              <div className="text-xs font-semibold text-gray-400 mb-2">שאלה {i + 1}</div>
+              <div className="text-xs font-semibold text-gray-400 mb-2">שאלה {i}</div>
               <div className="text-sm font-medium text-gray-800 mb-3">{block.question}</div>
               {block.max_chars && (
                 <div className="text-xs text-gray-400 mb-2 flex items-center gap-2">
@@ -496,7 +522,7 @@ export default function SharedSubmissionPage() {
                   )}
                 </div>
               )}
-              {!editing && (
+              {!editing && !isReadonly && (
                 <div className="flex justify-end mt-2">
                   <button onClick={() => copyBlock(block.id, block.answer)}
                     className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 transition-colors">
@@ -504,13 +530,13 @@ export default function SharedSubmissionPage() {
                   </button>
                 </div>
               )}
-              {editing ? (
+              {editing && !isReadonly ? (
                 <div>
                   <textarea
-                    value={editContent[i]?.answer || ''}
+                    value={editContent[editIdx]?.answer || ''}
                     onChange={e => {
                       const updated = [...editContent];
-                      updated[i] = { ...updated[i], answer: e.target.value };
+                      updated[editIdx] = { ...updated[editIdx], answer: e.target.value };
                       setEditContent(updated);
                     }}
                     maxLength={block.max_chars || undefined}
@@ -520,14 +546,14 @@ export default function SharedSubmissionPage() {
                   <div className="flex items-center justify-between mt-1">
                     {block.max_chars ? (
                       <div className={`text-xs font-medium ${
-                        (editContent[i]?.answer?.length || 0) > block.max_chars
+                        (editContent[editIdx]?.answer?.length || 0) > block.max_chars
                           ? 'text-red-500'
-                          : (editContent[i]?.answer?.length || 0) > block.max_chars * 0.9
+                          : (editContent[editIdx]?.answer?.length || 0) > block.max_chars * 0.9
                           ? 'text-amber-500'
                           : 'text-gray-400'
                       }`}>
-                        {editContent[i]?.answer?.length || 0} / {block.max_chars} תווים
-                        {(editContent[i]?.answer?.length || 0) > block.max_chars && ' — חריגה!'}
+                        {editContent[editIdx]?.answer?.length || 0} / {block.max_chars} תווים
+                        {(editContent[editIdx]?.answer?.length || 0) > block.max_chars && ' — חריגה!'}
                       </div>
                     ) : <div />}
                     <button
@@ -546,10 +572,10 @@ export default function SharedSubmissionPage() {
                         onChange={e => setAiPrompt(prev => ({ ...prev, [block.id]: e.target.value }))}
                         placeholder="למשל: קצר ל-300 תווים, הדגש את האימפקט, הוסף נתונים..."
                         className="w-full px-3 py-2 rounded-lg border border-orange-200 text-sm focus:outline-none focus:border-orange-400 bg-white"
-                        onKeyDown={e => e.key === 'Enter' && !aiLoading[block.id] && improveWithAI(block.id, i)}
+                        onKeyDown={e => e.key === 'Enter' && !aiLoading[block.id] && improveWithAI(block.id, editIdx)}
                       />
                       <button
-                        onClick={() => improveWithAI(block.id, i)}
+                        onClick={() => improveWithAI(block.id, editIdx)}
                         disabled={!!aiLoading[block.id]}
                         className="w-full py-1.5 bg-orange-500 text-white text-sm rounded-lg hover:bg-orange-600 disabled:opacity-50"
                       >
@@ -564,7 +590,8 @@ export default function SharedSubmissionPage() {
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Comments */}

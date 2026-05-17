@@ -8,6 +8,7 @@ import { z } from 'zod';
 const SubmissionRequestSchema = z.object({
   rfp_id: z.string().min(1, 'rfp_id הוא שדה חובה'),
   opportunity_id: z.string().optional(),
+  skip_existing_check: z.boolean().optional(), // force new draft even if one exists
 });
 
 export const maxDuration = 120; // seconds — Vercel Pro/Team plan
@@ -35,12 +36,35 @@ export const POST = withAuth(async (req, auth) => {
   if (!parsed.success) {
     return NextResponse.json({ error: 'נתונים לא תקינים', details: parsed.error.flatten() }, { status: 400 });
   }
-  const { rfp_id, opportunity_id } = parsed.data;
+  const { rfp_id, opportunity_id, skip_existing_check } = parsed.data;
   const org_id = auth.orgId;
 
   const supabase = createAdminClient();
 
-  // Load RFP + org profile + documents + org memory + past submissions in parallel
+  // ── Check for existing draft (same org + opportunity) ──────────────────────
+  if (opportunity_id && !skip_existing_check) {
+    const { data: existing } = await supabase
+      .from('submissions')
+      .select('id, share_token, content, status')
+      .eq('org_id', org_id)
+      .eq('opportunity_id', opportunity_id)
+      .in('status', ['draft', 'submitted'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (existing?.share_token) {
+      return NextResponse.json({
+        submission_id: existing.id,
+        share_token: existing.share_token,
+        share_url: `${process.env.NEXT_PUBLIC_APP_URL || ''}/s/${existing.share_token}`,
+        existing: true,
+        status: existing.status,
+      });
+    }
+  }
+
+  // ── Load all context in parallel ──────────────────────────────────────────
   const [rfpRes, profileRes, docsRes, memoryRes, pastSubsRes] = await Promise.all([
     supabase.from('rfp_parsed').select('*').eq('id', rfp_id).single(),
     supabase.from('org_profiles').select('data').eq('org_id', org_id).single(),
@@ -59,6 +83,9 @@ export const POST = withAuth(async (req, auth) => {
   if (!rfp) return NextResponse.json({ error: 'RFP not found' }, { status: 404 });
 
   const questions = (rfp.questions as { id: string; question: string; max_chars?: number }[]) || [];
+  const requiredDocs = (rfp.required_documents as string[]) || [];
+  const eligibility = (rfp.eligibility as Record<string, unknown>) || {};
+  const rawText = (rfp.raw_text as string) || '';
 
   // Build org context
   const orgContext = [
@@ -82,17 +109,20 @@ export const POST = withAuth(async (req, auth) => {
     .join('\n\n')
     .slice(0, 15000);
 
+  // What documents org already has
+  const existingDocNames = docs.map(d => d.filename).join(', ') || 'אין';
+
   // Funder-type-specific writing style guide
   const funderStyleGuide: Record<string, string> = {
-    government: `גוף ממשלתי: השתמש בשפה רשמית ומדויקת. הדגש עמידה בקריטריונים מוגדרים, מדדים כמותיים, יעדים מדידים (SMART), ציות לנהלים, שיתוף פעולה עם גופים ממשלתיים. הצג תוכנית ביצוע ברורה עם אבני דרך. הוכח יכולת ניהולית ומוסדית.`,
-    foundation: `קרן פילנתרופית: הדגש אימפקט חברתי עמוק, תיאוריית שינוי (Theory of Change) ברורה — בעיה → פעולה → תוצאה → שינוי מערכתי. כתוב בשפה חמה אך מקצועית. הצג ראיות, נתוני השפעה, וסיפורי שינוי. הראה חדשנות, ייחודיות מודל, ויכולת להשפיע בסקייל.`,
-    corporate: `חברה עסקית / CSR: הדגש ROI חברתי (SROI), השפעה על הקהילה הרלוונטית לפעילות העסקית, מדדי ביצוע ברורים, שקיפות ואחריות תאגידית. קשר את הפרויקט לערכי החברה ולאסטרטגיה העסקית שלה. הצג שותפות עסקית-חברתית שמחזקת את שניהם.`,
-    federation: `פדרציה יהודית / קהילתית: הדגש קשר לזהות יהודית, ערכי tikkun olam, חיזוק הקהילה, חינוך ערכי. הראה כיצד הפרויקט מחזק יהדות הגולה-ישראל. השתמש בשפה של שותפות, אחריות הדדית, קהילה. הצג מספרים ממשיים על הקהילה המושפעת.`,
+    government: `גוף ממשלתי: השתמש בשפה רשמית ומדויקת. הדגש עמידה בקריטריונים מוגדרים, מדדים כמותיים, יעדים מדידים (SMART), ציות לנהלים. הצג תוכנית ביצוע ברורה עם אבני דרך. הוכח יכולת ניהולית ומוסדית.`,
+    foundation: `קרן פילנתרופית: הדגש אימפקט חברתי עמוק, Theory of Change ברורה — בעיה → פעולה → תוצאה → שינוי מערכתי. כתוב בשפה חמה אך מקצועית. הצג ראיות, נתוני השפעה, וסיפורי שינוי.`,
+    corporate: `חברה עסקית / CSR: הדגש ROI חברתי (SROI), השפעה על הקהילה הרלוונטית לפעילות העסקית, מדדי ביצוע ברורים. קשר את הפרויקט לערכי החברה.`,
+    federation: `פדרציה יהודית / קהילתית: הדגש קשר לזהות יהודית, ערכי tikkun olam, חיזוק הקהילה. הראה כיצד הפרויקט מחזק יהדות הגולה-ישראל.`,
     other: `הצג תשובות מקצועיות, ממוקדות אימפקט, עם נתונים ברורים ושפה שכנועית.`,
   };
   const funderStyle = funderStyleGuide[(rfp.funder_type as string)] || funderStyleGuide.other;
 
-  // Load funder intelligence for personalized writing
+  // Load funder intelligence
   let funderIntel = '';
   const funderName = rfp.funder_name as string;
   if (funderName) {
@@ -101,28 +131,21 @@ export const POST = withAuth(async (req, auth) => {
       .select('preferred_domains, preferred_populations, typical_amount_min, typical_amount_max, writing_tips, funder_style, total_approved, total_submissions')
       .eq('funder_name', funderName)
       .single();
-
     if (fi) {
       const parts: string[] = [];
       if (fi.preferred_domains?.length > 0) parts.push(`תחומים מועדפים: ${fi.preferred_domains.join(', ')}`);
       if (fi.preferred_populations?.length > 0) parts.push(`אוכלוסיות מועדפות: ${fi.preferred_populations.join(', ')}`);
-      if (fi.typical_amount_min || fi.typical_amount_max) {
-        parts.push(`טווח מענקים טיפוסי: ${fi.typical_amount_min || '?'} - ${fi.typical_amount_max || '?'} ש"ח`);
-      }
-      if (fi.total_submissions > 0) {
-        parts.push(`אחוז אישור ידוע: ${Math.round((fi.total_approved / fi.total_submissions) * 100)}%`);
-      }
+      if (fi.typical_amount_min || fi.typical_amount_max) parts.push(`טווח מענקים: ${fi.typical_amount_min || '?'}-${fi.typical_amount_max || '?'} ₪`);
+      if (fi.total_submissions > 0) parts.push(`אחוז אישור ידוע: ${Math.round((fi.total_approved / fi.total_submissions) * 100)}%`);
       if (fi.writing_tips) parts.push(`טיפים: ${fi.writing_tips}`);
       if (parts.length > 0) funderIntel = parts.join('\n');
     }
   }
 
-  // Build org memory context
   const memoryContext = orgMemory.length > 0
     ? orgMemory.map(m => `${(m as { key: string }).key}: ${(m as { value: string }).value}`).join('\n')
     : '';
 
-  // Build past outcomes context (lessons learned)
   const pastOutcomesContext = pastSubs.length > 0
     ? pastSubs
       .filter(s => (s as { lessons_learned?: string }).lessons_learned || (s as { funder_feedback?: string }).funder_feedback)
@@ -137,77 +160,219 @@ export const POST = withAuth(async (req, auth) => {
       .join('\n')
     : '';
 
-  // Generate answers for all questions
-  const prompt = `אתה מומחה בכיר בכתיבת הגשות לקרנות ומענקים לארגונים חברתיים בישראל. אתה יודע מה קרנות באמת רוצות לראות — נתונים, אימפקט, ייחודיות, אמינות.
+  // ── Build sections list ────────────────────────────────────────────────────
+  // If the RFP has explicit questions — use them as sections.
+  // If not — derive sections from raw_text or use smart defaults.
+  const hasExplicitQuestions = questions.length > 0;
 
-## משימה
-כתוב תשובות מנצחות לשאלות קול הקורא הבא. כל תשובה צריכה לשכנע את הוועדה שהארגון הזה הוא הבחירה הנכונה.
+  // Fixed meta-blocks always prepended
+  const metaBlocks = [
+    {
+      id: '_rfp_info',
+      question: 'פרטי קול הקורא',
+      isFixed: true,
+    },
+    {
+      id: '_missing',
+      question: 'מסמכים וחסרים',
+      isFixed: true,
+    },
+    {
+      id: '_goldfish_notes',
+      question: 'הערות Goldfish',
+      isFixed: true,
+    },
+  ];
 
-## פרטי קול הקורא
-גוף מממן: ${rfp.funder_name}
-סוג גוף: ${rfp.funder_type}
-שם קול הקורא: ${rfp.rfp_title}
+  // Sections for AI to fill
+  const sectionsForAI: { id: string; question: string; max_chars?: number }[] = hasExplicitQuestions
+    ? questions
+    : [
+        { id: 's1', question: 'תיאור הארגון ורקע' },
+        { id: 's2', question: 'הצורך / הבעיה החברתית שאנו פותרים' },
+        { id: 's3', question: 'תיאור הפרויקט המוצע' },
+        { id: 's4', question: 'אוכלוסיית יעד ואזור פעילות' },
+        { id: 's5', question: 'מטרות ויעדים מדידים' },
+        { id: 's6', question: 'תוכנית עבודה ולוח זמנים' },
+        { id: 's7', question: 'תוצאות ומדדי הצלחה' },
+        { id: 's8', question: 'תקציב מבוקש ופירוט' },
+      ];
+
+  const sectionsJson = sectionsForAI
+    .map(q => `{ "id": "${q.id}", "question": "${q.question.replace(/"/g, "'")}"${q.max_chars ? `, "max_chars": ${q.max_chars}` : ''} }`)
+    .join(',\n    ');
+
+  // Generate draft content
+  const prompt = `אתה מומחה בכיר בכתיבת הגשות לקרנות ומענקים לארגונים חברתיים בישראל.
+המשימה שלך: לכתוב טיוטת הגשה ראשונית אמיתית — לא שלד ריק, לא כותרות בלבד.
+כל סעיף צריך לכלול טקסט ממשי המבוסס על נתוני הארגון ועל דרישות הקול הקורא.
+
+## קול הקורא
+שם: ${rfp.rfp_title}
+גוף מממן: ${rfp.funder_name} (${rfp.funder_type || 'לא ידוע'})
+${rfp.max_amount ? `סכום מקסימלי: ${rfp.max_amount} ₪` : ''}
+${rfp.deadline ? `דדליין: ${new Date(rfp.deadline as string).toLocaleDateString('he-IL')}` : ''}
 קריטריוני הערכה: ${(rfp.evaluation_criteria as string[])?.join(' | ') || 'לא צוינו'}
+${eligibility.other ? `תנאי סף: ${(eligibility.other as string[]).join(', ')}` : ''}
+${requiredDocs.length > 0 ? `מסמכים נדרשים: ${requiredDocs.join(', ')}` : ''}
 ${funderIntel ? `\n## מודיעין על הגוף המממן\n${funderIntel}` : ''}
+${rawText ? `\n## תוכן קול הקורא המלא (לחילוץ דרישות נוספות)\n${rawText.slice(0, 8000)}` : ''}
 
 ## פרופיל הארגון
-${orgContext}
-${memoryContext ? `\n## עובדות מאומתות על הארגון\n${memoryContext}` : ''}
+${orgContext || '⚠️ פרופיל ארגון לא מולא — כתוב תשובות כלליות וסמן [יש להשלים]'}
+${memoryContext ? `\n## עובדות מאומתות\n${memoryContext}` : ''}
+${docContext ? `\n## מסמכי הארגון\n${docContext}` : ''}
+${pastOutcomesContext ? `\n## לקחים מהגשות קודמות\n${pastOutcomesContext}` : ''}
 
-## מסמכים ומידע נוסף
-${docContext || 'אין מסמכים נוספים'}
-${pastOutcomesContext ? `\n## לקחים מהגשות קודמות\nהארגון הגיש בעבר ולמד מהניסיון:\n${pastOutcomesContext}\nהשתמש בלקחים האלה כדי לשפר את הכתיבה הפעם.` : ''}
-
-## הנחיית כתיבה לסוג הגוף המממן
+## הנחיית כתיבה
 ${funderStyle}
 
 ## כללי כתיבה מחייבים
-1. נתונים אמיתיים בלבד — השתמש רק בנתונים שמופיעים בפרופיל הארגון. אל תמציא מספרים, שמות, או הישגים.
-2. מבנה PAS — Problem (הבעיה שפותרים) → Agitation (למה זה קריטי עכשיו) → Solution (מה הארגון עושה ואיך).
-3. Theory of Change — בעיה חברתית ברורה → התערבות ייחודית → תוצאות מדידות → אימפקט מערכתי.
-4. מדדים מספריים — כשיש מספרים בפרופיל (מוטבים, תקציב, שנות ניסיון), השתמש בהם. מספרים = אמינות.
-5. גוף ראשון רבים — "אנחנו מפעילים", "הארגון שלנו", "המודל שלנו".
-6. ייחודיות — הדגש מה שרק הארגון הזה עושה שאחרים לא עושים.
-7. הגבלת תווים — אם יש max_chars לשאלה, כתוב תשובה שלא עוברת את הגבול.
-8. עברית מדויקת — ללא ניסוחים גנריים, ללא ז'רגון מיותר. כתוב כמו מקצוען שמכיר את הארגון.
+1. נתונים אמיתיים בלבד — השתמש רק בנתונים מפרופיל הארגון. כשנתון חסר, כתוב [יש להשלים: שם הנתון].
+2. כל תשובה = טקסט ממשי, לא כותרת. מינימום 2-3 משפטים לכל סעיף.
+3. PAS: בעיה → החמרה → פתרון. Theory of Change: בעיה → התערבות → תוצאה → אימפקט.
+4. מספרים = אמינות. כשיש מספרים בפרופיל — שלב אותם.
+5. גוף ראשון רבים: "אנחנו", "הארגון שלנו".
+6. כשמגבלת תווים קיימת (max_chars) — עמוד בה בדיוק.
+7. עברית מדויקת, לא ז'רגון.
 
 ## פורמט החזרה
-החזר JSON בלבד, ללא \`\`\`json\`\`\`, ללא הסברים.
-
+JSON בלבד, ללא \`\`\`json\`\`\`, ללא הסברים.
+עבור כל סעיף — כתוב תשובה אמיתית. אל תשאיר שדה ריק.
 {
-  "answers": [
-    ${questions.map(q => `{ "id": "${q.id}", "question": "${q.question.replace(/"/g, "'")}",  "answer": "תשובה מקצועית ומשכנעת" }`).join(',\n    ')}
-  ]
+  "sections": [
+    ${sectionsJson}
+  ],
+  "rfp_summary": "2-3 משפטים: מה הקול הקורא מחפש, מה נדרש להגיש, ומה ייחודי בו",
+  "missing_info": ["רשימת פרטים שחסרים מפרופיל הארגון ונדרשים להגשה"],
+  "missing_docs": ["מסמכים שנדרשים אך לא קיימים בתיק הארגון (יש לארגון: ${existingDocNames})"],
+  "goldfish_notes": "2-3 משפטים: סיכום ניתוח ההתאמה, הנקודות החזקות, והמלצות לשיפור הטיוטה"
 }`;
 
-  let answers: { id: string; question: string; answer: string }[] = [];
-  try {
-    const msg = await anthropic.messages.create({
+  // ── Run AI draft + fit analysis in parallel ───────────────────────────────
+  const fitPrompt = `נתח התאמה בין הארגון לקול הקורא הזה.
+גוף מממן: ${rfp.funder_name} | קול קורא: ${rfp.rfp_title}
+פרופיל ארגון: ${orgContext.slice(0, 2000)}
+החזר JSON בלבד:
+{"score": <1-10>, "verdict": "<שווה להגיש|שקלי פעמיים|לא מומלץ>", "verdict_reason": "<1-2 משפטים>", "strengths": ["<1>","<2>"], "gaps": ["<1>","<2>"], "tips": ["<1>","<2>"]}`;
+
+  type DraftSection = { id: string; question: string; answer: string; max_chars?: number | null };
+  type DraftResponse = {
+    sections?: DraftSection[];
+    rfp_summary?: string;
+    missing_info?: string[];
+    missing_docs?: string[];
+    goldfish_notes?: string;
+  };
+
+  let draftResponse: DraftResponse = {};
+  let fitAnalysis: Record<string, unknown> | null = null;
+
+  const [draftResult, fitResult] = await Promise.allSettled([
+    anthropic.messages.create({
       model: 'claude-sonnet-4-5',
       max_tokens: 8000,
       messages: [{ role: 'user', content: prompt }],
-    });
-    const raw = msg.content[0].type === 'text' ? msg.content[0].text : '';
-    const clean = raw.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(clean);
-    answers = parsed.answers || [];
-  } catch {
-    // Fallback — empty answers
-    answers = questions.map(q => ({ id: q.id, question: q.question, answer: '' }));
+    }),
+    anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 600,
+      messages: [{ role: 'user', content: fitPrompt }],
+    }),
+  ]);
+
+  // Parse draft
+  if (draftResult.status === 'fulfilled') {
+    try {
+      const raw = draftResult.value.content[0].type === 'text' ? draftResult.value.content[0].text : '';
+      draftResponse = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    } catch { /* fallback below */ }
   }
 
-  // Build content array
-  const content = answers.map(a => ({
-    id: a.id,
-    question: a.question,
-    answer: a.answer,
-    max_chars: questions.find(q => q.id === a.id)?.max_chars || null,
+  // Parse fit
+  if (fitResult.status === 'fulfilled') {
+    try {
+      const raw = fitResult.value.content[0].type === 'text' ? fitResult.value.content[0].text : '';
+      fitAnalysis = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    } catch { /* ignore */ }
+  }
+
+  // ── Build content array ────────────────────────────────────────────────────
+  // 1. Fixed meta-block: RFP info (always first)
+  const rfpInfoText = [
+    rfp.rfp_title ? `שם הקול הקורא: ${rfp.rfp_title}` : '',
+    rfp.funder_name ? `גוף מממן: ${rfp.funder_name}` : '',
+    rfp.deadline ? `דדליין להגשה: ${new Date(rfp.deadline as string).toLocaleDateString('he-IL', { day: '2-digit', month: 'long', year: 'numeric' })}` : '',
+    rfp.max_amount ? `סכום מקסימלי: ${Number(rfp.max_amount).toLocaleString('he-IL')} ₪` : '',
+    requiredDocs.length > 0 ? `מסמכים נדרשים: ${requiredDocs.join(' | ')}` : '',
+    (eligibility as { other?: string[] }).other?.length
+      ? `תנאי סף: ${(eligibility as { other: string[] }).other.join(' | ')}`
+      : '',
+    draftResponse.rfp_summary ? `\nסיכום: ${draftResponse.rfp_summary}` : '',
+  ].filter(Boolean).join('\n');
+
+  // 2. Main sections from AI
+  const aiSections: DraftSection[] = draftResponse.sections || sectionsForAI.map(s => ({
+    id: s.id,
+    question: s.question,
+    answer: '[לא הצלחנו לכתוב תשובה אוטומטית — יש להשלים ידנית]',
+    max_chars: s.max_chars || null,
   }));
+
+  // 3. Fixed meta-block: missing docs + info
+  const missingText = [
+    ...(draftResponse.missing_docs?.length
+      ? [`📎 מסמכים חסרים:\n${draftResponse.missing_docs.map(d => `• ${d}`).join('\n')}`]
+      : requiredDocs.length > 0 ? [`📎 מסמכים נדרשים: ${requiredDocs.join(', ')}\nיש לבדוק אילו קיימים בתיק הארגון.`] : []),
+    ...(draftResponse.missing_info?.length
+      ? [`\n❓ מידע חסר מפרופיל הארגון:\n${draftResponse.missing_info.map(m => `• ${m}`).join('\n')}`]
+      : []),
+  ].join('\n') || 'לא זוהו חסרים ספציפיים. בדקי שכל הנתונים מלאים לפני ההגשה.';
+
+  // 4. Fixed meta-block: Goldfish notes
+  const goldfishNotes = [
+    draftResponse.goldfish_notes || '',
+    fitAnalysis
+      ? `\nציון התאמה: ${(fitAnalysis as { score?: number }).score ?? '?'}/10 — ${(fitAnalysis as { verdict?: string }).verdict || ''}\n${(fitAnalysis as { verdict_reason?: string }).verdict_reason || ''}`
+      : '',
+    (fitAnalysis as { tips?: string[] } | null)?.tips?.length
+      ? `\nטיפים לשיפור:\n${((fitAnalysis as { tips: string[] }).tips).map((t: string) => `• ${t}`).join('\n')}`
+      : '',
+  ].filter(Boolean).join('\n') || 'הטיוטה נוצרה אוטומטית. בדקי את כל הסעיפים לפני ההגשה.';
+
+  const content = [
+    {
+      id: '_rfp_info',
+      question: '📋 פרטי קול הקורא',
+      answer: rfpInfoText,
+      max_chars: null,
+      readonly: true,
+    },
+    ...aiSections.map(s => ({
+      id: s.id,
+      question: s.question,
+      answer: s.answer || '',
+      max_chars: (sectionsForAI.find(q => q.id === s.id) as { max_chars?: number } | undefined)?.max_chars ?? null,
+    })),
+    {
+      id: '_missing',
+      question: '📎 מסמכים וחסרים',
+      answer: missingText,
+      max_chars: null,
+    },
+    {
+      id: '_goldfish_notes',
+      question: '🐟 הערות Goldfish',
+      answer: goldfishNotes,
+      max_chars: null,
+      readonly: true,
+    },
+  ];
 
   // Generate share token
   const shareToken = randomUUID().replace(/-/g, '').slice(0, 16);
 
-  // Save submission
+  // Save submission (with fit_analysis embedded in metadata)
   const { data: sub } = await supabase
     .from('submissions')
     .insert({
@@ -216,6 +381,7 @@ ${funderStyle}
       content,
       status: 'draft',
       share_token: shareToken,
+      ...(fitAnalysis ? { fit_analysis: fitAnalysis } : {}),
     })
     .select('id, share_token')
     .single();
@@ -227,5 +393,7 @@ ${funderStyle}
     content,
     rfp_title: rfp.rfp_title,
     funder_name: rfp.funder_name,
+    fit_analysis: fitAnalysis,
+    existing: false,
   });
 });
