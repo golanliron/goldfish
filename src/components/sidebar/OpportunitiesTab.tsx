@@ -1059,18 +1059,46 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
     return { label: 'שווה בדיקה', cls: 'bg-amber-100 text-amber-700 border-amber-200' };
   })();
 
-  // Link priority: application_url (direct form) > url (source page) > google fallback
-  const sourceHref = opp.application_url || opp.url || null;
-  const sourceBtnLabel = opp.application_url
-    ? 'פתח קול קורא / הגשה'
-    : opp.url
-      ? 'פתח מקור'
-      : 'חפש בגוגל';
-  const linkQualityLabel = (opp as unknown as Record<string, unknown>).link_quality === 'direct'
-    ? 'לינק ישיר'
-    : (opp as unknown as Record<string, unknown>).link_quality === 'general'
-      ? 'לינק כללי'
-      : null;
+  // Classify link quality based on URL patterns
+  const classifyLinkQuality = (url: string | null, appUrl: string | null): string => {
+    if ((url && (url.startsWith('mailto:') || url.includes('youtube') || url.includes('youtu.be'))) ||
+        (appUrl && appUrl.startsWith('mailto:'))) return 'broken';
+    if (appUrl && (appUrl.includes('docs.google.com/forms') || appUrl.includes('forms.office.com') ||
+        appUrl.includes('monday.com') || appUrl.includes('my.pais.co.il') ||
+        appUrl.includes('manof') || appUrl.includes('tmichot'))) return 'direct_application';
+    if (url && (url.includes('docs.google.com/forms') || url.includes('forms.office.com') ||
+        url.includes('my.pais.co.il') || url.includes('manof'))) return 'direct_application';
+    if ((url && url.endsWith('.pdf')) || (appUrl && appUrl.endsWith('.pdf'))) return 'official_pdf';
+    if (url && url.includes('shatil.org.il') && url !== 'https://www.shatil.org.il/') return 'aggregator_specific';
+    if (url && url.includes('budgetkey') && url !== 'https://next.obudget.org/') return 'aggregator_specific';
+    if (url && url.includes('ezvonot') && url !== 'https://ezvonot.com/') return 'aggregator_specific';
+    if (url && /^https?:\/\/[^/]+\/?$/.test(url)) return 'homepage';
+    if (url && (/\/(grants|apply|kolotkorim|tenders|kol-kore|calls|open-calls|funding|support|מענקים)/.test(url))) return 'general_listing';
+    if (!url && !appUrl) return 'unknown';
+    return 'direct_call_page';
+  };
+
+  const linkQuality = classifyLinkQuality(opp.url, opp.application_url);
+
+  // Decide href and button label based on quality
+  const isGoodLink = ['direct_application', 'official_pdf', 'direct_call_page', 'aggregator_specific'].includes(linkQuality);
+  const sourceHref = isGoodLink
+    ? (opp.application_url || opp.url)
+    : null;
+  const sourceBtnLabel =
+    linkQuality === 'direct_application' ? 'פתח הגשה' :
+    linkQuality === 'official_pdf' ? 'פתח קול קורא (PDF)' :
+    linkQuality === 'direct_call_page' ? 'פתח קול קורא' :
+    linkQuality === 'aggregator_specific' ? `פתח מקור ב-${opp.source || 'אגרגטור'}` :
+    linkQuality === 'broken' ? 'לינק שבור' :
+    'נסה למצוא לינק ישיר';
+  const linkQualityLabel =
+    linkQuality === 'direct_application' ? 'הגשה ישירה' :
+    linkQuality === 'official_pdf' ? 'PDF רשמי' :
+    linkQuality === 'aggregator_specific' ? `מקור: ${opp.source || 'אגרגטור'}` :
+    linkQuality === 'general_listing' || linkQuality === 'homepage' || linkQuality === 'unknown' ? 'לינק דורש אימות' :
+    linkQuality === 'broken' ? 'לינק שבור' :
+    null;
 
   const handleAnalyzeInChat = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1135,7 +1163,12 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
           </span>
         )}
         {linkQualityLabel && (
-          <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${linkQualityLabel === 'לינק ישיר' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+          <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${
+            linkQuality === 'direct_application' ? 'bg-green-100 text-green-700' :
+            linkQuality === 'official_pdf' ? 'bg-blue-100 text-blue-700' :
+            linkQuality === 'aggregator_specific' ? 'bg-amber-50 text-amber-600' :
+            'bg-gray-100 text-gray-400'
+          }`}>
             {linkQualityLabel}
           </span>
         )}
@@ -1153,8 +1186,11 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
       {(opp as unknown as Record<string, unknown>).reliability === 'placeholder' && (
         <span className="text-[9px] text-gray-400 bg-gray-50 border border-gray-200 rounded px-1.5 py-0.5 mb-1 inline-block">דורש אימות</span>
       )}
-      {((opp as unknown as Record<string, unknown>).reliability === 'needs_enrichment' || (opp as unknown as Record<string, unknown>).reliability === 'general') && (
-        <div className="text-[9px] text-gray-400 mb-1">לינק כללי לגוף המממן</div>
+      {(linkQuality === 'general_listing' || linkQuality === 'homepage' || linkQuality === 'unknown') && (
+        <div className="text-[9px] text-gray-400 mb-1 flex items-center gap-1">
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          לינק כללי — מומלץ לאמת ישירות
+        </div>
       )}
       {(!opp.description || opp.description.length < 80) && (opp as unknown as Record<string, unknown>).reliability !== 'placeholder' && (
         <div className="text-[9px] text-amber-500 mb-1">חסר מידע לניתוח מלא</div>
@@ -1226,19 +1262,47 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
           >
             נתח בצ׳אט
           </button>
-          <a
-            href={sourceHref || `https://www.google.com/search?q=${encodeURIComponent(opp.title + ' ' + (opp.funder || ''))}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={e => e.stopPropagation()}
-            className={`flex-1 py-1.5 text-[10px] font-medium border rounded-lg transition-colors text-center flex items-center justify-center gap-1 ${opp.application_url ? 'bg-accent/10 border-accent/40 text-accent hover:bg-accent/20' : 'bg-surf2 border-border text-muted hover:text-accent hover:border-accent/40'}`}
-            title={opp.application_url ? 'פתח ישירות לטופס / קול קורא' : sourceHref ? 'פתח את קול הקורא המקורי' : 'חפש בגוגל'}
-          >
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
-            </svg>
-            {sourceBtnLabel}
-          </a>
+          {linkQuality === 'broken' ? (
+            <span className="flex-1 py-1.5 text-[10px] font-medium border border-red-200 bg-red-50 text-red-400 rounded-lg text-center flex items-center justify-center gap-1 cursor-not-allowed">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+              </svg>
+              לינק שבור
+            </span>
+          ) : sourceHref ? (
+            <a
+              href={sourceHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={e => e.stopPropagation()}
+              className={`flex-1 py-1.5 text-[10px] font-medium border rounded-lg transition-colors text-center flex items-center justify-center gap-1 ${
+                linkQuality === 'direct_application' ? 'bg-green-50 border-green-300 text-green-700 hover:bg-green-100' :
+                linkQuality === 'official_pdf' ? 'bg-blue-50 border-blue-300 text-blue-700 hover:bg-blue-100' :
+                linkQuality === 'direct_call_page' ? 'bg-accent/10 border-accent/40 text-accent hover:bg-accent/20' :
+                'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
+              }`}
+              title={sourceBtnLabel}
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+              </svg>
+              {sourceBtnLabel}
+            </a>
+          ) : (
+            <a
+              href={`https://www.google.com/search?q=${encodeURIComponent(opp.title + ' ' + (opp.funder || '') + ' קול קורא')}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={e => e.stopPropagation()}
+              className="flex-1 py-1.5 text-[10px] font-medium border border-dashed border-gray-300 bg-gray-50 text-gray-400 rounded-lg transition-colors text-center flex items-center justify-center gap-1 hover:text-gray-600 hover:border-gray-400"
+              title="הלינק דורש אימות — חיפוש בגוגל"
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              {sourceBtnLabel}
+            </a>
+          )}
         </div>
       </div>
 
