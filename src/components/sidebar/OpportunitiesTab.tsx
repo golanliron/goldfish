@@ -1085,13 +1085,13 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
       amount_min: opp.amount_min || null,
       amount_max: opp.amount_max || null,
       eligibility: opp.eligibility || null,
-      description: opp.description ? opp.description.slice(0, 800) : null,
+      description: opp.description ? opp.description.slice(0, 1200) : null,
       how_to_apply: (opp as unknown as Record<string, unknown>).how_to_apply || null,
       requirements: (opp as unknown as Record<string, unknown>).requirements || null,
       url: opp.url || null,
       application_url: opp.application_url || null,
-      full_content: opp.full_content && opp.full_content.length > 200
-        ? opp.full_content.slice(0, 5000)
+      full_content: opp.full_content
+        ? opp.full_content.slice(0, 6000)
         : null,
       match_score: match?.score ?? null,
       match_reasoning: match?.reasoning ?? null,

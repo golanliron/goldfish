@@ -302,6 +302,18 @@ export default function ChatPanel({ orgId, userId, onStageChange }: ChatPanelPro
 
       const targetUrl = (opp.application_url || opp.url) as string | null;
 
+      // DEV logging
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[analyzeOpportunity] context:', {
+          title: opp.title,
+          has_description: !!(opp.description),
+          has_requirements: !!(opp.requirements),
+          has_full_content: !!(opp.full_content),
+          url: opp.url,
+          application_url: opp.application_url,
+        });
+      }
+
       // Build the structured analysis prompt
       const parts: string[] = [];
       parts.push(`[ניתוח קול קורא — ${opp.title}]`);
@@ -313,18 +325,27 @@ export default function ChatPanel({ orgId, userId, onStageChange }: ChatPanelPro
         parts.push(`סכום: ${amtMin && amtMax ? `${amtMin}–${amtMax} ₪` : amtMax ? `עד ${amtMax} ₪` : `מ-${amtMin} ₪`}`);
       }
       if (opp.eligibility) parts.push(`תנאי סף: ${opp.eligibility}`);
+      if (opp.requirements) parts.push(`דרישות: ${String(opp.requirements).slice(0, 600)}`);
       if (opp.how_to_apply) parts.push(`אופן הגשה: ${String(opp.how_to_apply).slice(0, 400)}`);
       if (opp.description) parts.push(`\nתיאור: ${opp.description}`);
       if (opp.full_content) parts.push(`\n===== תוכן קול הקורא =====\n${opp.full_content}`);
-      if (!opp.full_content && targetUrl) {
-        parts.push(`\nמקור: ${targetUrl}`);
-      }
+      if (targetUrl) parts.push(`\nמקור: ${targetUrl}`);
       if (opp.match_score !== null) {
         parts.push(`\nציון התאמה: ${opp.match_score}%`);
         if (opp.match_reasoning) parts.push(`נימוק: ${opp.match_reasoning}`);
       }
       if (opp.funder_style) parts.push(`סגנון המממן: ${opp.funder_style}`);
       if (opp.funder_writing_tips) parts.push(`טיפים לכתיבה: ${opp.funder_writing_tips}`);
+
+      // Signal to Claude what data is available vs missing
+      const missingFields: string[] = [];
+      if (!opp.description && !opp.full_content) missingFields.push('תיאור מפורט');
+      if (!opp.requirements) missingFields.push('דרישות');
+      if (!opp.eligibility) missingFields.push('תנאי סף');
+      if (missingFields.length > 0) {
+        parts.push(`\n[שים לב: השדות הבאים חסרים בכרטיס: ${missingFields.join(', ')}. נתח על בסיס המידע הקיים בכרטיס. אם חסר מידע מהותי, ציין זאת בסיום בפורמט: "מידע שחסר: X" וציין שניתן לפתוח את המקור: ${targetUrl || 'לא זמין'}]`);
+      }
+      parts.push(`\n[כלל ברזל: אסור לכתוב "אין לי את הפרטים המדויקים של הקול הקורא". אם חסר מידע, כתוב "על בסיס המידע שקיים בכרטיס כרגע..." ופרט מה כן ידוע ומה חסר.]`);
 
       parts.push(`\n\nנתח את הקול הקורא הזה לעומק:`);
       parts.push(`1. מה הקול הקורא מבקש ולמי הוא מיועד`);
@@ -337,7 +358,11 @@ export default function ChatPanel({ orgId, userId, onStageChange }: ChatPanelPro
       parts.push(`8. המלצה: להגיש / לבדוק / לא מתאים / דורש שותף`);
       parts.push(`9. הצעד הבא המומלץ`);
 
-      await sendMessageRef.current(parts.join('\n'));
+      const prompt = parts.join('\n');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[analyzeOpportunity] prompt_length:', prompt.length);
+      }
+      await sendMessageRef.current(prompt);
     };
 
     window.addEventListener('fishgold:send', handler);
