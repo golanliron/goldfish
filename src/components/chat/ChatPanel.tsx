@@ -297,29 +297,10 @@ export default function ChatPanel({ orgId, userId, onStageChange }: ChatPanelPro
       };
       setMessages(prev => [...prev, thinkingMsg]);
 
-      // Try to fetch URL content if available and no full_content
-      let fetchedContent = '';
-      const targetUrl = (opp.application_url || opp.url) as string | null;
-      if (targetUrl && !opp.full_content) {
-        try {
-          const res = await fetch('/api/learn-url', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: targetUrl, org_id: orgId, dry_run: true }),
-          });
-          if (res.ok) {
-            const data = await res.json();
-            if (data.summary) {
-              fetchedContent = `\n===== תוכן שנשלף מהמקור =====\n${data.summary.slice(0, 3000)}`;
-            }
-          }
-        } catch {
-          // non-blocking — continue without fetched content
-        }
-      }
-
       // Remove the "analyzing..." placeholder
       setMessages(prev => prev.filter(m => m.id !== thinkingId));
+
+      const targetUrl = (opp.application_url || opp.url) as string | null;
 
       // Build the structured analysis prompt
       const parts: string[] = [];
@@ -335,9 +316,8 @@ export default function ChatPanel({ orgId, userId, onStageChange }: ChatPanelPro
       if (opp.how_to_apply) parts.push(`אופן הגשה: ${String(opp.how_to_apply).slice(0, 400)}`);
       if (opp.description) parts.push(`\nתיאור: ${opp.description}`);
       if (opp.full_content) parts.push(`\n===== תוכן קול הקורא =====\n${opp.full_content}`);
-      if (fetchedContent) parts.push(fetchedContent);
-      if (!fetchedContent && !opp.full_content && targetUrl) {
-        parts.push(`\n[לא הצלחתי לשלוף תוכן מ-${targetUrl} — מנתח לפי הנתונים הקיימים]`);
+      if (!opp.full_content && targetUrl) {
+        parts.push(`\nמקור: ${targetUrl}`);
       }
       if (opp.match_score !== null) {
         parts.push(`\nציון התאמה: ${opp.match_score}%`);
