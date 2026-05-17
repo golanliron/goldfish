@@ -186,14 +186,16 @@ export default function OpportunitiesTab({ stage, orgId }: OpportunitiesTabProps
       });
   };
 
-  // Load once on mount (catalog without matches if no orgId).
-  // Re-load when orgId becomes available so matches/scores are added.
-  const prevOrgIdRef = useRef<string | null>(null);
+  // Load on mount (catalog without matches if no orgId).
+  // Re-load when orgId changes so matches/scores are added.
+  const mountedRef = useRef(false);
+  const prevOrgIdRef = useRef<string | null | undefined>(undefined);
   useEffect(() => {
+    const isFirstMount = !mountedRef.current;
+    mountedRef.current = true;
     const orgIdChanged = prevOrgIdRef.current !== orgId;
     prevOrgIdRef.current = orgId;
-    // First mount: always load. Subsequent renders: only reload if orgId changed.
-    if (orgIdChanged) {
+    if (isFirstMount || orgIdChanged) {
       loadOpportunities();
     }
     // Clear any stale agent state from a previous session
