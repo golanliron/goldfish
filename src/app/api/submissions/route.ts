@@ -352,7 +352,10 @@ JSON בלבד, ללא \`\`\`json\`\`\`, ללא הסברים.
       id: s.id,
       question: s.question,
       answer: s.answer || '',
-      max_chars: (sectionsForAI.find(q => q.id === s.id) as { max_chars?: number } | undefined)?.max_chars ?? null,
+      // prefer max_chars from AI response (it mirrors what was sent), fallback to sectionsForAI
+      max_chars: s.max_chars
+        ?? (sectionsForAI.find(q => q.id === s.id) as { max_chars?: number } | undefined)?.max_chars
+        ?? null,
     })),
     {
       id: '_missing',
