@@ -125,8 +125,51 @@ export const GET = withAuth(async (req, auth) => {
     }
   }
 
+  // Enrich fund-type companies with funder_intelligence data
+  const fundIds = scored
+    .filter(c => (c as { company_type: string }).company_type === 'fund')
+    .map(c => (c as { id: string }).id);
+
+  let funderIntelMap: Record<string, Record<string, unknown>> = {};
+  if (fundIds.length > 0) {
+    const { data: fiRows } = await supabase
+      .from('funder_intelligence')
+      .select('company_id, funder_type, what_they_like, what_not_to_send, confidence, invitation_only, approach_strategy, contact_email, contact_name, contact_phone, submission_url, submission_instructions, website, description, active')
+      .in('company_id', fundIds)
+      .eq('active', true);
+    for (const row of fiRows || []) {
+      const r = row as Record<string, unknown>;
+      if (r.company_id) funderIntelMap[r.company_id as string] = r;
+    }
+  }
+
+  const enriched = scored.map(c => {
+    const co = c as Record<string, unknown>;
+    if (co.company_type === 'fund') {
+      const fi = funderIntelMap[co.id as string];
+      if (fi) {
+        return {
+          ...co,
+          funder_type: fi.funder_type ?? null,
+          what_they_like: fi.what_they_like ?? null,
+          what_not_to_send: fi.what_not_to_send ?? null,
+          confidence: fi.confidence ?? 0,
+          invitation_only: fi.invitation_only ?? false,
+          // Prefer funder_intelligence approach_strategy if set
+          approach_strategy: fi.approach_strategy ?? co.approach_strategy ?? null,
+          contact_email: co.contact_email ?? fi.contact_email ?? null,
+          contact_name: co.contact_name ?? fi.contact_name ?? null,
+          contact_phone: co.contact_phone ?? fi.contact_phone ?? null,
+          submission_url: co.submission_url ?? fi.submission_url ?? null,
+          submission_instructions: co.submission_instructions ?? fi.submission_instructions ?? null,
+        };
+      }
+    }
+    return co;
+  });
+
   return NextResponse.json({
-    companies: scored,
+    companies: enriched,
     total: (stats || []).length,
     typeCounts,
     matchedCount,

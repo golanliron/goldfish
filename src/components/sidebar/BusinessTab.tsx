@@ -566,23 +566,400 @@ export default function BusinessTab({ orgId, companyTypeFilter }: BusinessTabPro
             <p className="text-xs text-muted2 mt-1">נסו לשנות את החיפוש</p>
           </div>
         ) : (
-          filtered.map((company) => (
-            <CompanyCard
-              key={company.id}
-              company={company}
-              outreach={outreachMap[company.id] || []}
-              onAskGoldfish={handleAskGoldfish}
-              onScanFund={handleScanFund}
-              onDraftEmail={handleDraftEmail}
-              onFindContact={handleFindContact}
-              onTrackOutreach={(c) => { setTrackingCompany(c); setTrackStatus('sent'); setTrackNotes(''); }}
-            />
-          ))
+          filtered.map((company) =>
+            company.company_type === 'fund' ? (
+              <FunderCard
+                key={company.id}
+                company={company}
+                outreach={outreachMap[company.id] || []}
+                onScanFund={handleScanFund}
+                onDraftEmail={handleDraftEmail}
+                onTrackOutreach={(c) => { setTrackingCompany(c); setTrackStatus('sent'); setTrackNotes(''); }}
+              />
+            ) : (
+              <CompanyCard
+                key={company.id}
+                company={company}
+                outreach={outreachMap[company.id] || []}
+                onAskGoldfish={handleAskGoldfish}
+                onScanFund={handleScanFund}
+                onDraftEmail={handleDraftEmail}
+                onFindContact={handleFindContact}
+                onTrackOutreach={(c) => { setTrackingCompany(c); setTrackStatus('sent'); setTrackNotes(''); }}
+              />
+            )
+          )
         )}
       </div>
     </div>
   );
 }
+
+// ─── helpers ──────────────────────────────────────────────────────────────────
+
+function formatAmount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
+  return String(n);
+}
+
+// ─── FunderCard ───────────────────────────────────────────────────────────────
+
+const FUNDER_TYPE_LABELS: Record<string, string> = {
+  foundation: 'קרן',
+  federation: 'פדרציה',
+  corporate_foundation: 'קרן תאגידית',
+  government: 'ממשלתי',
+  other: 'אחר',
+};
+
+function FunderCard({
+  company,
+  outreach,
+  onScanFund,
+  onDraftEmail,
+  onTrackOutreach,
+}: {
+  company: Company;
+  outreach: OutreachRecord[];
+  onScanFund: (c: Company) => void;
+  onDraftEmail: (c: Company, projectHint?: string) => void;
+  onTrackOutreach: (c: Company) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [projectHint, setProjectHint] = useState('');
+  const [showEmailComposer, setShowEmailComposer] = useState(false);
+
+  const latestOutreach = outreach[0];
+
+  // Funder intelligence fields (stored on company when joined, or derived)
+  const confidence: number = (company as Company & { confidence?: number }).confidence ?? (company.data_quality ?? 0);
+  const invitationOnly: boolean = (company as Company & { invitation_only?: boolean }).invitation_only ?? false;
+  const funderType: string = (company as Company & { funder_type?: string }).funder_type ?? 'foundation';
+  const whatTheyLike: string | null = (company as Company & { what_they_like?: string | null }).what_they_like ?? null;
+  const whatNotToSend: string | null = (company as Company & { what_not_to_send?: string | null }).what_not_to_send ?? null;
+  const description: string | null = company.description;
+
+  // Approach mode
+  const strategy = company.approach_strategy;
+  const isClosed = strategy === 'RFP_ONLY' && (whatTheyLike?.includes('סגורה') || whatTheyLike?.includes('closed') || false);
+  const canDraftEmail =
+    strategy === 'DIRECT_APPROACH' &&
+    !!company.contact_email &&
+    confidence > 0 &&
+    !invitationOnly &&
+    !isClosed;
+
+  // Confidence badge
+  const confidenceBadge = confidence >= 70
+    ? { label: 'מאומת', cls: 'bg-green-50 text-green-700 border-green-200' }
+    : confidence >= 40
+    ? { label: 'חלקי', cls: 'bg-amber-50 text-amber-700 border-amber-200' }
+    : { label: 'דורש בדיקה', cls: 'bg-gray-50 text-gray-400 border-gray-200' };
+
+  // Approach badge
+  const approachBadge = isClosed
+    ? { label: 'סגור / לא מקבל בקשות', cls: 'bg-red-50 text-red-600 border-red-200' }
+    : invitationOnly
+    ? { label: 'בהזמנה בלבד', cls: 'bg-purple-50 text-purple-700 border-purple-200' }
+    : strategy === 'RFP_ONLY'
+    ? { label: 'דרך קול קורא בלבד', cls: 'bg-amber-50 text-amber-700 border-amber-200' }
+    : strategy === 'DIRECT_APPROACH' && canDraftEmail
+    ? { label: 'פתוח לפנייה ישירה', cls: 'bg-green-50 text-green-700 border-green-200' }
+    : { label: 'דורש בדיקה', cls: 'bg-gray-50 text-gray-400 border-gray-200' };
+
+  // Tags: interests[]
+  const tags = company.interests ?? [];
+
+  // Score bar color
+  const score = company.relevance_score;
+
+  const sendToChat = (detail: string) => {
+    window.dispatchEvent(new CustomEvent('fishgold:closeSidebar'));
+    setTimeout(() => window.dispatchEvent(new CustomEvent('fishgold:send', { detail })), 50);
+  };
+
+  const handleFindOpenCall = () => {
+    const parts = [
+      `[קרן/פדרציה מהמאגר — חפש קולות קוראים]`,
+      `שם: ${company.name}`,
+      `סוג: ${FUNDER_TYPE_LABELS[funderType] ?? funderType}`,
+    ];
+    if (company.website) parts.push(`אתר: ${company.website}`);
+    if (tags.length) parts.push(`תחומים: ${tags.join(', ')}`);
+    parts.push(`\nמשימה: חפש קולות קוראים פתוחים של הקרן הזאת. האם יש הגשות פתוחות כרגע? מה הדדליין? מה הדרישות? האם הארגון שלנו מתאים?`);
+    sendToChat(parts.join('\n'));
+  };
+
+  const handleAnalyzeMatch = () => {
+    const parts = [
+      `[קרן/פדרציה מהמאגר — נתח התאמה]`,
+      `שם: ${company.name}`,
+    ];
+    if (description) parts.push(`אודות: ${description}`);
+    if (tags.length) parts.push(`תחומי תמיכה: ${tags.join(', ')}`);
+    if (whatTheyLike) parts.push(`מה הקרן אוהבת: ${whatTheyLike}`);
+    if (whatNotToSend) parts.push(`מה לא לשלוח: ${whatNotToSend}`);
+    parts.push(`\nנתח: מה ההתאמה בין הקרן הזאת לארגון שלנו? אילו תוכניות שלנו הכי מתאימות? מה הגישה הנכונה?`);
+    sendToChat(parts.join('\n'));
+  };
+
+  const handleDraftFunderEmail = () => {
+    const parts = [
+      `[קרן מהמאגר — נסח מייל פנייה!]`,
+      `שם הקרן: ${company.name}`,
+      `סוג: ${FUNDER_TYPE_LABELS[funderType] ?? funderType}`,
+    ];
+    if (description) parts.push(`אודות הקרן: ${description}`);
+    if (tags.length) parts.push(`תחומי תמיכה: ${tags.join(', ')}`);
+    if (whatTheyLike) parts.push(`מה הקרן אוהבת לראות: ${whatTheyLike}`);
+    if (whatNotToSend) parts.push(`מה לא לשלוח: ${whatNotToSend}`);
+    if (company.contact_name) parts.push(`נמען: ${company.contact_name}`);
+    if (company.contact_email) parts.push(`מייל: ${company.contact_email}`);
+    if (company.website) parts.push(`אתר: ${company.website}`);
+    if (projectHint) parts.push(`פרויקט מוצע לציין: ${projectHint}`);
+    parts.push(`\nנסח מייל פנייה קצר ומקצועי לקרן. התחל במשהו ספציפי על תחומיה. הסבר את הקשר לארגון שלנו. אל תבקש כסף ישירות — הצע שיחת היכרות. הטון: חם, עסקי, לא גנרי.`);
+    sendToChat(parts.join('\n'));
+  };
+
+  return (
+    <div
+      className="bg-surf rounded-xl border border-border hover:border-emerald-300 transition-colors cursor-pointer overflow-hidden"
+      onClick={() => setExpanded(!expanded)}
+    >
+      {/* Top relevance bar */}
+      {score != null && score >= 15 && (
+        <div
+          className={`h-1 ${score >= 50 ? 'bg-emerald-500' : score >= 30 ? 'bg-amber-400' : 'bg-gray-300'}`}
+          style={{ width: `${Math.min(100, score)}%` }}
+        />
+      )}
+
+      <div className="p-3">
+        {/* Top row: name + badges */}
+        <div className="flex items-start justify-between gap-2 mb-1.5">
+          <div className="flex-1 min-w-0">
+            <h4 className="text-[13px] font-semibold leading-snug line-clamp-2">{company.name}</h4>
+          </div>
+          <div className="flex flex-col items-end gap-1 flex-shrink-0">
+            <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-700 font-medium">
+              {FUNDER_TYPE_LABELS[funderType] ?? 'קרן'}
+            </span>
+            {score != null && score >= 15 && (
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold text-white ${score >= 50 ? 'bg-green-500' : score >= 30 ? 'bg-amber-500' : 'bg-gray-400'}`}>
+                {score}%
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Approach + confidence badges */}
+        <div className="flex flex-wrap gap-1 mb-1.5">
+          <span className={`text-[9px] px-1.5 py-0.5 rounded-md border font-medium ${approachBadge.cls}`}>
+            {approachBadge.label}
+          </span>
+          <span className={`text-[9px] px-1.5 py-0.5 rounded-md border ${confidenceBadge.cls}`}>
+            {confidenceBadge.label}
+          </span>
+          {latestOutreach && (
+            <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${OUTREACH_STATUS_COLORS[latestOutreach.status] || 'bg-gray-100 text-gray-600'}`}>
+              {OUTREACH_STATUS_LABELS[latestOutreach.status] || latestOutreach.status}
+            </span>
+          )}
+        </div>
+
+        {/* Tags row */}
+        {tags.length > 0 && (
+          <div className="flex flex-wrap gap-1 mb-1.5">
+            {tags.slice(0, 4).map((tag) => (
+              <span key={tag} className="text-[9px] px-1.5 py-0.5 bg-surf2 text-muted rounded-md">{tag}</span>
+            ))}
+            {tags.length > 4 && <span className="text-[9px] text-muted">+{tags.length - 4}</span>}
+          </div>
+        )}
+
+        {/* Contact hint (collapsed) */}
+        {canDraftEmail && !expanded && (
+          <p className="text-[10px] text-emerald-600 font-medium">
+            ✉ {company.contact_name ?? company.contact_email}
+          </p>
+        )}
+
+        {/* Expanded details */}
+        {expanded && (
+          <div className="mt-2 pt-2 border-t border-border space-y-2 text-[11px]" onClick={(e) => e.stopPropagation()}>
+
+            {/* Description */}
+            {description && (
+              <p className="text-text2 leading-relaxed">{description}</p>
+            )}
+
+            {/* What they like / not */}
+            {whatTheyLike && (
+              <div className="rounded-lg bg-green-50 border border-green-100 px-2.5 py-1.5 space-y-0.5">
+                <p className="text-[10px] font-semibold text-green-800">מה הקרן אוהבת לראות</p>
+                <p className="text-[10px] text-green-700 leading-relaxed">{whatTheyLike}</p>
+              </div>
+            )}
+            {whatNotToSend && (
+              <div className="rounded-lg bg-red-50 border border-red-100 px-2.5 py-1.5 space-y-0.5">
+                <p className="text-[10px] font-semibold text-red-800">מה לא לשלוח</p>
+                <p className="text-[10px] text-red-700 leading-relaxed">{whatNotToSend}</p>
+              </div>
+            )}
+
+            {/* Contact info */}
+            {(company.contact_email || company.contact_name || company.website) && (
+              <div className="space-y-1">
+                {company.contact_name && (
+                  <p className="text-[10px] text-text2">
+                    <span className="text-muted">איש קשר: </span>{company.contact_name}
+                  </p>
+                )}
+                {company.contact_email && (
+                  <div className="flex items-center gap-1.5">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted flex-shrink-0">
+                      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                      <polyline points="22,6 12,13 2,6" />
+                    </svg>
+                    <a href={`mailto:${company.contact_email}`} className="text-accent hover:underline truncate" dir="ltr">
+                      {company.contact_email}
+                    </a>
+                  </div>
+                )}
+                {company.website && (
+                  <div className="flex items-center gap-1.5">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted flex-shrink-0">
+                      <circle cx="12" cy="12" r="10" /><line x1="2" y1="12" x2="22" y2="12" />
+                      <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
+                    </svg>
+                    <a href={company.website.startsWith('http') ? company.website : `https://${company.website}`} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline truncate" dir="ltr">
+                      {company.website.replace(/^https?:\/\//, '')}
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* CTA buttons */}
+            <div className="space-y-1.5 pt-0.5">
+
+              {/* Primary CTA — depends on approach */}
+              {canDraftEmail ? (
+                showEmailComposer ? (
+                  <div className="space-y-1.5 p-2 bg-surf2 rounded-lg border border-border">
+                    <p className="text-[10px] text-muted font-medium">פרויקט רלוונטי לציין (אופציונלי):</p>
+                    <input
+                      type="text"
+                      placeholder="לדוגמה: מנטורינג לנוער בפריפריה"
+                      value={projectHint}
+                      onChange={(e) => setProjectHint(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-full px-2 py-1.5 text-[11px] bg-surf border border-border rounded-md focus:border-accent focus:outline-none"
+                    />
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={() => { handleDraftFunderEmail(); setShowEmailComposer(false); }}
+                        className="flex-1 py-1.5 text-[11px] font-bold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors flex items-center justify-center gap-1"
+                      >
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                          <polyline points="22,6 12,13 2,6" />
+                        </svg>
+                        נסח מייל
+                      </button>
+                      <button
+                        onClick={() => setShowEmailComposer(false)}
+                        className="px-3 py-1.5 text-[11px] text-muted border border-border rounded-lg hover:bg-surf transition-colors"
+                      >
+                        ביטול
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowEmailComposer(true)}
+                    className="w-full py-2 text-[11px] font-bold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                      <polyline points="22,6 12,13 2,6" />
+                    </svg>
+                    נסח מייל פנייה לקרן
+                  </button>
+                )
+              ) : isClosed ? (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+                  <p className="text-[10px] text-red-700 font-medium">קרן סגורה — לא מקבלת בקשות חדשות</p>
+                </div>
+              ) : invitationOnly ? (
+                <button
+                  onClick={() => handleFindOpenCall()}
+                  className="w-full py-2 text-[11px] font-bold bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                  בדוק מסלול פנייה / הזמנה
+                </button>
+              ) : strategy === 'RFP_ONLY' ? (
+                <button
+                  onClick={() => handleFindOpenCall()}
+                  className="w-full py-2 text-[11px] font-bold bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                  חפש קול קורא פתוח
+                </button>
+              ) : (
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                  <p className="text-[10px] text-gray-500">מידע דורש אימות לפני שליחת פנייה</p>
+                </div>
+              )}
+
+              {/* Secondary: scan + analyze */}
+              <div className="flex gap-1.5">
+                <button
+                  onClick={() => onScanFund(company)}
+                  className="flex-1 py-1.5 text-[10px] font-medium border border-emerald-200 text-emerald-700 rounded-lg hover:bg-emerald-50 transition-colors flex items-center justify-center gap-1"
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    <line x1="11" y1="8" x2="11" y2="14" /><line x1="8" y1="11" x2="14" y2="11" />
+                  </svg>
+                  חפש קולות קוראים
+                </button>
+                <button
+                  onClick={() => handleAnalyzeMatch()}
+                  className="flex-1 py-1.5 text-[10px] font-medium border border-border text-muted rounded-lg hover:bg-surf2 transition-colors flex items-center justify-center gap-1"
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                  </svg>
+                  נתח התאמה
+                </button>
+              </div>
+
+              {/* Outreach tracking */}
+              <button
+                onClick={(e) => { e.stopPropagation(); onTrackOutreach(company); }}
+                className="w-full py-1.5 text-[10px] font-medium border border-dashed border-accent/40 text-accent rounded-lg hover:bg-accent/5 transition-colors flex items-center justify-center gap-1"
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M9 11l3 3L22 4" /><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
+                </svg>
+                עדכן סטטוס פנייה
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── CompanyCard ──────────────────────────────────────────────────────────────
 
 function CompanyCard({
   company,
@@ -993,8 +1370,3 @@ function CompanyCard({
   );
 }
 
-function formatAmount(amount: number): string {
-  if (amount >= 1_000_000) return `${(amount / 1_000_000).toFixed(1)}M`;
-  if (amount >= 1_000) return `${(amount / 1_000).toFixed(0)}K`;
-  return amount.toLocaleString('he-IL');
-}
