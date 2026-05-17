@@ -8,6 +8,8 @@ interface Company {
   company_type: string;
   description: string | null;
   interests: string[] | null;
+  csr_focus_tags: string[] | null;
+  csr_focus: string[] | null;
   donation_amount: number | null;
   market_cap: number | null;
   csr_rank: number | null;
@@ -20,7 +22,13 @@ interface Company {
   relevance_score?: number;
   approach_strategy?: string | null;
   submission_url?: string | null;
+  submission_instructions?: string | null;
   approach_note?: string | null;
+  funding_range_min?: number | null;
+  funding_range_max?: number | null;
+  funding_notes?: string | null;
+  data_quality?: number | null;
+  enriched_at?: string | null;
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -220,19 +228,31 @@ export default function BusinessTab({ orgId, companyTypeFilter }: BusinessTabPro
 
   const buildCompanyContext = (company: Company) => {
     const typeLabel = TYPE_LABELS[company.company_type] || company.company_type;
+    const csrTags = (company.csr_focus_tags?.length ? company.csr_focus_tags : null)
+      ?? (company.csr_focus?.length ? company.csr_focus : null)
+      ?? company.interests;
     const parts = [
       `[חברה מהמאגר שלך — השתמש במידע הזה!]`,
       `שם: ${company.name}`,
       `סוג: ${typeLabel}`,
     ];
     if (company.description) parts.push(`תיאור: ${company.description}`);
-    if (company.interests?.length) parts.push(`תחומי עניין: ${company.interests.join(', ')}`);
+    if (csrTags?.length) parts.push(`תחומי CSR: ${csrTags.join(', ')}`);
     if (company.contact_name) parts.push(`איש קשר: ${company.contact_name}${company.contact_role ? ` (${company.contact_role})` : ''}`);
     if (company.contact_email) parts.push(`מייל: ${company.contact_email}`);
     if (company.contact_phone) parts.push(`טלפון: ${company.contact_phone}`);
     if (company.website) parts.push(`אתר: ${company.website}`);
     if (company.donation_amount) parts.push(`סכום תרומות: ${formatAmount(company.donation_amount)} ש"ח`);
     if (company.csr_rank) parts.push(`דירוג CSR: #${company.csr_rank}`);
+    if (company.funding_range_min || company.funding_range_max) {
+      const range = company.funding_range_min && company.funding_range_max
+        ? `${formatAmount(company.funding_range_min)}–${formatAmount(company.funding_range_max)} ₪`
+        : company.funding_range_min ? `מ-${formatAmount(company.funding_range_min)} ₪` : `עד ${formatAmount(company.funding_range_max!)} ₪`;
+      parts.push(`טווח תמיכה: ${range}`);
+    }
+    if (company.funding_notes) parts.push(`הערות מימון: ${company.funding_notes}`);
+    if (company.submission_instructions) parts.push(`הוראות הגשה: ${company.submission_instructions}`);
+    if (company.approach_note) parts.push(`הערת פנייה: ${company.approach_note}`);
     return parts;
   };
 
@@ -596,6 +616,29 @@ function CompanyCard({
     ? 'bg-amber-500 text-white'
     : 'bg-gray-400 text-white';
 
+  // Confidence badge from data_quality
+  const dq = company.data_quality ?? 0;
+  const confidenceLabel = dq >= 80 ? 'מאומת' : dq >= 50 ? 'בינוני' : 'לא אומת';
+  const confidenceColor = dq >= 80
+    ? 'bg-green-50 text-green-700 border-green-200'
+    : dq >= 50
+    ? 'bg-amber-50 text-amber-700 border-amber-200'
+    : 'bg-gray-50 text-gray-400 border-gray-200';
+  const showConfidence = dq > 0;
+
+  // CSR tags: prefer csr_focus_tags → csr_focus → interests
+  const csrTags = (company.csr_focus_tags?.length ? company.csr_focus_tags : null)
+    ?? (company.csr_focus?.length ? company.csr_focus : null)
+    ?? company.interests ?? [];
+
+  // Funding range display
+  const hasFundingRange = !!(company.funding_range_min || company.funding_range_max);
+  const fundingRangeText = hasFundingRange
+    ? (company.funding_range_min && company.funding_range_max
+        ? `${formatAmount(company.funding_range_min)}–${formatAmount(company.funding_range_max)} ₪`
+        : company.funding_range_min ? `מ-${formatAmount(company.funding_range_min)} ₪` : `עד ${formatAmount(company.funding_range_max!)} ₪`)
+    : null;
+
   return (
     <div
       className="bg-surf rounded-xl border border-border hover:border-accent/30 transition-colors cursor-pointer overflow-hidden"
@@ -619,6 +662,11 @@ function CompanyCard({
             {score != null && score >= 15 && (
               <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${scoreColor}`}>
                 {score}% התאמה
+              </span>
+            )}
+            {showConfidence && (
+              <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium border ${confidenceColor}`}>
+                {confidenceLabel}
               </span>
             )}
             <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${typeColor}`}>
@@ -671,6 +719,9 @@ function CompanyCard({
               {formatAmount(company.donation_amount)} ש&quot;ח תרומות
             </span>
           )}
+          {fundingRangeText && (
+            <span className="text-blue-600 font-medium">{fundingRangeText}</span>
+          )}
           {!!company.csr_rank && company.csr_rank > 0 && (
             <span className="text-accent font-medium">CSR #{company.csr_rank}</span>
           )}
@@ -681,16 +732,16 @@ function CompanyCard({
           )}
         </div>
 
-        {/* Interests tags */}
-        {company.interests && company.interests.length > 0 && (
+        {/* CSR tags */}
+        {csrTags.length > 0 && (
           <div className="flex flex-wrap gap-1 mb-1.5">
-            {company.interests.slice(0, 3).map((interest) => (
-              <span key={interest} className="text-[9px] px-1.5 py-0.5 bg-surf2 text-muted rounded-md">
-                {interest}
+            {csrTags.slice(0, 3).map((tag) => (
+              <span key={tag} className="text-[9px] px-1.5 py-0.5 bg-surf2 text-muted rounded-md">
+                {tag}
               </span>
             ))}
-            {company.interests.length > 3 && (
-              <span className="text-[9px] text-muted">+{company.interests.length - 3}</span>
+            {csrTags.length > 3 && (
+              <span className="text-[9px] text-muted">+{csrTags.length - 3}</span>
             )}
           </div>
         )}
@@ -739,15 +790,39 @@ function CompanyCard({
               )}
             </div>
 
-            {/* All interests when expanded */}
-            {company.interests && company.interests.length > 3 && (
+            {/* All CSR tags when expanded */}
+            {csrTags.length > 3 && (
               <div className="flex flex-wrap gap-1">
-                <span className="font-medium text-text ml-1">תחומי עניין:</span>
-                {company.interests.map((interest) => (
-                  <span key={interest} className="text-[9px] px-1.5 py-0.5 bg-accent/10 text-accent rounded-md">
-                    {interest}
+                <span className="font-medium text-text ml-1">תחומי CSR:</span>
+                {csrTags.map((tag) => (
+                  <span key={tag} className="text-[9px] px-1.5 py-0.5 bg-accent/10 text-accent rounded-md">
+                    {tag}
                   </span>
                 ))}
+              </div>
+            )}
+
+            {/* Funding range + notes */}
+            {(hasFundingRange || company.funding_notes) && (
+              <div className="rounded-lg bg-blue-50 border border-blue-100 px-2.5 py-1.5 space-y-0.5">
+                {fundingRangeText && (
+                  <p className="text-[10px] font-medium text-blue-700">טווח תמיכה: {fundingRangeText}</p>
+                )}
+                {company.funding_notes && (
+                  <p className="text-[10px] text-blue-600">{company.funding_notes}</p>
+                )}
+              </div>
+            )}
+
+            {/* Submission instructions / approach note */}
+            {(company.submission_instructions || company.approach_note) && (
+              <div className="rounded-lg bg-amber-50 border border-amber-100 px-2.5 py-1.5 space-y-0.5">
+                {company.submission_instructions && (
+                  <p className="text-[10px] text-amber-800">{company.submission_instructions}</p>
+                )}
+                {company.approach_note && !company.submission_instructions && (
+                  <p className="text-[10px] text-amber-700">{company.approach_note}</p>
+                )}
               </div>
             )}
 
@@ -766,6 +841,22 @@ function CompanyCard({
                 {company.interests?.includes('federation')
                   ? 'נתח פדרציה — התאמה, תוכניות, דרך פנייה'
                   : 'סרוק קרן — תרומות, התאמה, דרך פנייה'}
+              </button>
+            )}
+
+            {/* Find contact — prominent CTA when no email, before email composer */}
+            {company.company_type === 'business' && !company.contact_email && !company.contact_name && (
+              <button
+                onClick={() => onFindContact(company)}
+                className="w-full py-2 text-[11px] font-bold border-2 border-dashed border-accent/40 text-accent rounded-lg hover:bg-accent/5 transition-colors flex items-center justify-center gap-1.5"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                  <line x1="19" y1="8" x2="23" y2="8" />
+                  <line x1="21" y1="6" x2="21" y2="10" />
+                </svg>
+                אתר איש קשר CSR לפני שליחת מייל
               </button>
             )}
 
@@ -845,20 +936,6 @@ function CompanyCard({
                   </button>
                 )}
               </div>
-            )}
-
-            {/* No contact — find contact button */}
-            {!company.contact_email && !company.contact_name && (
-              <button
-                onClick={() => onFindContact(company)}
-                className="w-full py-1.5 text-[11px] font-medium border border-dashed border-border text-muted rounded-lg hover:border-accent hover:text-accent transition-colors flex items-center justify-center gap-1.5"
-              >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="11" cy="11" r="8" />
-                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                </svg>
-                בקש מגולדפיש לאתר אחראי CSR
-              </button>
             )}
 
             {/* Outreach tracking */}
