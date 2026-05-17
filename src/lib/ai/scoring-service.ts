@@ -343,11 +343,11 @@ export function scoreOpportunityDNA(
   const reasons = [reasoning];
 
   if (funderIntel && !isNegativeMatch) {
-    const domainOverlap = funderIntel.preferred_domains.filter((d) =>
-      orgDna.domains.includes(d),
+    const domainOverlap = (funderIntel.preferred_domains || []).filter((d) =>
+      (orgDna.domains || []).includes(d),
     );
-    const popOverlap = funderIntel.preferred_populations.filter((p) =>
-      orgDna.populations.includes(p),
+    const popOverlap = (funderIntel.preferred_populations || []).filter((p) =>
+      (orgDna.populations || []).includes(p),
     );
     if (domainOverlap.length > 0 || popOverlap.length > 0) {
       const bonus = Math.min(8, (domainOverlap.length + popOverlap.length) * 3);
@@ -355,8 +355,8 @@ export function scoreOpportunityDNA(
       reasons.push(`גוף מממן מעדיף תחומים/אוכלוסיות תואמים (+${bonus})`);
     }
     if (
-      funderIntel.preferred_org_sizes.length > 0 &&
-      funderIntel.preferred_org_sizes.includes(orgDna.orgType)
+      (funderIntel.preferred_org_sizes || []).length > 0 &&
+      (funderIntel.preferred_org_sizes || []).includes(orgDna.orgType)
     ) {
       adjustedScore += 5;
       reasons.push('גודל ארגון מתאים לגוף מממן (+5)');
