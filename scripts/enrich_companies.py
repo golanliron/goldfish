@@ -5,14 +5,23 @@ Goldfish — AI Company Enrichment Pipeline
 
 import os
 import json
+import sys
 import time
 import requests
 from datetime import datetime, timezone
 
 # ─── Config ───────────────────────────────────────────────
-SUPABASE_URL = "https://touqczopfjxcpmbxzdjr.supabase.co"
-SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRvdXFjem9wZmp4Y3BtYnh6ZGpyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Nzg5MDM1NywiZXhwIjoyMDkzNDY2MzU3fQ.rjr4XAb1jskScBwyp9bnpjyfNrQu0CgZTZ3QTIqvpqY")
-GEMINI_API_KEY = "AIzaSyDAgELlXCiGJRtGeDtpw9sUi0fgEvLKJEA"
+SUPABASE_URL = os.environ.get("NEXT_PUBLIC_SUPABASE_URL", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    print("ERROR: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in environment.")
+    sys.exit(1)
+if not GEMINI_API_KEY:
+    print("ERROR: GEMINI_API_KEY must be set in environment.")
+    sys.exit(1)
+
 GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
 
 BATCH_SIZE = 20        # כמה חברות לעשות בפעם אחת

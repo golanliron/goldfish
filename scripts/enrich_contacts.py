@@ -1,228 +1,190 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-Goldfish — Contact Enrichment Pipeline
-מחלץ מיילים ואנשי קשר CSR מאתרי החברות
+Goldfish — Contact & CSR Enrichment Pipeline
+מעשיר חברות ב-csr_focus, approach_strategy, contact_email אמיתי
 """
-
-import os
-import json
-import time
-import requests
-import re
+import json, os, re, sys, time
 from datetime import datetime, timezone
+from urllib.request import urlopen, Request
+from urllib.parse import quote as urlquote, unquote
 
-# ─── Config ───────────────────────────────────────────────
-SUPABASE_URL = "https://touqczopfjxcpmbxzdjr.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRvdXFjem9wZmp4Y3BtYnh6ZGpyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Nzg5MDM1NywiZXhwIjoyMDkzNDY2MzU3fQ.rjr4XAb1jskScBwyp9bnpjyfNrQu0CgZTZ3QTIqvpqY"
-GEMINI_API_KEY = "AIzaSyDAgELlXCiGJRtGeDtpw9sUi0fgEvLKJEA"
-GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
+SUPABASE_URL = os.environ.get("NEXT_PUBLIC_SUPABASE_URL", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "")
 
-DELAY_SECONDS = 2.0
-MAX_COMPANIES = 300
+if not SUPABASE_URL or not SUPABASE_KEY:
+    print("ERROR: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in environment.")
+    sys.exit(1)
+if not GEMINI_KEY:
+    print("ERROR: GEMINI_API_KEY must be set in environment.")
+    sys.exit(1)
 
-# דפים נפוצים לCSR בחברות ישראליות
-CSR_PATHS = [
-    "/csr", "/responsibility", "/community", "/social-responsibility",
-    "/about/csr", "/about/community", "/about/responsibility",
-    "/אחריות-תאגידית", "/קהילה", "/אודות/קהילה",
-    "/sustainability", "/esg",
-]
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_KEY}"
+UA = "Mozilla/5.0 Chrome/124"
+MAX = 30
+DELAY = 2.5
 
-# ─── Supabase helpers ──────────────────────────────────────
 
-def sb_get(path, params=None):
-    headers = {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
-    }
-    r = requests.get(f"{SUPABASE_URL}/rest/v1/{path}", headers=headers, params=params)
-    r.raise_for_status()
-    return r.json()
-
-def sb_patch(table, row_id, data):
-    headers = {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
-        "Content-Type": "application/json",
-        "Prefer": "return=minimal",
-    }
-    r = requests.patch(
-        f"{SUPABASE_URL}/rest/v1/{table}?id=eq.{row_id}",
-        headers=headers,
-        json=data
-    )
-    r.raise_for_status()
-
-# ─── Web scraping ──────────────────────────────────────────
-
-def fetch_page(url: str, timeout=8) -> str | None:
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
-        "Accept-Language": "he-IL,he;q=0.9,en;q=0.8",
-    }
+def jina(url, t=25):
     try:
-        r = requests.get(url, headers=headers, timeout=timeout, allow_redirects=True)
-        if r.status_code == 200:
-            return r.text[:15000]  # רק 15K תווים ראשונים
+        req = Request(f"https://r.jina.ai/{url}", headers={"Accept": "text/plain", "User-Agent": UA})
+        with urlopen(req, timeout=t) as resp:
+            return resp.read().decode("utf-8", errors="replace")
     except:
-        pass
-    return None
+        return ""
 
-def find_csr_page(base_url: str) -> str | None:
-    base = base_url.rstrip("/")
-    if not base.startswith("http"):
-        base = f"https://{base}"
 
-    for path in CSR_PATHS:
-        url = f"{base}{path}"
-        try:
-            r = requests.head(url, timeout=5, allow_redirects=True)
-            if r.status_code == 200:
-                return url
-        except:
+def ddg(q, n=3):
+    text = jina(f"https://html.duckduckgo.com/html/?q={urlquote(q)}")
+    res, seen = [], set()
+    for m in re.finditer(r"uddg=(https?%3A%2F%2F[^&]+)", text):
+        u = unquote(m.group(1))
+        if "duckduckgo" in u or u in seen:
             continue
-    return None
+        seen.add(u)
+        ctx = text[max(0, m.start() - 400):m.end() + 150]
+        tm = re.search(r"## \[([^\]]{5,150})\]", ctx)
+        snip_pattern = r"\]\([^)]+\)\s*\n+([^\n#\[]{20,250})"
+        sm = re.search(snip_pattern, ctx)
+        res.append({"url": u, "title": tm.group(1) if tm else "", "snip": sm.group(1) if sm else ""})
+        if len(res) >= n:
+            break
+    return res
 
-def extract_emails_from_html(html: str) -> list[str]:
-    emails = re.findall(r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}', html)
-    # סנן כתובות מזויפות
-    filtered = [
-        e for e in emails
-        if not any(skip in e.lower() for skip in [
-            'example', 'test', 'noreply', 'no-reply', 'spam',
-            '.png', '.jpg', '.gif', 'sentry', 'wix', 'placeholder'
-        ])
-    ]
-    return list(set(filtered))[:5]
 
-# ─── Gemini contact extraction ─────────────────────────────
+def sb_get(path, p):
+    qs = "&".join(f"{k}={v}" for k, v in p.items())
+    req = Request(
+        f"{SUPABASE_URL}/rest/v1/{path}?{qs}",
+        headers={"apikey": SUPABASE_KEY, "Authorization": f"Bearer {SUPABASE_KEY}"}
+    )
+    with urlopen(req, timeout=15) as resp:
+        return json.loads(resp.read())
 
-def extract_contact_with_gemini(company_name: str, html_content: str, emails_found: list) -> dict | None:
-    emails_str = ", ".join(emails_found) if emails_found else "לא נמצאו"
 
-    prompt = f"""אתה מומחה לחילוץ פרטי קשר מאתרי אינטרנט של חברות.
+def sb_patch(tbl, rid, data):
+    req = Request(
+        f"{SUPABASE_URL}/rest/v1/{tbl}?id=eq.{rid}",
+        data=json.dumps(data).encode(),
+        headers={
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}",
+            "Content-Type": "application/json",
+            "Prefer": "return=minimal"
+        },
+        method="PATCH"
+    )
+    with urlopen(req, timeout=15) as resp:
+        return resp.status
 
-חברה: {company_name}
-מיילים שנמצאו בדף: {emails_str}
 
-תוכן הדף (חלקי):
-{html_content[:3000]}
+def collect(name, website):
+    parts = []
+    for q in [f"{name} CSR philanthropy grants contact director", f"{name} social responsibility community giving"]:
+        for r in ddg(q, 3):
+            if r["snip"]:
+                parts.append(f"[{r['title']}] {r['snip']}")
+        time.sleep(0.4)
+    if website:
+        for s in ["/csr", "/responsibility", "/community", "/about", "/grants"]:
+            pg = jina(website.rstrip("/") + s, 20)
+            if pg and len(pg) > 300:
+                parts.append(pg[:2000])
+                break
+    return "\n\n".join(parts)
 
-משימה: מצא את איש הקשר הכי מתאים לפנייה בנושא תרומות/CSR/אחריות תאגידית.
 
-החזר JSON בדיוק (ללא markdown):
-{{
-  "contact_email": "המייל הכי מתאים לCSR או null",
-  "contact_name": "שם איש הקשר אם נמצא או null",
-  "contact_role": "תפקיד כמו מנהל CSR / רכז קהילה וכו' או null"
-}}
-
-כללים:
-- תן עדיפות למיילים עם: community, csr, social, kehila, tzibur, responsibility
-- אם אין מייל מתאים — החזר null
-- אל תמציא — רק מה שמופיע בטקסט
-"""
-
+def gemini(name, ctype, content):
+    prompt = f"""You analyze {ctype} "{name}" for CSR/philanthropy data.
+Content:
+---
+{content[:2500]}
+---
+Return JSON only:
+{{"contact_name":null or full name,"contact_email":null or direct personal email (NOT info@/contact@),"contact_role":null or exact title,"csr_focus":["topic1","topic2"],"approach_strategy":"RFP_ONLY|DIRECT_APPROACH|BOTH|UNKNOWN","funding_range_min":null or int ILS,"funding_range_max":null or int ILS,"funding_notes":null or brief Hebrew note}}
+Rules: csr_focus in Hebrew like education/youth/periphery. approach=RFP_ONLY if only via RFPs, DIRECT_APPROACH if open to emails/LOI."""
     try:
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 0.1, "maxOutputTokens": 200}
+            "generationConfig": {"temperature": 0.1, "maxOutputTokens": 400}
         }
-        r = requests.post(GEMINI_URL, json=payload, timeout=15)
-        r.raise_for_status()
-        text = r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-
-        if text.startswith("```"):
-            text = text.split("```")[1]
-            if text.startswith("json"):
-                text = text[4:]
-        text = text.strip()
-
-        data = json.loads(text)
-        result = {}
-        if data.get("contact_email"):
-            result["contact_email"] = data["contact_email"]
-        if data.get("contact_name"):
-            result["contact_name"] = data["contact_name"]
-        if data.get("contact_role"):
-            result["contact_role"] = data["contact_role"]
-        return result if result else None
-
+        req = Request(
+            GEMINI_URL,
+            data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        with urlopen(req, timeout=20) as resp:
+            text = json.loads(resp.read())["candidates"][0]["content"]["parts"][0]["text"].strip()
+        text = re.sub(r"^```json?\s*|```$", "", text, flags=re.MULTILINE).strip()
+        return json.loads(text)
     except Exception as e:
+        print(f"  Gemini error: {e}")
         return None
 
-# ─── Main ──────────────────────────────────────────────────
 
 def main():
-    print("Goldfish Contact Enrichment Pipeline")
-    print("=" * 40)
-
-    # שלוף חברות עם אתר אבל בלי מייל
-    all_companies = sb_get("companies", {
-        "select": "id,name,company_type,website,contact_email",
+    print("=== Goldfish Contact + CSR Enrichment ===")
+    companies = sb_get("companies", {
+        "select": "id,name,company_type,website,contact_email,contact_name,csr_focus,approach_strategy",
         "active": "eq.true",
-        "website": "not.is.null",
-        "contact_email": "is.null",
-        "order": "data_quality.desc.nullslast",
-        "limit": str(MAX_COMPANIES),
+        "company_type": "in.(business,public,private)",
+        "order": "donation_amount.desc.nullslast",
+        "limit": str(MAX)
     })
-
-    to_enrich = [c for c in all_companies if c.get("website")]
-
-    print(f"נמצאו {len(to_enrich)} חברות עם אתר ובלי מייל")
-    print()
-
-    enriched = 0
-    skipped = 0
-
-    for i, company in enumerate(to_enrich):
-        name = company["name"]
-        website = company["website"]
-        print(f"[{i+1}/{len(to_enrich)}] {name}...", end=" ", flush=True)
-
-        # חפש דף CSR
-        csr_url = find_csr_page(website)
-        page_url = csr_url or website
-        html = fetch_page(page_url)
-
-        if not html:
-            print("לא נגיש")
+    todo = [c for c in companies if not c.get("csr_focus") or not c.get("approach_strategy")]
+    print(f"{len(companies)} fetched, {len(todo)} need enrichment\n")
+    enriched = skipped = 0
+    for i, c in enumerate(todo):
+        name = c["name"]
+        ctype = c.get("company_type", "business")
+        ws = c.get("website") or ""
+        print(f"[{i+1}/{len(todo)}] {name}")
+        content = collect(name, ws)
+        if not content.strip():
+            print("  no content")
             skipped += 1
-            time.sleep(0.5)
             continue
-
-        # חלץ מיילים מה-HTML
-        emails = extract_emails_from_html(html)
-
-        # שלח ל-Gemini לניתוח
-        result = extract_contact_with_gemini(name, html, emails)
-
-        if not result:
-            print("אין קשר")
+        ext = gemini(name, ctype, content)
+        if not ext:
             skipped += 1
-            time.sleep(DELAY_SECONDS)
             continue
-
-        # עדכן data_quality
+        upd = {}
         now = datetime.now(timezone.utc).isoformat()
-        update_data = {
-            **result,
-            "updated_at": now,
-        }
-
-        try:
-            sb_patch("companies", company["id"], update_data)
-            contact = result.get("contact_email", "")
-            print(f"OK → {contact}")
-            enriched += 1
-        except Exception as e:
-            print(f"ERROR: {e}")
+        em = ext.get("contact_email") or ""
+        if em and "@" in em and not any(g in em for g in ["info@", "contact@", "mail@", "office@"]):
+            if not c.get("contact_email"):
+                upd["contact_email"] = em
+        if ext.get("contact_name") and not c.get("contact_name"):
+            upd["contact_name"] = ext["contact_name"]
+        if ext.get("contact_role"):
+            upd["contact_role"] = ext["contact_role"]
+        if ext.get("csr_focus") and isinstance(ext["csr_focus"], list):
+            upd["csr_focus"] = ext["csr_focus"][:5]
+        if ext.get("approach_strategy") in ("RFP_ONLY", "DIRECT_APPROACH", "BOTH", "UNKNOWN"):
+            upd["approach_strategy"] = ext["approach_strategy"]
+        if ext.get("funding_notes"):
+            upd["funding_notes"] = ext["funding_notes"]
+        if isinstance(ext.get("funding_range_min"), int):
+            upd["funding_range_min"] = ext["funding_range_min"]
+        if isinstance(ext.get("funding_range_max"), int):
+            upd["funding_range_max"] = ext["funding_range_max"]
+        if upd:
+            upd.update({"updated_at": now, "enriched_at": now, "data_source": "contact_enriched_ddg"})
+            try:
+                sb_patch("companies", c["id"], upd)
+                print(f"  -> {', '.join(k for k in upd if k not in ('updated_at', 'enriched_at', 'data_source'))}")
+                enriched += 1
+            except Exception as e:
+                print(f"  DB error: {e}")
+                skipped += 1
+        else:
+            print("  nothing new")
             skipped += 1
+        time.sleep(DELAY)
+    print(f"\n=== DONE: {enriched} enriched, {skipped} skipped ===")
 
-        time.sleep(DELAY_SECONDS)
-
-    print()
-    print("=" * 40)
-    print(f"סיום! קשרים נוספו: {enriched} | דולגו: {skipped}")
 
 if __name__ == "__main__":
     main()
