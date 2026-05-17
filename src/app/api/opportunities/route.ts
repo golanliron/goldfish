@@ -213,7 +213,22 @@ export async function GET(req: NextRequest) {
     // Use AI-extracted DNA if available (stored in profile), else fall back to regex
     let orgDna: import('@/lib/ai/org-dna').OrgDNA;
     if (profileData._dna && typeof profileData._dna === 'object') {
-      orgDna = profileData._dna as import('@/lib/ai/org-dna').OrgDNA;
+      const raw = profileData._dna as Record<string, unknown>;
+      // Ensure all array fields exist — DB-stored DNA may be missing fields added later
+      orgDna = {
+        populations: [],
+        domains: [],
+        subDomains: [],
+        geography: [],
+        ageGroups: [],
+        interventionTypes: [],
+        themes: [],
+        excludePopulations: [],
+        excludeDomains: [],
+        orgType: 'small',
+        profileCompleteness: 0,
+        ...raw,
+      } as import('@/lib/ai/org-dna').OrgDNA;
     } else {
       const docTexts = (docsRes.data || [])
         .map((d: { parsed_text?: string }) => d.parsed_text || '')
