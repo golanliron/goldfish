@@ -39,7 +39,6 @@ export async function GET(req: NextRequest) {
           .from('hot_opportunities')
           .select('id, source_type, source_name, source_url, title, description, pain_point, strategic_insight, amount_hint, deadline_hint, match_orgs, discovered_at')
           .eq('active', true)
-          .or(`org_id.is.null,match_orgs->>${orgId}.not.is.null`)
           .order('discovered_at', { ascending: false })
           .limit(20)
       : supabase
