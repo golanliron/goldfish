@@ -1086,7 +1086,7 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
   const linkQuality = dbLinkQuality || classifyLinkQuality(opp.url, opp.application_url);
 
   // Decide href and button label based on quality
-  const isGoodLink = ['direct_application', 'official_pdf', 'direct_call_page', 'aggregator_specific', 'gov_blocked', 'aggregator_no_direct_apply'].includes(linkQuality);
+  const isGoodLink = ['direct_application', 'official_pdf', 'direct_call_page', 'aggregator_specific', 'gov_blocked', 'aggregator_no_direct_apply', 'official_info_page', 'needs_manual_check'].includes(linkQuality);
   const sourceHref = isGoodLink
     ? (opp.application_url || opp.url)
     : null;
@@ -1097,6 +1097,8 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
     linkQuality === 'aggregator_specific' ? `פתח מקור ב-${opp.source || 'אגרגטור'}` :
     linkQuality === 'gov_blocked' ? 'פתח קול קורא' :
     linkQuality === 'aggregator_no_direct_apply' ? 'פתח קול קורא' :
+    linkQuality === 'official_info_page' ? 'פתח מקור' :
+    linkQuality === 'needs_manual_check' ? 'פתח לבדיקה' :
     linkQuality === 'broken' ? 'לינק שבור' :
     'נסה למצוא לינק ישיר';
   const linkQualityLabel =
@@ -1105,6 +1107,8 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
     linkQuality === 'aggregator_specific' ? `מקור: ${opp.source || 'אגרגטור'}` :
     linkQuality === 'gov_blocked' ? 'דורש פתיחה ידנית' :
     linkQuality === 'aggregator_no_direct_apply' ? 'אין לינק הגשה ישיר' :
+    linkQuality === 'official_info_page' ? 'דף מידע רשמי' :
+    linkQuality === 'needs_manual_check' ? 'דורש בדיקה' :
     linkQuality === 'general_listing' || linkQuality === 'homepage' || linkQuality === 'unknown' ? 'לינק דורש אימות' :
     linkQuality === 'broken' ? 'לינק שבור' :
     null;
@@ -1178,6 +1182,8 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
             linkQuality === 'aggregator_specific' ? 'bg-amber-50 text-amber-600' :
             linkQuality === 'gov_blocked' ? 'bg-orange-100 text-orange-700' :
             linkQuality === 'aggregator_no_direct_apply' ? 'bg-gray-100 text-gray-500' :
+            linkQuality === 'official_info_page' ? 'bg-blue-50 text-blue-600' :
+            linkQuality === 'needs_manual_check' ? 'bg-yellow-50 text-yellow-700' :
             'bg-gray-100 text-gray-400'
           }`}>
             {linkQualityLabel}
