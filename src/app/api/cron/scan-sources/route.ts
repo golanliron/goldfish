@@ -11,7 +11,21 @@ import { withRetry } from '@/lib/ai/retry';
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // Vercel Cron or manual trigger
-// Supports ?batch=0,1,2... to scan sources in chunks (Hobby plan = 10s timeout)
+// Supports ?batch=0,1,2... to scan sources in chunks
+// Supports ?source=gov|shatil|kkl|pais|jdc|shefi|... to scan a single source group
+const SOURCE_KEY_MAP: Record<string, string[]> = {
+  gov:        ['gov.il', 'משרד', 'רשות', 'שפ"י', 'תקומה', 'ועדת', 'govextra'],
+  shatil:     ['שתיל'],
+  kkl:        ['קק"ל'],
+  pais:       ['מפעל הפיס', 'pais'],
+  jdc:        ['ג׳וינט', 'jdc'],
+  shefi:      ['שפ"י'],
+  rothschild: ['Rothschild'],
+  federation: ['Federation'],
+  socialmap:  ['SocialMap'],
+  guidestar:  ['גיידסטאר'],
+};
+
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
   const cronSecret = process.env.CRON_SECRET;
@@ -20,12 +34,39 @@ export async function GET(request: NextRequest) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const url = new URL(request.url);
-  const batchParam = url.searchParams.get('batch');
+  const reqUrl = new URL(request.url);
+  const batchParam = reqUrl.searchParams.get('batch');
+  const sourceParam = reqUrl.searchParams.get('source');
   const batchIndex = batchParam !== null ? parseInt(batchParam) : -1;
 
-  const results = await scanAllSources(batchIndex >= 0 ? batchIndex : undefined);
-  return Response.json(results);
+  if (sourceParam) {
+    return Response.json(await scanSingleSource(sourceParam));
+  }
+
+  return Response.json(await scanAllSources(batchIndex >= 0 ? batchIndex : undefined));
+}
+
+async function scanSingleSource(sourceKey: string) {
+  const keywords = SOURCE_KEY_MAP[sourceKey.toLowerCase()];
+  const activeSources = SOURCES.filter(s => !s.disabled);
+
+  const matchedSources = keywords
+    ? activeSources.filter(s => keywords.some(kw => s.name.includes(kw) || s.url.includes(kw)))
+    : activeSources.filter(s =>
+        s.name.toLowerCase().includes(sourceKey.toLowerCase()) ||
+        s.url.toLowerCase().includes(sourceKey.toLowerCase())
+      );
+
+  if (matchedSources.length === 0) {
+    return {
+      error: `No sources matched key: "${sourceKey}"`,
+      available_keys: Object.keys(SOURCE_KEY_MAP),
+      active_sources: activeSources.map(s => s.name),
+    };
+  }
+
+  const result = await scanAllSources(undefined, matchedSources);
+  return { source: sourceKey, matched_sources: matchedSources.map(s => s.name), ...result };
 }
 
 // ============================================================
@@ -755,7 +796,7 @@ interface ScannedItem {
 
 const BATCH_SIZE = 5; // sources per batch (Vercel Hobby = 10s timeout)
 
-async function scanAllSources(batchIndex?: number) {
+async function scanAllSources(batchIndex?: number, overrideSources?: Source[]) {
   const supabase = createAdminClient();
   let totalNew = 0;
   let totalSkipped = 0;
@@ -764,10 +805,12 @@ async function scanAllSources(batchIndex?: number) {
 
   // Determine which sources to scan — skip disabled sources entirely
   const activeSources = SOURCES.filter(s => !s.disabled);
-  const sourcesToScan = batchIndex !== undefined
-    ? activeSources.slice(batchIndex * BATCH_SIZE, (batchIndex + 1) * BATCH_SIZE)
-    : activeSources;
-  const isFirstBatch = batchIndex === undefined || batchIndex === 0;
+  const sourcesToScan = overrideSources
+    ? overrideSources
+    : batchIndex !== undefined
+      ? activeSources.slice(batchIndex * BATCH_SIZE, (batchIndex + 1) * BATCH_SIZE)
+      : activeSources;
+  const isFirstBatch = !overrideSources && (batchIndex === undefined || batchIndex === 0);
   const dryRunSources = new Set(sourcesToScan.filter(s => s.dryRun).map(s => s.name));
   const dryRunResults: { source: string; found: number; would_insert: number; samples: string[] }[] = [];
 
