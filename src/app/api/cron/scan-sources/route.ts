@@ -516,29 +516,83 @@ function isValidGrantUrl(url: string | undefined): boolean {
 // LINK QUALITY INFERENCE — assigns standard link_quality value
 // ============================================================
 function inferLinkQuality(url: string | undefined, applicationUrl: string | undefined): string {
-  // If there's a direct application URL — check its type
+  // ── Step 1: classify by applicationUrl if present ──────────────────────────
   if (applicationUrl) {
+    // PDF attachment → official_pdf
     if (/\.pdf(\?.*)?$/i.test(applicationUrl)) return 'official_pdf';
-    if (/forms\.gle|docs\.google\.com\/forms|my\.pais\.co\.il|manofexpo\.kkl|typeform\.com|jotform\.com|surveymonkey\.com|monday\.com\/forms|form\.monday\.com|ec\.europa\.eu.*apply|euportal.*apply/i.test(applicationUrl))
-      return 'direct_application';
-    // Any other non-gov application URL = direct
-    if (!/gov\.il|mr\.gov\.il/i.test(applicationUrl)) return 'direct_application';
+
+    // Explicit web forms / submission portals → direct_application
+    const DIRECT_APP_PATTERNS = [
+      /forms\.gle\//i,
+      /docs\.google\.com\/forms\//i,
+      /my\.pais\.co\.il/i,
+      /manofexpo\.kkl\.org\.il/i,
+      /typeform\.com/i,
+      /jotform\.com/i,
+      /surveymonkey\.com/i,
+      /monday\.com\/forms\//i,
+      /airtable\.com\/shr/i,
+      /pops\.expertisefrance\.fr/i,
+      /[?&/](apply|submit|application|register|hagasha|hagashot)[/?&]/i,
+      /\/(apply|submit|application|register)\/?$/i,
+    ];
+    if (DIRECT_APP_PATTERNS.some(re => re.test(applicationUrl))) return 'direct_application';
+
+    // Broad info portals — not a direct form even if set as application_url
+    const AGGREGATOR_APP_PATTERNS = [
+      /ec\.europa\.eu/i,
+      /eismea\.ec\.europa\.eu/i,
+      /funding-tenders\.ec\.europa\.eu/i,
+      /jewishagency\.org/i,
+      /nif\.org/i,
+      /jdc\.org/i,
+      /shatil\.org\.il/i,
+      /guidestar\.org\.il/i,
+      /socialmap\.org\.il/i,
+    ];
+    if (AGGREGATOR_APP_PATTERNS.some(re => re.test(applicationUrl))) return 'official_info_page';
+
+    // Gov portals in applicationUrl → gov_blocked
+    if (/gov\.il|mr\.gov\.il|pob\.education\.gov\.il|btl\.gov\.il|govextra\.gov\.il/i.test(applicationUrl))
+      return 'gov_blocked';
+
+    // Conservative fallback: specific path = info page (not assumed direct)
+    const appPath = applicationUrl.replace(/^https?:\/\/[^/]+/, '').replace(/\/+$/, '');
+    if (appPath.split('/').filter(Boolean).length >= 2) return 'official_info_page';
   }
+
+  // ── Step 2: classify by page url ───────────────────────────────────────────
   if (!url) return 'official_info_page';
-  // Government portals — require internal auth, no direct web form
-  if (/gov\.il|mr\.gov\.il|pob\.education\.gov\.il|btl\.gov\.il|govextra\.gov\.il|space\.gov\.il|galil\.gov\.il/i.test(url))
+
+  // Government portals
+  if (/gov\.il|mr\.gov\.il|pob\.education\.gov\.il|btl\.gov\.il|govextra\.gov\.il/i.test(url))
     return 'gov_blocked';
-  // Aggregators — link to external funders, no direct apply
+
+  // Aggregators
   if (/shatil\.org\.il|socialmap\.org\.il|jdc\.org\.il\/calls|guidestar\.org\.il|fundsforngos|grantwatch\.com|ujafedny\.org\/grants/i.test(url))
     return 'aggregator_no_direct_apply';
-  // Known foundation info pages (no direct web form on landing)
+
+  // Foundation grant-list pages (broad, no single-call form)
   if (/jewishagency\.org|nif\.org|britpicot\.org\.il|rashy\.org\.il|jerusalemfoundation\.org/i.test(url))
     return 'aggregator_no_direct_apply';
+
   // PDF direct link
   if (/\.pdf(\?.*)?$/i.test(url)) return 'official_pdf';
-  // Specific grant/application page with meaningful path
+
   return 'official_info_page';
 }
+
+/*
+ * inferLinkQuality — test cases:
+ *   shatil.org.il/kol/X  + forms.gle/abc123          → direct_application       ✓
+ *   shatil.org.il/kol/X  + ec.europa.eu/portal/...   → official_info_page        ✓
+ *   pob.education.gov.il + null                       → gov_blocked               ✓
+ *   mr.gov.il/...        + null                       → gov_blocked               ✓
+ *   kkl.org.il/tenders/X + manofexpo.kkl.org.il/...  → direct_application        ✓
+ *   drive.google.com/.../view (PDF)                   → official_pdf (via url)    ✓
+ *   rothschildfoundation.eu/grants-page/              → official_info_page        ✓
+ *   jewishagency.org/grants/                          → aggregator_no_direct_apply ✓
+ */
 
 // ============================================================
 // OPPORTUNITY REJECTION — items that must never be active=true
