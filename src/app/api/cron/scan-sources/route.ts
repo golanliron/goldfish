@@ -819,7 +819,8 @@ async function scanAllSources(batchIndex?: number, overrideSources?: Source[]) {
       : activeSources;
   const isFirstBatch = !overrideSources && (batchIndex === undefined || batchIndex === 0);
   const dryRunSources = new Set(sourcesToScan.filter(s => s.dryRun).map(s => s.name));
-  const dryRunResults: { source: string; found: number; would_insert: number; samples: string[] }[] = [];
+  interface DryRunItem { title: string; url: string | null; link_quality: string; status: 'accepted' | 'rejected'; reject_reason?: string }
+  const dryRunResults: { source: string; found: number; would_insert: number; rejected: number; items: DryRunItem[] }[] = [];
 
   // === Step 1: Cleanup expired & stale (only on first batch) ===
   const today = new Date().toISOString().split('T')[0];
@@ -920,12 +921,19 @@ async function scanAllSources(batchIndex?: number, overrideSources?: Source[]) {
         // Check if item should be rejected — save as active=false with reject reason
         const rejected = shouldRejectOpportunity(item, source.url);
         if (rejected) {
-          // Only persist rejections that have a URL (so we can dedup future scans)
-          if (item.url && !existingUrls.has(item.url) && !dryRunSources.has(source.name)) {
-            const rejectReason = /\/archive\/|grantsfolder/i.test(item.url || '') ? 'archived'
-              : /ההגשה הסתיימה/.test(item.title) ? 'submission_closed'
-              : /homepage|category|list/.test('') || GENERIC_URL_PATTERNS.some(re => re.test(item.url || '')) ? 'generic_list_page'
-              : 'not_opportunity';
+          const rejectReason = /\/archive\/|grantsfolder/i.test(item.url || '') ? 'archived'
+            : /ההגשה הסתיימה/.test(item.title) ? 'submission_closed'
+            : GENERIC_URL_PATTERNS.some(re => re.test(item.url || '')) ? 'generic_list_page'
+            : 'not_opportunity';
+          // DryRun: log rejection without writing
+          if (dryRunSources.has(source.name)) {
+            let drEntry = dryRunResults.find(d => d.source === source.name);
+            if (!drEntry) { drEntry = { source: source.name, found: 0, would_insert: 0, rejected: 0, items: [] }; dryRunResults.push(drEntry); }
+            drEntry.found++;
+            drEntry.rejected++;
+            if (drEntry.items.length < 50) drEntry.items.push({ title: item.title.slice(0, 100), url: item.url || null, link_quality: 'not_opportunity', status: 'rejected', reject_reason: rejectReason });
+          } else if (item.url && !existingUrls.has(item.url)) {
+            // Only persist rejections that have a URL (so we can dedup future scans)
             await supabase.from('opportunities').insert({
               title: item.title.slice(0, 300),
               funder: item.funder || source.funder || null,
@@ -1087,16 +1095,12 @@ async function scanAllSources(batchIndex?: number, overrideSources?: Source[]) {
 
         // DryRun mode: log what would be inserted, but don't write to DB
         if (dryRunSources.has(source.name)) {
+          const lq = inferLinkQuality(item.url, funderAppUrl || undefined);
           let drEntry = dryRunResults.find(d => d.source === source.name);
-          if (!drEntry) {
-            drEntry = { source: source.name, found: 0, would_insert: 0, samples: [] };
-            dryRunResults.push(drEntry);
-          }
+          if (!drEntry) { drEntry = { source: source.name, found: 0, would_insert: 0, rejected: 0, items: [] }; dryRunResults.push(drEntry); }
           drEntry.found++;
           drEntry.would_insert++;
-          if (drEntry.samples.length < 10) {
-            drEntry.samples.push(`${item.title.slice(0, 80)} | ${item.url?.slice(0, 60) || 'no-url'}`);
-          }
+          if (drEntry.items.length < 50) drEntry.items.push({ title: item.title.slice(0, 100), url: item.url || null, link_quality: lq, status: 'accepted' });
           continue; // skip actual insert
         }
 
