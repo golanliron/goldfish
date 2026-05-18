@@ -272,7 +272,6 @@ const SOURCES: Source[] = [
     name: 'gov.il — תובענות ייצוגיות (חלוקת כספים)',
     url: 'https://www.gov.il/he/Departments/DynamicCollectors/class_action_law_database?skip=0',
     funder: 'רשות האכיפה והגבייה',
-    dryRun: true,
   },
   {
     name: 'משרד האוצר — תמיחות (tmichot)',
@@ -879,6 +878,8 @@ async function extractGovDynamicCollector(sourceUrl: string, defaultFunder: stri
         : undefined;
 
       const deadline = extractDateStr(String(data.date || ''));
+      // Skip items with past deadlines — active cleanup will handle any that slip through
+      if (deadline && deadline < new Date().toISOString().split('T')[0]) continue;
       items.push({ title: title.slice(0, 300), funder: defaultFunder, deadline, url });
     }
 
