@@ -269,6 +269,12 @@ const SOURCES: Source[] = [
   // ── next_dryrun — DryRun only, no DB write until QA approved ──
   // To promote to approved_pipeline: remove dryRun:true after reviewing DryRun report
   {
+    name: 'gov.il — תובענות ייצוגיות (חלוקת כספים)',
+    url: 'https://www.gov.il/he/Departments/DynamicCollectors/class_action_law_database?skip=0',
+    funder: 'רשות האכיפה והגבייה',
+    dryRun: true,
+  },
+  {
     name: 'משרד האוצר — תמיחות (tmichot)',
     url: 'https://tmichot.mof.gov.il/call-for-proposals',
     funder: 'משרד האוצר',
@@ -640,7 +646,8 @@ function inferLinkQuality(url: string | undefined, applicationUrl: string | unde
 // ============================================================
 const REJECT_TITLE_PATTERNS = [
   /ההגשה הסתיימה/,
-  /תובענה/,         // class-action templates from ezvonot
+  // NOTE: /תובענה/ removed — class_action_law_database on gov.il is a valid source
+  // ezvonot.com is blocked via REJECT_URL_PATTERNS instead
   /glossary/i,
   /terms of service/i,
   /privacy policy/i,
