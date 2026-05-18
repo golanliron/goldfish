@@ -753,6 +753,16 @@ async function scanAllSources(batchIndex?: number) {
           if (isHomepage || isSourceUrl || isFileDownload || isListPage) {
             item.url = undefined;
           }
+
+          // KKL guard: only allow URLs under /about-us/tenders/ or manofexpo.kkl.org.il
+          // Prevents full-site crawl that produced 113 non-grant pages previously
+          if (item.url && source.name === 'קק"ל') {
+            const isKklTendersPath = item.url.includes('/about-us/tenders/');
+            const isKklManof = item.url.includes('manofexpo.kkl.org.il');
+            if (!isKklTendersPath && !isKklManof) {
+              item.url = undefined;
+            }
+          }
         }
 
         // Require URL — no URL = cannot link to grant

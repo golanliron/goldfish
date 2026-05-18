@@ -1078,10 +1078,15 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
     return 'direct_call_page';
   };
 
-  const linkQuality = classifyLinkQuality(opp.url, opp.application_url);
+  // DB requirements.link_quality takes priority over regex classification
+  const dbLinkQuality = (opp as unknown as Record<string, unknown>).requirements &&
+    typeof (opp as unknown as Record<string, unknown>).requirements === 'object'
+    ? ((opp as unknown as Record<string, Record<string, unknown>>).requirements?.link_quality as string | undefined)
+    : undefined;
+  const linkQuality = dbLinkQuality || classifyLinkQuality(opp.url, opp.application_url);
 
   // Decide href and button label based on quality
-  const isGoodLink = ['direct_application', 'official_pdf', 'direct_call_page', 'aggregator_specific'].includes(linkQuality);
+  const isGoodLink = ['direct_application', 'official_pdf', 'direct_call_page', 'aggregator_specific', 'gov_blocked', 'aggregator_no_direct_apply'].includes(linkQuality);
   const sourceHref = isGoodLink
     ? (opp.application_url || opp.url)
     : null;
@@ -1090,12 +1095,16 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
     linkQuality === 'official_pdf' ? 'פתח קול קורא (PDF)' :
     linkQuality === 'direct_call_page' ? 'פתח קול קורא' :
     linkQuality === 'aggregator_specific' ? `פתח מקור ב-${opp.source || 'אגרגטור'}` :
+    linkQuality === 'gov_blocked' ? 'פתח קול קורא' :
+    linkQuality === 'aggregator_no_direct_apply' ? 'פתח קול קורא' :
     linkQuality === 'broken' ? 'לינק שבור' :
     'נסה למצוא לינק ישיר';
   const linkQualityLabel =
     linkQuality === 'direct_application' ? 'הגשה ישירה' :
     linkQuality === 'official_pdf' ? 'PDF רשמי' :
     linkQuality === 'aggregator_specific' ? `מקור: ${opp.source || 'אגרגטור'}` :
+    linkQuality === 'gov_blocked' ? 'דורש פתיחה ידנית' :
+    linkQuality === 'aggregator_no_direct_apply' ? 'אין לינק הגשה ישיר' :
     linkQuality === 'general_listing' || linkQuality === 'homepage' || linkQuality === 'unknown' ? 'לינק דורש אימות' :
     linkQuality === 'broken' ? 'לינק שבור' :
     null;
@@ -1167,6 +1176,8 @@ function OpportunityCard({ opp, match, orgId, funderMeta }: { opp: Opportunity; 
             linkQuality === 'direct_application' ? 'bg-green-100 text-green-700' :
             linkQuality === 'official_pdf' ? 'bg-blue-100 text-blue-700' :
             linkQuality === 'aggregator_specific' ? 'bg-amber-50 text-amber-600' :
+            linkQuality === 'gov_blocked' ? 'bg-orange-100 text-orange-700' :
+            linkQuality === 'aggregator_no_direct_apply' ? 'bg-gray-100 text-gray-500' :
             'bg-gray-100 text-gray-400'
           }`}>
             {linkQualityLabel}
