@@ -513,6 +513,104 @@ function isValidGrantUrl(url: string | undefined): boolean {
 }
 
 // ============================================================
+// LINK QUALITY INFERENCE — assigns standard link_quality value
+// ============================================================
+function inferLinkQuality(url: string | undefined, applicationUrl: string | undefined): string {
+  // If there's a direct application URL — check its type
+  if (applicationUrl) {
+    if (/\.pdf(\?.*)?$/i.test(applicationUrl)) return 'official_pdf';
+    if (/forms\.gle|docs\.google\.com\/forms|my\.pais\.co\.il|manofexpo\.kkl|typeform\.com|jotform\.com|surveymonkey/i.test(applicationUrl))
+      return 'direct_application';
+    // Any other non-gov application URL = direct
+    if (!/gov\.il|mr\.gov\.il/i.test(applicationUrl)) return 'direct_application';
+  }
+  if (!url) return 'official_info_page';
+  // Government portals — require internal auth, no direct web form
+  if (/gov\.il|mr\.gov\.il|pob\.education\.gov\.il|btl\.gov\.il|govextra\.gov\.il/i.test(url))
+    return 'gov_blocked';
+  // Aggregators — link to external funders, no direct apply
+  if (/shatil\.org\.il|socialmap\.org\.il|jdc\.org\.il\/calls|guidestar\.org\.il|fundsforngos/i.test(url))
+    return 'aggregator_no_direct_apply';
+  // Known foundation info pages (no direct web form on landing)
+  if (/jewishagency\.org|nif\.org|britpicot\.org\.il|rashy\.org\.il|jerusalemfoundation\.org/i.test(url))
+    return 'aggregator_no_direct_apply';
+  // PDF direct link
+  if (/\.pdf(\?.*)?$/i.test(url)) return 'official_pdf';
+  // Specific grant/application page with meaningful path
+  return 'official_info_page';
+}
+
+// ============================================================
+// OPPORTUNITY REJECTION — items that must never be active=true
+// ============================================================
+const REJECT_TITLE_PATTERNS = [
+  /ההגשה הסתיימה/,
+  /תובענה/,         // class-action templates from ezvonot
+  /glossary/i,
+  /terms of service/i,
+  /privacy policy/i,
+  /הצטרפו למנוי/,
+  /מדריך לניהול/,
+  /nonprofit glossary/i,
+  /candid near you/i,
+  /artificial intelligence notice/i,
+  /^packshot/i,
+];
+
+const REJECT_URL_PATTERNS = [
+  /\/archive\//i,
+  /mailto:/i,
+  /\.mp4(\?|$)/i,
+  /\.mov(\?|$)/i,
+  /ezvonot\.com/i,      // class-action site, not grants
+  /missfixtheuniverse/i,
+  /candid\.org\/resources/i,
+  /candid\.org\/terms/i,
+  /candid\.org\/artificial/i,
+  /subscriber\/register/i,
+  /\/grantsfolder\//i,  // pais historical archive
+];
+
+// Generic list/category pages — not a specific grant opportunity
+const GENERIC_URL_PATTERNS = [
+  /\/kolotkorim\/?$/i,
+  /\/kolotkorim\/pages/i,
+  /\/grants\/?$/i,
+  /\/apply\/?$/i,
+  /\/grants-and-scholarships\/?$/i,
+  /\/calls-for-proposals\/?$/i,
+  /\/קרנות-וקולות-קוראים\/?$/i,
+  /\/מענקים\/?$/i,
+  /\/tenders\/?$/i,
+  /\/programs\/?$/i,
+];
+
+function shouldRejectOpportunity(item: ScannedItem, sourceUrl: string): boolean {
+  const title = item.title || '';
+  const url = item.url || '';
+
+  // Reject by title pattern
+  if (REJECT_TITLE_PATTERNS.some(re => re.test(title))) return true;
+
+  // Reject by URL pattern
+  if (REJECT_URL_PATTERNS.some(re => re.test(url))) return true;
+
+  // Reject pure homepage (no meaningful path)
+  if (url) {
+    const path = url.replace(/^https?:\/\/[^/]+/, '').replace(/\/+$/, '');
+    if (path === '' || path === '/') return true;
+  }
+
+  // Reject generic list/category pages
+  if (GENERIC_URL_PATTERNS.some(re => re.test(url))) return true;
+
+  // Reject if URL equals the source URL exactly (would re-insert source entry itself)
+  if (url && sourceUrl && url.replace(/\/+$/, '') === sourceUrl.replace(/\/+$/, '')) return true;
+
+  return false;
+}
+
+// ============================================================
 // GOV.IL JSON EXTRACTION — parses embedded JSON from gov.il pages
 // ============================================================
 function extractGovIlJson(html: string, defaultFunder: string): ScannedItem[] {
@@ -699,6 +797,10 @@ async function scanAllSources(batchIndex?: number) {
       for (const item of items) {
         if (!isValidTitle(item.title)) continue;
         if (!isValidGrantUrl(item.url)) continue;
+        if (shouldRejectOpportunity(item, source.url)) {
+          totalSkipped++;
+          continue;
+        }
 
         // Set funder from source if AI didn't extract one
         if (!item.funder && source.funder) {
@@ -859,6 +961,8 @@ async function scanAllSources(batchIndex?: number) {
           continue; // skip actual insert
         }
 
+        const linkQuality = inferLinkQuality(item.url, funderAppUrl || undefined);
+
         const { data: inserted, error: insertErr } = await supabase.from('opportunities').insert({
           title: item.title.slice(0, 300),
           description: item.description?.slice(0, 1000) || null,
@@ -877,6 +981,7 @@ async function scanAllSources(batchIndex?: number) {
           contact_info: contactInfo,
           full_content: fullContent,
           how_to_apply: funderSubmissionMethod ? `שיטת הגשה: ${funderSubmissionMethod}` : null,
+          requirements: { link_quality: linkQuality },
         }).select('id').single();
 
         if (!insertErr && inserted) {
