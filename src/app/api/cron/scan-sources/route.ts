@@ -778,6 +778,121 @@ function extractGovIlJson(html: string, defaultFunder: string): ScannedItem[] {
   return results;
 }
 
+// ============================================================
+// GOV.IL DYNAMIC COLLECTOR — tries internal XHR API endpoints
+// gov.il DynamicCollector pages load data via internal REST API
+// Pattern discovered via DevTools: /api/search/he/Departments/DynamicCollectors/<collector>
+// ============================================================
+interface DynamicCollectorResult {
+  items: ScannedItem[];
+  endpoints_tried: { url: string; status: number | string; raw_count?: number }[];
+  extraction_method: string | null;
+}
+
+async function extractGovDynamicCollector(sourceUrl: string, defaultFunder: string): Promise<DynamicCollectorResult> {
+  const endpointsTried: DynamicCollectorResult['endpoints_tried'] = [];
+
+  // ── Step 1: Fetch page HTML to extract the DynamicTemplateID GUID ──────────────
+  // gov.il AngularJS passes config as positional args to initCtrl():
+  //   initCtrl({...filters...}, <isDataGov>, '<GUID>', '<resultsApiURL>', <itemsPerPage>, ...)
+  // The GUID (arg 3) is the x-client-id used in POST /he/api/DynamicCollector
+  let clientId: string | null = null;
+  const collectorNameMatch = sourceUrl.match(/DynamicCollectors\/([^/?#]+)/i);
+  const collectorName = collectorNameMatch?.[1] ?? null;
+
+  try {
+    const pageRes = await fetch(sourceUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml',
+        'Accept-Language': 'he-IL,he;q=0.9',
+        'sec-fetch-mode': 'navigate',
+      },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (pageRes.ok) {
+      const pageHtml = await pageRes.text();
+      // Pattern: initCtrl({...}, 1, 'GUID', ...
+      const guidMatch = pageHtml.match(/initCtrl\([^)]{10,8000},\s*\d+\s*,\s*'([0-9a-f-]{36})'/i);
+      if (guidMatch) clientId = guidMatch[1];
+    }
+  } catch { /* fall through */ }
+
+  // ── Step 2: POST to the real internal API ──────────────────────────────────────
+  // Discovered from AngularJS bundle: POST https://www.gov.il/he/api/DynamicCollector
+  // Body: { DynamicTemplateID, QueryFilters, From, ItemUrlName }
+  // Header: x-client-id = GUID from initCtrl
+  const apiEndpoint = 'https://www.gov.il/he/api/DynamicCollector';
+
+  if (!clientId) {
+    endpointsTried.push({ url: apiEndpoint, status: 'skipped — could not extract x-client-id GUID from page HTML' });
+    return { items: [], endpoints_tried: endpointsTried, extraction_method: null };
+  }
+
+  try {
+    const postHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'Accept': 'application/json, text/plain, */*',
+      'Accept-Language': 'he-IL,he;q=0.9',
+      'Referer': sourceUrl,
+      'X-Requested-With': 'XMLHttpRequest',
+      'x-client-id': clientId,
+      'Origin': 'https://www.gov.il',
+      'sec-fetch-mode': 'cors',
+      'sec-fetch-site': 'same-origin',
+    };
+
+    const res = await fetch(apiEndpoint, {
+      method: 'POST',
+      headers: postHeaders,
+      body: JSON.stringify({ DynamicTemplateID: clientId, QueryFilters: {}, From: 0, ItemUrlName: null }),
+      signal: AbortSignal.timeout(15000),
+    });
+
+    endpointsTried.push({ url: apiEndpoint, status: res.status });
+
+    if (!res.ok) {
+      return { items: [], endpoints_tried: endpointsTried, extraction_method: null };
+    }
+
+    const json = await res.json() as { Results?: unknown[]; TotalResults?: number };
+    const rawItems = Array.isArray(json.Results) ? json.Results : [];
+    endpointsTried[endpointsTried.length - 1].raw_count = rawItems.length;
+
+    const items: ScannedItem[] = [];
+    for (const raw of rawItems) {
+      if (typeof raw !== 'object' || raw === null) continue;
+      const r = raw as Record<string, unknown>;
+      const data = (typeof r.Data === 'object' && r.Data !== null ? r.Data : {}) as Record<string, unknown>;
+
+      // sub_list = what the grant funds; number = grant ID
+      const subList = String(data.sub_list || '').trim();
+      const number = String(data.number || '').trim();
+      const title = number && subList ? `${number} — ${subList}` : (subList || number || '');
+      if (!title || title.length < 8) continue;
+
+      // Build detail URL using UrlName
+      const urlName = String(r.UrlName || '').trim();
+      const url = urlName && collectorName
+        ? `https://www.gov.il/he/Departments/DynamicCollectors/${collectorName}?skip=0&DCRI_UrlName=${urlName}`
+        : undefined;
+
+      const deadline = extractDateStr(String(data.date || ''));
+      items.push({ title: title.slice(0, 300), funder: defaultFunder, deadline, url });
+    }
+
+    return {
+      items,
+      endpoints_tried: endpointsTried,
+      extraction_method: `POST ${apiEndpoint} (x-client-id: ${clientId}, total: ${json.TotalResults ?? '?'})`,
+    };
+  } catch (e) {
+    endpointsTried.push({ url: apiEndpoint, status: e instanceof Error ? e.message : 'post_error' });
+    return { items: [], endpoints_tried: endpointsTried, extraction_method: null };
+  }
+}
+
 function extractDateStr(text: string): string | undefined {
   if (!text) return undefined;
   const m = text.match(/(\d{1,2})[./](\d{1,2})[./](20\d{2})/);
@@ -956,9 +1071,25 @@ async function scanAllSources(batchIndex?: number, overrideSources?: Source[]) {
         continue;
       }
 
-      // gov.il: try JSON extraction first (faster + more accurate than AI)
+      // gov.il DynamicCollector: try internal XHR API before falling back to HTML
       let items: ScannedItem[] = [];
-      if (source.url.includes('gov.il')) {
+      let dynamicCollectorReport: DynamicCollectorResult | null = null;
+      if (source.url.includes('gov.il') && source.url.includes('DynamicCollector')) {
+        dynamicCollectorReport = await extractGovDynamicCollector(source.url, source.funder);
+        items = dynamicCollectorReport.items;
+        // Attach diagnostics to dryRun report regardless of success
+        if (source.dryRun) {
+          let drEntry = dryRunResults.find(d => d.source === source.name);
+          if (!drEntry) { drEntry = { source: source.name, found: 0, would_insert: 0, rejected: 0, items: [] }; dryRunResults.push(drEntry); }
+          (drEntry as Record<string, unknown>).dynamic_collector_probe = {
+            endpoints_tried: dynamicCollectorReport.endpoints_tried,
+            extraction_method: dynamicCollectorReport.extraction_method,
+            raw_count: items.length,
+          };
+        }
+      }
+      // gov.il non-DynamicCollector: try embedded JSON
+      if (items.length === 0 && source.url.includes('gov.il')) {
         items = extractGovIlJson(html, source.funder);
       }
       if (items.length === 0) {
