@@ -888,7 +888,35 @@ async function scanAllSources(batchIndex?: number, overrideSources?: Source[]) {
   const existingUrls = new Set((existingData || []).map(e => e.url).filter(Boolean));
 
   // === Step 3: Scan sources (batch or all) ===
+  type SourceStatus = 'ok' | 'blocked' | 'js_rendered' | 'fetch_empty' | 'source_error' | 'no_opportunities_found';
+  interface SourceDiagnostic { source: string; status: SourceStatus; reason?: string; html_bytes?: number; items_extracted: number }
+  const sourceDiagnostics: SourceDiagnostic[] = [];
+
+  // JS-rendered detection: placeholder patterns common in React/Angular/Vue apps
+  const JS_PLACEHOLDER_PATTERNS = [
+    /ng-version=/i,           // Angular
+    /data-reactroot/i,        // React SSR placeholder
+    /__NEXT_DATA__/i,         // Next.js (without actual items)
+    /window\.__INITIAL_STATE__/i,
+    /id="app"><\/div>/i,      // empty Vue/React mount
+    /id="root"><\/div>/i,
+    /<div class="loading/i,
+    /skeleton[-_]loader/i,
+    /placeholder.*shimmer/i,
+  ];
+
+  function detectJsRendered(html: string): boolean {
+    // Heuristic: short HTML + JS placeholders = JS-rendered
+    const stripped = html.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<[^>]+>/g, ' ').trim();
+    return stripped.length < 500 && JS_PLACEHOLDER_PATTERNS.some(re => re.test(html));
+  }
+
   for (const source of sourcesToScan) {
+    let diagStatus: SourceStatus = 'ok';
+    let diagReason: string | undefined;
+    let htmlBytes = 0;
+    let itemsExtracted = 0;
+
     try {
       const res = await fetch(source.url, {
         headers: {
@@ -899,11 +927,34 @@ async function scanAllSources(batchIndex?: number, overrideSources?: Source[]) {
       });
 
       if (!res.ok) {
+        diagStatus = res.status === 403 || res.status === 401 ? 'blocked' : 'source_error';
+        diagReason = `HTTP ${res.status}`;
         errors.push(`${source.name}: HTTP ${res.status}`);
+        sourceDiagnostics.push({ source: source.name, status: diagStatus, reason: diagReason, html_bytes: 0, items_extracted: 0 });
         continue;
       }
 
       const html = await res.text();
+      htmlBytes = html.length;
+
+      // Detect JS-rendered (fetch returns empty shell)
+      if (detectJsRendered(html)) {
+        diagStatus = 'js_rendered';
+        diagReason = 'fetch returned empty JS placeholder — requires browser rendering';
+        sourceDiagnostics.push({ source: source.name, status: diagStatus, reason: diagReason, html_bytes: htmlBytes, items_extracted: 0 });
+        errors.push(`${source.name}: requires_browser (JS-rendered)`);
+        continue;
+      }
+
+      // Detect empty fetch
+      const strippedText = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      if (strippedText.length < 200) {
+        diagStatus = 'fetch_empty';
+        diagReason = `HTML fetched but visible text is only ${strippedText.length} chars`;
+        sourceDiagnostics.push({ source: source.name, status: diagStatus, reason: diagReason, html_bytes: htmlBytes, items_extracted: 0 });
+        errors.push(`${source.name}: fetch_empty (${strippedText.length} chars)`);
+        continue;
+      }
 
       // gov.il: try JSON extraction first (faster + more accurate than AI)
       let items: ScannedItem[] = [];
@@ -912,6 +963,11 @@ async function scanAllSources(batchIndex?: number, overrideSources?: Source[]) {
       }
       if (items.length === 0) {
         items = await extractOpportunities(html.slice(0, 30000), source.name, source.url);
+      }
+      itemsExtracted = items.length;
+      if (itemsExtracted === 0) {
+        diagStatus = 'no_opportunities_found';
+        diagReason = `HTML has ${strippedText.length} chars of text but AI/regex found 0 items`;
       }
 
       for (const item of items) {
@@ -1161,8 +1217,14 @@ async function scanAllSources(batchIndex?: number, overrideSources?: Source[]) {
           // noop — skip duplicate
         }
       }
+      // Record final diagnostic for this source (only if not already recorded above)
+      if (!sourceDiagnostics.find(d => d.source === source.name)) {
+        sourceDiagnostics.push({ source: source.name, status: diagStatus, reason: diagReason, html_bytes: htmlBytes, items_extracted: itemsExtracted });
+      }
     } catch (e) {
-      errors.push(`${source.name}: ${e instanceof Error ? e.message : 'Unknown error'}`);
+      const msg = e instanceof Error ? e.message : 'Unknown error';
+      errors.push(`${source.name}: ${msg}`);
+      sourceDiagnostics.push({ source: source.name, status: 'source_error', reason: msg, html_bytes: 0, items_extracted: 0 });
     }
   }
 
@@ -1184,6 +1246,7 @@ async function scanAllSources(batchIndex?: number, overrideSources?: Source[]) {
     deactivated_expired: deactivated,
     errors,
     dry_run_report: dryRunResults.length > 0 ? dryRunResults : undefined,
+    source_diagnostics: sourceDiagnostics.length > 0 ? sourceDiagnostics : undefined,
     timestamp: new Date().toISOString(),
   };
 }
