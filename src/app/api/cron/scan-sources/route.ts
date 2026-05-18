@@ -54,11 +54,13 @@ const SOURCES: Source[] = [
     url: 'https://shatil.org.il/%D7%A7%D7%A8%D7%A0%D7%95%D7%AA-%D7%95%D7%A7%D7%95%D7%9C%D7%95%D7%AA-%D7%A7%D7%95%D7%A8%D7%90%D7%99%D7%9D/',
     funder: 'שתיל',
   },
-  {
-    name: 'ביטוח לאומי',
-    url: 'https://www.btl.gov.il/Funds/kolotkorim/Pages/default.aspx',
-    funder: 'ביטוח לאומי',
-  },
+  // btl DISABLED 2026-05-17: full-site crawl produced 115 benefit pages, not grant opportunities.
+  // btl.gov.il is a citizen-benefit site, not a source for nonprofit grants.
+  // {
+  //   name: 'ביטוח לאומי',
+  //   url: 'https://www.btl.gov.il/Funds/kolotkorim/Pages/default.aspx',
+  //   funder: 'ביטוח לאומי',
+  // },
   {
     name: 'ג׳וינט ישראל',
     url: 'https://www.jdc.org.il/calls-for-proposals/',
@@ -74,12 +76,16 @@ const SOURCES: Source[] = [
     url: 'https://www.gov.il/he/Departments/DynamicCollectors/kolkore-list',
     funder: '',
   },
+  // pais DISABLED 2026-05-17: pais.co.il/culture/tenders.aspx caused full-site crawl including
+  // /archive/grantsfolder/ (2019-2022 past grants). Use culture.pais.co.il with /kolot/ filter only.
+  // {
+  //   name: 'מפעל הפיס — תרבות',
+  //   url: 'https://www.pais.co.il/culture/tenders.aspx',
+  //   funder: 'מפעל הפיס',
+  // },
   {
-    name: 'מפעל הפיס — תרבות',
-    url: 'https://www.pais.co.il/culture/tenders.aspx',
-    funder: 'מפעל הפיס',
-  },
-  {
+    // kkl: entry point is correct (/about-us/tenders/call-for-proposals/) but crawler must NOT
+    // follow links outside /about-us/tenders/ — see crawl depth/domain filter in scanner logic.
     name: 'קק"ל',
     url: 'https://www.kkl.org.il/about-us/tenders/call-for-proposals/',
     funder: 'קק"ל',
@@ -94,11 +100,12 @@ const SOURCES: Source[] = [
     url: 'https://govextra.gov.il/minisite-new/tkuma-zmani/home/tenders-new/',
     funder: 'רשות תקומה',
   },
-  {
-    name: 'מפעל הפיס — מלגות',
-    url: 'https://www.pais.co.il/scholarships/tenders.aspx',
-    funder: 'מפעל הפיס',
-  },
+  // pais scholarships DISABLED 2026-05-17: same crawl issue as culture URL above.
+  // {
+  //   name: 'מפעל הפיס — מלגות',
+  //   url: 'https://www.pais.co.il/scholarships/tenders.aspx',
+  //   funder: 'מפעל הפיס',
+  // },
   // International foundations — verified working URLs
   {
     name: 'Jewish Federation Bay Area - Grants',

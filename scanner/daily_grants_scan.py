@@ -934,15 +934,17 @@ def scan_municipal():
             "source": "municipal_jlm",
             "base": "https://www.jerusalem.muni.il",
         },
-        {
-            "name": "עיריית חיפה",
-            "urls": [
-                "https://www.haifa.muni.il/residents/welfare/",
-                "https://www.haifa.muni.il/business/tenders/",
-            ],
-            "source": "municipal_haifa",
-            "base": "https://www.haifa.muni.il",
-        },
+        # municipal_haifa DISABLED 2026-05-17: full-site crawl produced 102 municipal service pages.
+        # haifa.muni.il needs a dedicated scraper targeting /culture/support/ only.
+        # {
+        #     "name": "עיריית חיפה",
+        #     "urls": [
+        #         "https://www.haifa.muni.il/residents/welfare/",
+        #         "https://www.haifa.muni.il/business/tenders/",
+        #     ],
+        #     "source": "municipal_haifa",
+        #     "base": "https://www.haifa.muni.il",
+        # },
         {
             "name": "עיריית באר שבע",
             "urls": [
