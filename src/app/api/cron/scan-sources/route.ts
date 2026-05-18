@@ -519,17 +519,17 @@ function inferLinkQuality(url: string | undefined, applicationUrl: string | unde
   // If there's a direct application URL — check its type
   if (applicationUrl) {
     if (/\.pdf(\?.*)?$/i.test(applicationUrl)) return 'official_pdf';
-    if (/forms\.gle|docs\.google\.com\/forms|my\.pais\.co\.il|manofexpo\.kkl|typeform\.com|jotform\.com|surveymonkey/i.test(applicationUrl))
+    if (/forms\.gle|docs\.google\.com\/forms|my\.pais\.co\.il|manofexpo\.kkl|typeform\.com|jotform\.com|surveymonkey\.com|monday\.com\/forms|form\.monday\.com|ec\.europa\.eu.*apply|euportal.*apply/i.test(applicationUrl))
       return 'direct_application';
     // Any other non-gov application URL = direct
     if (!/gov\.il|mr\.gov\.il/i.test(applicationUrl)) return 'direct_application';
   }
   if (!url) return 'official_info_page';
   // Government portals — require internal auth, no direct web form
-  if (/gov\.il|mr\.gov\.il|pob\.education\.gov\.il|btl\.gov\.il|govextra\.gov\.il/i.test(url))
+  if (/gov\.il|mr\.gov\.il|pob\.education\.gov\.il|btl\.gov\.il|govextra\.gov\.il|space\.gov\.il|galil\.gov\.il/i.test(url))
     return 'gov_blocked';
   // Aggregators — link to external funders, no direct apply
-  if (/shatil\.org\.il|socialmap\.org\.il|jdc\.org\.il\/calls|guidestar\.org\.il|fundsforngos/i.test(url))
+  if (/shatil\.org\.il|socialmap\.org\.il|jdc\.org\.il\/calls|guidestar\.org\.il|fundsforngos|grantwatch\.com|ujafedny\.org\/grants/i.test(url))
     return 'aggregator_no_direct_apply';
   // Known foundation info pages (no direct web form on landing)
   if (/jewishagency\.org|nif\.org|britpicot\.org\.il|rashy\.org\.il|jerusalemfoundation\.org/i.test(url))
@@ -562,6 +562,10 @@ const REJECT_URL_PATTERNS = [
   /mailto:/i,
   /\.mp4(\?|$)/i,
   /\.mov(\?|$)/i,
+  /\.png(\?|$)/i,
+  /\.jpg(\?|$)/i,
+  /\.gif(\?|$)/i,
+  /\.svg(\?|$)/i,
   /ezvonot\.com/i,      // class-action site, not grants
   /missfixtheuniverse/i,
   /candid\.org\/resources/i,
@@ -569,6 +573,17 @@ const REJECT_URL_PATTERNS = [
   /candid\.org\/artificial/i,
   /subscriber\/register/i,
   /\/grantsfolder\//i,  // pais historical archive
+  // shatil non-grant pages
+  /shatil\.org\.il\/consultation/i,
+  /shatil\.org\.il\/projects-category/i,
+  /shatil\.org\.il\/tools/i,
+  /shatil\.org\.il\/news/i,
+  /shatil\.org\.il\/bio/i,
+  /shatil\.org\.il\/?$/i,  // shatil homepage
+  // generic terms/glossary/news
+  /\/terms\//i,
+  /\/glossary\//i,
+  /\/news\b/i,
 ];
 
 // Generic list/category pages — not a specific grant opportunity
@@ -797,7 +812,27 @@ async function scanAllSources(batchIndex?: number) {
       for (const item of items) {
         if (!isValidTitle(item.title)) continue;
         if (!isValidGrantUrl(item.url)) continue;
-        if (shouldRejectOpportunity(item, source.url)) {
+
+        // Check if item should be rejected — save as active=false with reject reason
+        const rejected = shouldRejectOpportunity(item, source.url);
+        if (rejected) {
+          // Only persist rejections that have a URL (so we can dedup future scans)
+          if (item.url && !existingUrls.has(item.url) && !dryRunSources.has(source.name)) {
+            const rejectReason = /\/archive\/|grantsfolder/i.test(item.url || '') ? 'archived'
+              : /ההגשה הסתיימה/.test(item.title) ? 'submission_closed'
+              : /homepage|category|list/.test('') || GENERIC_URL_PATTERNS.some(re => re.test(item.url || '')) ? 'generic_list_page'
+              : 'not_opportunity';
+            await supabase.from('opportunities').insert({
+              title: item.title.slice(0, 300),
+              funder: item.funder || source.funder || null,
+              url: item.url,
+              active: false,
+              source: source.name,
+              type: 'grant',
+              requirements: { link_quality: 'not_opportunity', reject_reason: rejectReason },
+            }).select('id').single();
+            existingUrls.add(item.url);
+          }
           totalSkipped++;
           continue;
         }
